@@ -36,6 +36,10 @@
 #rclone check /local/path/folder1 remote:path/folder1 --combined -
 #rclone bisync /local/path/folder1 remote:path/folder1 --dry-run --verbose
 
+# 4. Bisync it
+#rclone bisync /local/path/folder1 remote:path/folder1 --resync --verbose --drive-skip-gdocs --log-level INFO
+#rclone bisync /local/path/folder1 remote:path/folder1 --verbose --drive-skip-gdocs --log-level INFO
+
 #rclone bisync remote:path/folder1 /local/mountpoint/folder1 \
 #--conflict-resolve path1
 #--tpslimit 10 \
