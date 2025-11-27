@@ -769,6 +769,9 @@ class TUI:
             self.action_selected = 4
             self.refresh_local_status()
             self.draw()
+            # Auto-trigger smart select (k) after 2 seconds
+            time.sleep(2)
+            self.handle_input(ord('k'))
 
         elif key == ord('n'):  # Untracked action
             self.action_selected = 5
