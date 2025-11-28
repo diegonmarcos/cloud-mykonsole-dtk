@@ -872,11 +872,7 @@ class TUI:
         col += 12
         self.stdscr.addstr(row, col, "n", curses.color_pair(5) | curses.A_BOLD)
         col += 1
-        self.stdscr.addstr(row, col, ") Untracked | (")
-        col += 15
-        self.stdscr.addstr(row, col, "d", curses.color_pair(5) | curses.A_BOLD)
-        col += 1
-        self.stdscr.addstr(row, col, ") Deploys")
+        self.stdscr.addstr(row, col, ") Untracked")
         row += 1
 
         # Refresh line
@@ -893,7 +889,11 @@ class TUI:
         col += 11
         self.stdscr.addstr(row, col, "h", curses.color_pair(5) | curses.A_BOLD)
         col += 1
-        self.stdscr.addstr(row, col, ") Last Push")
+        self.stdscr.addstr(row, col, ") Last Push | (")
+        col += 15
+        self.stdscr.addstr(row, col, "d", curses.color_pair(5) | curses.A_BOLD)
+        col += 1
+        self.stdscr.addstr(row, col, ") Deploys")
 
         self.stdscr.refresh()
 
