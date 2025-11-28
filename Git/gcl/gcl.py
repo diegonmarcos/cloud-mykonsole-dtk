@@ -129,6 +129,119 @@ def get_repo_remote_status(repo_dir: str, do_fetch: bool = True) -> str:
 
     return "Up to Date"
 
+def format_age(updated_at: str) -> str:
+    """Format the age of a workflow run in human-readable format"""
+    try:
+        from datetime import datetime, timezone
+        # Parse ISO 8601 format
+        run_time = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        delta = now - run_time
+
+        total_seconds = int(delta.total_seconds())
+        if total_seconds < 60:
+            return f"{total_seconds}s"
+        elif total_seconds < 3600:
+            minutes = total_seconds // 60
+            return f"{minutes}m"
+        elif total_seconds < 86400:
+            hours = total_seconds // 3600
+            return f"{hours}h"
+        else:
+            days = total_seconds // 86400
+            return f"{days}d"
+    except Exception:
+        return ""
+
+def get_repo_ci_status(repo_name: str) -> str:
+    """Get the CI/CD status from GitHub Actions for a repository"""
+    try:
+        # Extract the GitHub repo path from the URL
+        repo_url = ALL_REPOS.get(repo_name, '')
+        if not repo_url:
+            return "?"
+
+        # Parse git@github.com:user/repo.git format
+        # Use rstrip to only remove .git from the end, not from middle (e.g., github.io)
+        if repo_url.startswith('git@github.com:'):
+            gh_repo = repo_url.replace('git@github.com:', '')
+            if gh_repo.endswith('.git'):
+                gh_repo = gh_repo[:-4]
+        elif 'github.com/' in repo_url:
+            gh_repo = repo_url.split('github.com/')[-1]
+            if gh_repo.endswith('.git'):
+                gh_repo = gh_repo[:-4]
+        else:
+            return "?"
+
+        import json
+
+        # Run gh run list to get the latest workflow run
+        result = subprocess.run(
+            ['gh', 'run', 'list', '-R', gh_repo, '--limit', '1', '--json', 'conclusion,status,updatedAt'],
+            capture_output=True, text=True, timeout=30
+        )
+
+        if result.returncode != 0:
+            return "?"
+
+        runs = json.loads(result.stdout)
+        if not runs:
+            return "-"  # No runs
+
+        run = runs[0]
+        status = run.get('status', '')
+        conclusion = run.get('conclusion', '')
+        updated_at = run.get('updatedAt', '')
+
+        ci_age = format_age(updated_at) if updated_at else ""
+        age_str = f"({ci_age})" if ci_age else ""
+
+        if status == 'in_progress' or status == 'queued':
+            return f"⟳{age_str}"  # Running
+        elif conclusion == 'success':
+            return f"✓{age_str}"  # Success
+        elif conclusion == 'failure':
+            return f"✗{age_str}"  # Failed
+        elif conclusion == 'cancelled':
+            return f"○{age_str}"  # Cancelled
+        else:
+            return "?"
+    except subprocess.TimeoutExpired:
+        return "?"
+    except Exception:
+        return "?"
+
+def get_repo_push_status(repo_name: str) -> str:
+    """Get the last push time for a repository"""
+    try:
+        repo_url = ALL_REPOS.get(repo_name, '')
+        if not repo_url:
+            return "?"
+
+        # Parse git@github.com:user/repo.git format
+        if repo_url.startswith('git@github.com:'):
+            gh_repo = repo_url.replace('git@github.com:', '')
+            if gh_repo.endswith('.git'):
+                gh_repo = gh_repo[:-4]
+        elif 'github.com/' in repo_url:
+            gh_repo = repo_url.split('github.com/')[-1]
+            if gh_repo.endswith('.git'):
+                gh_repo = gh_repo[:-4]
+        else:
+            return "?"
+
+        # Get last push time
+        push_result = subprocess.run(
+            ['gh', 'api', f'repos/{gh_repo}/commits/main', '--jq', '.commit.committer.date'],
+            capture_output=True, text=True, timeout=15
+        )
+        if push_result.returncode == 0 and push_result.stdout.strip():
+            return format_age(push_result.stdout.strip())
+        return "?"
+    except Exception:
+        return "?"
+
 def process_repo(repo_dir: str, repo_url: str, strategy: str, action: str, work_dir: str) -> List[str]:
     """Process a repository with given action, return list of log messages"""
     logs = []
@@ -319,6 +432,40 @@ def process_repo(repo_dir: str, repo_url: str, strategy: str, action: str, work_
         else:
             logs.append("  ✓ No ignored files")
 
+    elif action == 'deploys':
+        logs.append(f"  Checking GitHub Actions for '{repo_dir}'")
+        # Extract the GitHub repo path from the URL
+        # Only remove .git from end, not from middle (e.g., github.io)
+        if repo_url.startswith('git@github.com:'):
+            gh_repo = repo_url.replace('git@github.com:', '')
+            if gh_repo.endswith('.git'):
+                gh_repo = gh_repo[:-4]
+        elif 'github.com/' in repo_url:
+            gh_repo = repo_url.split('github.com/')[-1]
+            if gh_repo.endswith('.git'):
+                gh_repo = gh_repo[:-4]
+        else:
+            logs.append("  ✗ Could not determine GitHub repository")
+            return logs
+
+        try:
+            result = subprocess.run(
+                ['gh', 'run', 'list', '-R', gh_repo, '--limit', '10'],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                logs.append(f"  Recent workflow runs for {gh_repo}:")
+                for line in result.stdout.strip().split('\n')[:10]:
+                    logs.append(f"    {line}")
+            elif result.returncode == 0:
+                logs.append("  ✓ No workflow runs found")
+            else:
+                logs.append(f"  ✗ Failed to get workflow runs: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            logs.append("  ✗ Command timed out")
+        except Exception as e:
+            logs.append(f"  ✗ Error: {str(e)}")
+
     return logs
 
 # --- TUI Implementation ---
@@ -333,11 +480,13 @@ class TUI:
         self.repo_selection = [True] * len(self.repos)
         self.repo_local_status = ["Not Checked"] * len(self.repos)
         self.repo_remote_status = ["Not Checked"] * len(self.repos)
+        self.repo_ci_status = ["?"] * len(self.repos)
+        self.repo_push_status = ["?"] * len(self.repos)
 
         self.workdir_selected = 1  # 0=current dir, 1=custom path
         self.workdir_path = "/home/diego/Documents/Git"
         self.strategy_selected = 1  # 0=local (ours), 1=remote (theirs)
-        self.action_selected = 0  # 0=sync, 1=push, 2=pull, 3=status, 4=fetch, 5=untracked, 6=ignored
+        self.action_selected = 0  # 0=sync, 1=push, 2=pull, 3=status, 4=fetch, 5=untracked, 6=ignored, 7=deploys
         self.repo_cursor = 0
         self.repo_scroll_offset = 0  # For scrolling through repos
         self.current_field = 0  # 0=workdir, 1=strategy, 2=action, 3=repos, 4=run
@@ -360,6 +509,7 @@ class TUI:
         self.status_message = "Loading repository statuses..."
         self.draw()  # Show loading message
         self.refresh_local_status()
+        self.refresh_ci_status(repos=['front-Github_io'])  # Only check front-Github_io by default
 
     def refresh_local_status(self):
         """Refresh local repository status (fast, no remote fetch)"""
@@ -386,6 +536,30 @@ class TUI:
             self.draw()  # Update display during refresh
             repo_path = str(Path(work_dir) / repo)
             self.repo_remote_status[i] = get_repo_remote_status(repo_path)
+
+        self.status_message = ""
+
+    def refresh_ci_status(self, repos: Optional[List[str]] = None):
+        """Refresh CI/CD status from GitHub Actions
+
+        Args:
+            repos: Optional list of repo names to refresh. If None, refreshes all.
+        """
+        repos_to_check = repos if repos else self.repos
+        for i, repo in enumerate(self.repos):
+            if repo in repos_to_check:
+                self.status_message = f"Fetching CI status for {repo}..."
+                self.draw()  # Update display during refresh
+                self.repo_ci_status[i] = get_repo_ci_status(repo)
+
+        self.status_message = ""
+
+    def refresh_push_status(self):
+        """Refresh last push time from GitHub for all repos"""
+        for i, repo in enumerate(self.repos):
+            self.status_message = f"Fetching push status... ({i+1}/{len(self.repos)})"
+            self.draw()  # Update display during refresh
+            self.repo_push_status[i] = get_repo_push_status(repo)
 
         self.status_message = ""
 
@@ -465,6 +639,8 @@ class TUI:
             (4, "STATUS", "T", "(Check Local Untracked and Uncommitted)"),
             (5, "UNTRACKED", "N", "(List untracked files)"),
             (6, "IGNORED", "I", "(List ignored files)"),
+            (None, None, None, None),  # blank line
+            (7, "DEPLOYS", "D", "(Show GitHub Actions runs)"),
         ]
 
         for action_info in actions_data:
@@ -508,13 +684,17 @@ class TUI:
 
         # Repositories
         repo_start_row = row
-        self.stdscr.addstr(row, 2, "REPOSITORIES (Toggle with SPACE):", curses.color_pair(2) | curses.A_BOLD)
-        self.stdscr.addstr(row, 40, "LOCAL STATUS:", curses.color_pair(2) | curses.A_BOLD)
-        self.stdscr.addstr(row, 60, "REMOTE STATUS:", curses.color_pair(2) | curses.A_BOLD)
+        self.stdscr.addstr(row, 2, "REPOSITORIES:", curses.color_pair(2) | curses.A_BOLD)
+        self.stdscr.addstr(row, 38, "LOCAL:", curses.color_pair(2) | curses.A_BOLD)
+        self.stdscr.addstr(row, 52, "REMOTE:", curses.color_pair(2) | curses.A_BOLD)
+        self.stdscr.addstr(row, 66, "CI:", curses.color_pair(2) | curses.A_BOLD)
+        self.stdscr.addstr(row, 76, "LAST PUSH:", curses.color_pair(2) | curses.A_BOLD)
         row += 1
-        self.stdscr.addstr(row, 2, "═════════════════════════════════", curses.color_pair(2))
-        self.stdscr.addstr(row, 40, "═════════════", curses.color_pair(2))
-        self.stdscr.addstr(row, 60, "══════════════", curses.color_pair(2))
+        self.stdscr.addstr(row, 2, "═══════════════════════════════", curses.color_pair(2))
+        self.stdscr.addstr(row, 38, "═══════════", curses.color_pair(2))
+        self.stdscr.addstr(row, 52, "════════════", curses.color_pair(2))
+        self.stdscr.addstr(row, 66, "════════", curses.color_pair(2))
+        self.stdscr.addstr(row, 76, "══════════", curses.color_pair(2))
         row += 1
 
         max_visible_repos = min(14, h - row - 10)  # Show up to 14 repos
@@ -526,10 +706,12 @@ class TUI:
                 break
 
             marker = "✓" if self.repo_selection[repo_idx] else " "
-            repo_line = f"[{marker}] {self.repos[repo_idx]:<30}"
+            repo_line = f"[{marker}] {self.repos[repo_idx]:<28}"
 
             local_status = self.repo_local_status[repo_idx]
             remote_status = self.repo_remote_status[repo_idx]
+            ci_status = self.repo_ci_status[repo_idx]
+            push_status = self.repo_push_status[repo_idx]
 
             # Determine color for local status
             local_color = curses.A_NORMAL
@@ -549,14 +731,34 @@ class TUI:
             elif "Not Checked" in remote_status:
                 remote_color = curses.color_pair(5)
 
+            # Determine color for CI status (check first character)
+            ci_color = curses.A_NORMAL
+            if ci_status.startswith("✓"):
+                ci_color = curses.color_pair(3)  # Green for success
+            elif ci_status.startswith("✗"):
+                ci_color = curses.color_pair(4)  # Red for failure
+            elif ci_status.startswith("⟳"):
+                ci_color = curses.color_pair(5)  # Yellow for running
+            elif ci_status.startswith("○"):
+                ci_color = curses.color_pair(5)  # Yellow for cancelled
+
+            # Push status color (green if recent, yellow if older)
+            push_color = curses.A_NORMAL
+            if push_status != "?":
+                push_color = curses.color_pair(3)  # Green
+
             if self.current_field == 3 and repo_idx == self.repo_cursor:
                 self.stdscr.addstr(row, 4, repo_line, curses.color_pair(6))
-                self.stdscr.addstr(row, 40, f"{local_status:<18}", curses.color_pair(6))
-                self.stdscr.addstr(row, 60, remote_status, curses.color_pair(6))
+                self.stdscr.addstr(row, 38, f"{local_status:<12}", curses.color_pair(6))
+                self.stdscr.addstr(row, 52, f"{remote_status:<12}", curses.color_pair(6))
+                self.stdscr.addstr(row, 66, f"{ci_status:<8}", curses.color_pair(6))
+                self.stdscr.addstr(row, 76, push_status, curses.color_pair(6))
             else:
                 self.stdscr.addstr(row, 4, repo_line)
-                self.stdscr.addstr(row, 40, f"{local_status:<18}", local_color)
-                self.stdscr.addstr(row, 60, remote_status, remote_color)
+                self.stdscr.addstr(row, 38, f"{local_status:<12}", local_color)
+                self.stdscr.addstr(row, 52, f"{remote_status:<12}", remote_color)
+                self.stdscr.addstr(row, 66, f"{ci_status:<8}", ci_color)
+                self.stdscr.addstr(row, 76, push_status, push_color)
             row += 1
 
         row += 1
@@ -574,7 +776,7 @@ class TUI:
             row += 1
 
         # Help text
-        row = h - 8
+        row = h - 9
         self.stdscr.addstr(row, 2, "KEYBOARD SHORTCUTS", curses.color_pair(2) | curses.A_BOLD)
         row += 1
         self.stdscr.addstr(row, 2, "═══════════════════", curses.color_pair(2))
@@ -584,21 +786,21 @@ class TUI:
         col = 2
         self.stdscr.addstr(row, col, "Navigate: (", curses.A_BOLD)
         col += 11
+        self.stdscr.addstr(row, col, "TAB", curses.color_pair(5) | curses.A_BOLD)
+        col += 3
+        self.stdscr.addstr(row, col, ") Section | (")
+        col += 13
         self.stdscr.addstr(row, col, "↑", curses.color_pair(5) | curses.A_BOLD)
         col += 1
         self.stdscr.addstr(row, col, "/", curses.A_BOLD)
         col += 1
         self.stdscr.addstr(row, col, "↓", curses.color_pair(5) | curses.A_BOLD)
         col += 1
-        self.stdscr.addstr(row, col, ") List | (")
-        col += 10
-        self.stdscr.addstr(row, col, "TAB", curses.color_pair(5) | curses.A_BOLD)
-        col += 3
-        self.stdscr.addstr(row, col, ") Field | (")
-        col += 11
+        self.stdscr.addstr(row, col, ") Options | (")
+        col += 13
         self.stdscr.addstr(row, col, "SPACE", curses.color_pair(5) | curses.A_BOLD)
         col += 5
-        self.stdscr.addstr(row, col, ") Toggle | (")
+        self.stdscr.addstr(row, col, ") Select | (")
         col += 12
         self.stdscr.addstr(row, col, "ENTER", curses.color_pair(5) | curses.A_BOLD)
         col += 5
@@ -667,14 +869,31 @@ class TUI:
         self.stdscr.addstr(row, col, "t", curses.color_pair(5) | curses.A_BOLD)
         col += 1
         self.stdscr.addstr(row, col, ") Status | (")
-        col += 13
+        col += 12
         self.stdscr.addstr(row, col, "n", curses.color_pair(5) | curses.A_BOLD)
         col += 1
         self.stdscr.addstr(row, col, ") Untracked | (")
         col += 15
-        self.stdscr.addstr(row, col, "r", curses.color_pair(5) | curses.A_BOLD)
+        self.stdscr.addstr(row, col, "d", curses.color_pair(5) | curses.A_BOLD)
         col += 1
-        self.stdscr.addstr(row, col, ") Refresh")
+        self.stdscr.addstr(row, col, ") Deploys")
+        row += 1
+
+        # Refresh line
+        col = 2
+        self.stdscr.addstr(row, col, "Refresh:  (", curses.A_BOLD)
+        col += 11
+        self.stdscr.addstr(row, col, "t", curses.color_pair(5) | curses.A_BOLD)
+        col += 1
+        self.stdscr.addstr(row, col, ") Status Local | (")
+        col += 18
+        self.stdscr.addstr(row, col, "f", curses.color_pair(5) | curses.A_BOLD)
+        col += 1
+        self.stdscr.addstr(row, col, ") Fetch | (")
+        col += 11
+        self.stdscr.addstr(row, col, "h", curses.color_pair(5) | curses.A_BOLD)
+        col += 1
+        self.stdscr.addstr(row, col, ") Last Push")
 
         self.stdscr.refresh()
 
@@ -684,37 +903,43 @@ class TUI:
             self.running = False
 
         elif key == curses.KEY_UP:
-            if self.current_field == 3:  # In repo list
+            # Arrow UP moves within current section options
+            if self.current_field == 0:  # Workdir section
+                self.workdir_selected = max(0, self.workdir_selected - 1)
+            elif self.current_field == 1:  # Strategy section
+                self.strategy_selected = max(0, self.strategy_selected - 1)
+            elif self.current_field == 2:  # Action section
+                self.action_selected = max(0, self.action_selected - 1)
+            elif self.current_field == 3:  # Repo list
                 self.repo_cursor = max(0, self.repo_cursor - 1)
-                # Adjust scroll offset if cursor goes above visible area
                 if self.repo_cursor < self.repo_scroll_offset:
                     self.repo_scroll_offset = self.repo_cursor
-            else:
-                self.current_field = (self.current_field - 1) % self.total_fields
 
         elif key == curses.KEY_DOWN:
-            if self.current_field == 3:  # In repo list
+            # Arrow DOWN moves within current section options
+            if self.current_field == 0:  # Workdir section
+                self.workdir_selected = min(1, self.workdir_selected + 1)
+            elif self.current_field == 1:  # Strategy section
+                self.strategy_selected = min(1, self.strategy_selected + 1)
+            elif self.current_field == 2:  # Action section
+                self.action_selected = min(7, self.action_selected + 1)
+            elif self.current_field == 3:  # Repo list
                 self.repo_cursor = min(len(self.repos) - 1, self.repo_cursor + 1)
-                # Adjust scroll offset if cursor goes below visible area
                 h, w = self.stdscr.getmaxyx()
                 max_visible = min(14, h - 30)
                 if self.repo_cursor >= self.repo_scroll_offset + max_visible:
                     self.repo_scroll_offset = self.repo_cursor - max_visible + 1
-            else:
-                self.current_field = (self.current_field + 1) % self.total_fields
 
-        elif key == ord('\t') or key == 9:  # TAB
+        elif key == ord('\t') or key == 9:  # TAB - change sections/tables
             self.current_field = (self.current_field + 1) % self.total_fields
 
-        elif key == ord(' '):  # SPACE
-            if self.current_field == 0:  # Toggle workdir
-                self.workdir_selected = 1 - self.workdir_selected
-            elif self.current_field == 1:  # Toggle strategy
-                self.strategy_selected = 1 - self.strategy_selected
-            elif self.current_field == 2:  # Cycle action
-                self.action_selected = (self.action_selected + 1) % 7
-            elif self.current_field == 3:  # Toggle repo selection
+        elif key == curses.KEY_BTAB:  # Shift+TAB - go back to previous section
+            self.current_field = (self.current_field - 1) % self.total_fields
+
+        elif key == ord(' '):  # SPACE - select/toggle current option
+            if self.current_field == 3:  # Toggle repo selection
                 self.repo_selection[self.repo_cursor] = not self.repo_selection[self.repo_cursor]
+            # For other fields, space just confirms current selection (already selected by arrows)
 
         elif key == ord('\n') or key == ord('\r') or key == 10 or key == 13:  # ENTER
             self.execute_action()
@@ -779,9 +1004,12 @@ class TUI:
         elif key == ord('i'):  # Ignored action
             self.action_selected = 6
 
-        elif key == ord('r'):  # Refresh
-            self.refresh_local_status()
-            self.refresh_remote_status()
+        elif key == ord('d'):  # Deploys action + refresh CI for front-Github_io
+            self.action_selected = 7
+            self.refresh_ci_status(repos=['front-Github_io'])
+
+        elif key == ord('h'):  # Refresh push status for all repos
+            self.refresh_push_status()
 
     def execute_action(self):
         """Execute the selected action on selected repos"""
@@ -827,7 +1055,7 @@ class TUI:
             return
 
         strategy = 'ours' if self.strategy_selected == 0 else 'theirs'
-        action_names = ['sync', 'fetch', 'pull', 'push', 'status', 'untracked', 'ignored']
+        action_names = ['sync', 'fetch', 'pull', 'push', 'status', 'untracked', 'ignored', 'deploys']
         action = action_names[self.action_selected]
 
         selected_repos = [self.repos[i] for i in range(len(self.repos)) if self.repo_selection[i]]
@@ -962,6 +1190,17 @@ def run_cli_fetch(repos: Optional[List[str]] = None, work_dir: str = "."):
                 print(log_msg)
             print()
 
+def run_cli_deploys(repos: Optional[List[str]] = None, work_dir: str = "."):
+    log("Checking GitHub Actions Deploys")
+    repos_to_process = repos if repos else list(ALL_REPOS.keys())
+    for repo_name in repos_to_process:
+        repo_url = ALL_REPOS.get(repo_name, '')
+        if repo_url:
+            logs = process_repo(repo_name, repo_url, 'theirs', 'deploys', work_dir)
+            for log_msg in logs:
+                print(log_msg)
+            print()
+
 def print_help():
     """Print help message"""
     print(f"{Colors.BOLD}{Colors.CYAN}gcl.py - Git Clone/Pull/Push Manager{Colors.RESET}\n")
@@ -980,7 +1219,8 @@ def print_help():
     print(f"  {Colors.GREEN}fetch{Colors.RESET}\t\t\tFetches from remote.")
     print(f"  {Colors.GREEN}status{Colors.RESET}\t\t\tChecks for local untracked and uncommitted changes.")
     print(f"  {Colors.GREEN}untracked{Colors.RESET}\t\tLists untracked files (excluding ignored).")
-    print(f"  {Colors.GREEN}ignored{Colors.RESET}\t\t\tLists all ignored files.\n")
+    print(f"  {Colors.GREEN}ignored{Colors.RESET}\t\t\tLists all ignored files.")
+    print(f"  {Colors.GREEN}deploys{Colors.RESET}\t\t\tShows GitHub Actions workflow runs.\n")
     print(f"{Colors.BOLD}{Colors.YELLOW}REPOS:{Colors.RESET}")
     print(f"  Specify repository names to operate on (space-separated).")
     print(f"  If not specified, operates on all repositories.\n")
@@ -1099,6 +1339,8 @@ def main():
         run_cli_ignored(repos=repos, work_dir=work_dir)
     elif cmd == 'fetch':
         run_cli_fetch(repos=repos, work_dir=work_dir)
+    elif cmd == 'deploys':
+        run_cli_deploys(repos=repos, work_dir=work_dir)
     else:
         error(f"Invalid command: {cmd}")
         print()
