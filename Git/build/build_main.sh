@@ -21,24 +21,45 @@ MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Project root directory
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Project root directory (resolve to absolute path of front-Github_io)
+# Handle both direct execution and sourced execution
+if [ -n "$BASH_SOURCE" ]; then
+    SCRIPT_PATH="$BASH_SOURCE"
+elif [ -n "$0" ]; then
+    SCRIPT_PATH="$0"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Verify PROJECT_ROOT contains expected structure
+if [ ! -d "$PROJECT_ROOT/cloud" ] || [ ! -d "$PROJECT_ROOT/linktree" ]; then
+    # Fallback: try to find front-Github_io in common locations
+    for _try_root in "$HOME/Documents/Git/front-Github_io" "$HOME/front-Github_io" "$(pwd)"; do
+        if [ -d "$_try_root/cloud" ] && [ -d "$_try_root/linktree" ]; then
+            PROJECT_ROOT="$_try_root"
+            break
+        fi
+    done
+fi
 
 # PID file for tracking background processes
 PID_FILE="${PROJECT_ROOT}/1.ops/.dev-servers.pid"
 
 # Server URLs mapping (sequential ports starting at 8000)
-URL_ROOT="http://localhost:8000/"
+URL_LANDPAGE="http://localhost:8000/"
 URL_LINKTREE="http://localhost:8001/"
 URL_CV_WEB="http://localhost:8002/"
 URL_MYFEED="http://localhost:8003/"
-URL_MYPROFILE="http://localhost:8004/"
+URL_MYGAMES="http://localhost:8004/"
 URL_NEXUS="http://localhost:8005/"
 URL_CLOUD="http://localhost:8006/"
 URL_FEED="http://localhost:8007/"
 URL_OTHERS="http://localhost:8008/"
 URL_HEALTH="http://localhost:8009/"
 URL_MARKET="http://localhost:8010/"
+URL_CENTRALBANK="http://localhost:8011/"
+URL_MYMAPS="http://localhost:8012/"
+URL_MYPROFILE="http://localhost:8013/"
 
 # Banner function
 print_banner() {
@@ -56,7 +77,7 @@ get_running_servers() {
 
     # Check live-server processes by port
     if pgrep -f "live-server.*8000" >/dev/null 2>&1; then
-        _servers="${_servers}  ${GREEN}*${NC} Root               ${BLUE}${URL_ROOT}${NC}\n"
+        _servers="${_servers}  ${GREEN}*${NC} Landpage           ${BLUE}${URL_LANDPAGE}${NC}\n"
         _count=$((_count + 1))
     fi
     if pgrep -f "live-server.*8001" >/dev/null 2>&1; then
@@ -72,7 +93,7 @@ get_running_servers() {
         _count=$((_count + 1))
     fi
     if pgrep -f "live-server.*8004" >/dev/null 2>&1; then
-        _servers="${_servers}  ${GREEN}*${NC} MyProfile          ${BLUE}${URL_MYPROFILE}${NC}\n"
+        _servers="${_servers}  ${GREEN}*${NC} MyGames          ${BLUE}${URL_MYGAMES}${NC}\n"
         _count=$((_count + 1))
     fi
     if pgrep -f "live-server.*8005" >/dev/null 2>&1; then
@@ -99,10 +120,22 @@ get_running_servers() {
         _servers="${_servers}  ${GREEN}*${NC} Market Watch       ${BLUE}${URL_MARKET}${NC}\n"
         _count=$((_count + 1))
     fi
+    if pgrep -f "live-server.*8011" >/dev/null 2>&1; then
+        _servers="${_servers}  ${GREEN}*${NC} Central Bank       ${BLUE}${URL_CENTRALBANK}${NC}\n"
+        _count=$((_count + 1))
+    fi
+    if pgrep -f "next.*dev.*8012" >/dev/null 2>&1 || pgrep -f "mymaps.*next" >/dev/null 2>&1; then
+        _servers="${_servers}  ${CYAN}*${NC} MyMaps (Next.js)   ${BLUE}${URL_MYMAPS}${NC}\n"
+        _count=$((_count + 1))
+    fi
+    if pgrep -f "nuxt.*dev.*8013" >/dev/null 2>&1 || pgrep -f "myprofile.*nuxt" >/dev/null 2>&1; then
+        _servers="${_servers}  ${CYAN}*${NC} MyProfile (Nuxt)   ${BLUE}${URL_MYPROFILE}${NC}\n"
+        _count=$((_count + 1))
+    fi
     # Generic live-server check (fallback for other ports)
     if pgrep -f "live-server" >/dev/null 2>&1; then
         _other_live=$(pgrep -f "live-server" 2>/dev/null | while read pid; do
-            ps -p "$pid" -o args= 2>/dev/null | grep -v "800[0-9]" || true
+            ps -p "$pid" -o args= 2>/dev/null | grep -vE "80(0[0-9]|1[0-1])" || true
         done)
         if [ -n "$_other_live" ]; then
             _servers="${_servers}  ${GREEN}*${NC} live-server        ${BLUE}(check terminal)${NC}\n"
@@ -110,27 +143,33 @@ get_running_servers() {
         fi
     fi
 
-    # Check Vite dev servers
-    if pgrep -f "vite.*myfeed" >/dev/null 2>&1 || pgrep -f "node.*myfeed.*vite" >/dev/null 2>&1; then
-        _servers="${_servers}  ${CYAN}*${NC} MyFeed (Vite)      ${BLUE}http://localhost:5173${NC}\n"
+    # Check Vite dev servers by checking running processes
+    # MyFeed - Vite on port 8003
+    if pgrep -f "myfeed.*vite" >/dev/null 2>&1 || pgrep -f "vite.*myfeed" >/dev/null 2>&1; then
+        _servers="${_servers}  ${CYAN}*${NC} MyFeed (Vite)      ${BLUE}${URL_MYFEED}${NC}\n"
         _count=$((_count + 1))
     fi
-    if pgrep -f "vite.*myprofile" >/dev/null 2>&1 || pgrep -f "node.*myprofile.*vite" >/dev/null 2>&1; then
-        _servers="${_servers}  ${CYAN}*${NC} MyProfile (Vite)   ${BLUE}http://localhost:5174${NC}\n"
+    # MyGames - Vite on port 8004
+    if pgrep -f "mygames.*vite" >/dev/null 2>&1 || pgrep -f "vite.*mygames" >/dev/null 2>&1; then
+        _servers="${_servers}  ${CYAN}*${NC} MyGames (Vite)   ${BLUE}${URL_MYGAMES}${NC}\n"
         _count=$((_count + 1))
     fi
-    if pgrep -f "vite.*nexus" >/dev/null 2>&1 || pgrep -f "node.*nexus.*vite" >/dev/null 2>&1; then
-        _servers="${_servers}  ${CYAN}*${NC} Nexus (Vite)       ${BLUE}http://localhost:5175${NC}\n"
+    # Central Bank - Vite on port 8011
+    if pgrep -f "central_bank.*vite" >/dev/null 2>&1 || pgrep -f "vite.*central_bank" >/dev/null 2>&1; then
+        _servers="${_servers}  ${CYAN}*${NC} Central Bank (Vite) ${BLUE}${URL_CENTRALBANK}${NC}\n"
         _count=$((_count + 1))
     fi
-    # Generic Vite check (fallback - only if no specific vite detected)
-    if pgrep -f "node.*vite" >/dev/null 2>&1; then
-        # Check if any vite process is NOT from known projects
-        _unknown_vite=$(pgrep -f "node.*vite" 2>/dev/null | while read pid; do
-            _cmd=$(ps -p "$pid" -o args= 2>/dev/null)
-            echo "$_cmd" | grep -qE "myfeed|myprofile|nexus" || echo "$_cmd"
-        done)
-        if [ -n "$_unknown_vite" ]; then
+    # Generic Vite check (fallback - only if no specific vite detected above)
+    _vite_count=0
+    if pgrep -f "node.*/vite" >/dev/null 2>&1; then
+        # Count vite processes not from known projects
+        for _pid in $(pgrep -f "node.*/vite" 2>/dev/null); do
+            _cmd=$(ps -p "$_pid" -o args= 2>/dev/null)
+            if ! echo "$_cmd" | grep -qiE "myfeed|mygames|central_bank"; then
+                _vite_count=$((_vite_count + 1))
+            fi
+        done
+        if [ "$_vite_count" -gt 0 ]; then
             _servers="${_servers}  ${CYAN}*${NC} Vite Server        ${BLUE}(check terminal)${NC}\n"
             _count=$((_count + 1))
         fi
@@ -147,28 +186,31 @@ get_running_servers() {
         _servers="${_servers}  ${YELLOW}~${NC} Sass Watch         ${YELLOW}(file watcher)${NC}\n"
         _count=$((_count + 1))
     fi
-    if pgrep -f "tsc.*--watch" >/dev/null 2>&1; then
+    if pgrep -f "tsc.*--watch" >/dev/null 2>&1 || pgrep -f "esbuild.*--watch" >/dev/null 2>&1; then
         _servers="${_servers}  ${YELLOW}~${NC} TypeScript Watch   ${YELLOW}(file watcher)${NC}\n"
         _count=$((_count + 1))
     fi
 
     # Check tmux sessions
     if command -v tmux >/dev/null 2>&1; then
-        for session in build-root-sass build-root-ts build-linktree build-cv-web build-myfeed build-myprofile build-nexus build-cloud build-feed build-others build-health build-market; do
+        for session in build-landpage-sass build-landpage-ts build-linktree build-cv-web build-myfeed build-mygames build-nexus build-cloud build-feed build-others build-health build-market build-centralbank build-mymaps build-myprofile; do
             if tmux has-session -t "$session" 2>/dev/null; then
                 case "$session" in
-                    build-root-sass)  _servers="${_servers}  ${GREEN}*${NC} Root (tmux)        ${BLUE}${URL_ROOT}${NC}\n" ;;
-                    build-root-ts)    _servers="${_servers}  ${YELLOW}~${NC} Root TS (tmux)     ${YELLOW}(watcher)${NC}\n" ;;
+                    build-landpage-sass)  _servers="${_servers}  ${GREEN}*${NC} Landpage (tmux)    ${BLUE}${URL_LANDPAGE}${NC}\n" ;;
+                    build-landpage-ts)    _servers="${_servers}  ${YELLOW}~${NC} Landpage TS (tmux) ${YELLOW}(watcher)${NC}\n" ;;
                     build-linktree)   _servers="${_servers}  ${GREEN}*${NC} Linktree (tmux)    ${BLUE}${URL_LINKTREE}${NC}\n" ;;
                     build-cv-web)     _servers="${_servers}  ${GREEN}*${NC} CV Web (tmux)      ${BLUE}${URL_CV_WEB}${NC}\n" ;;
                     build-myfeed)     _servers="${_servers}  ${GREEN}*${NC} MyFeed (tmux)      ${BLUE}${URL_MYFEED}${NC}\n" ;;
-                    build-myprofile)  _servers="${_servers}  ${GREEN}*${NC} MyProfile (tmux)   ${BLUE}${URL_MYPROFILE}${NC}\n" ;;
+                    build-mygames)  _servers="${_servers}  ${GREEN}*${NC} MyGames (tmux)   ${BLUE}${URL_MYGAMES}${NC}\n" ;;
                     build-nexus)      _servers="${_servers}  ${GREEN}*${NC} Nexus (tmux)       ${BLUE}${URL_NEXUS}${NC}\n" ;;
                     build-cloud)      _servers="${_servers}  ${GREEN}*${NC} Cloud (tmux)       ${BLUE}${URL_CLOUD}${NC}\n" ;;
                     build-feed)       _servers="${_servers}  ${GREEN}*${NC} Feed (tmux)        ${BLUE}${URL_FEED}${NC}\n" ;;
                     build-others)     _servers="${_servers}  ${GREEN}*${NC} Others (tmux)      ${BLUE}${URL_OTHERS}${NC}\n" ;;
                     build-health)     _servers="${_servers}  ${GREEN}*${NC} Health (tmux)      ${BLUE}${URL_HEALTH}${NC}\n" ;;
                     build-market)     _servers="${_servers}  ${GREEN}*${NC} Market (tmux)      ${BLUE}${URL_MARKET}${NC}\n" ;;
+                    build-centralbank) _servers="${_servers}  ${GREEN}*${NC} Central Bank (tmux) ${BLUE}${URL_CENTRALBANK}${NC}\n" ;;
+                    build-mymaps) _servers="${_servers}  ${GREEN}*${NC} MyMaps (tmux)      ${BLUE}${URL_MYMAPS}${NC}\n" ;;
+                    build-myprofile) _servers="${_servers}  ${GREEN}*${NC} MyProfile (tmux)   ${BLUE}${URL_MYPROFILE}${NC}\n" ;;
                 esac
                 _count=$((_count + 1))
             fi
@@ -184,22 +226,23 @@ print_status_box() {
     get_running_servers
 
     printf "\n"
-    printf "${MAGENTA}+----------------------------------------------------------+${NC}\n"
-    printf "${MAGENTA}|${NC}  ${CYAN}SERVER STATUS${NC}                                           ${MAGENTA}|${NC}\n"
-    printf "${MAGENTA}+----------------------------------------------------------+${NC}\n"
+    printf "${MAGENTA}┌────────────────────────────────────────────────────────────────────────────┐${NC}\n"
+    printf "${MAGENTA}│${NC}  ${CYAN}SERVER STATUS${NC}                                                               ${MAGENTA}│${NC}\n"
+    printf "${MAGENTA}├────────────────────────────────────────────────────────────────────────────┤${NC}\n"
 
     if [ "$RUNNING_COUNT" -eq 0 ]; then
-        printf "${MAGENTA}|${NC}  ${YELLOW}No servers currently running${NC}                            ${MAGENTA}|${NC}\n"
+        printf "${MAGENTA}│${NC}  ${YELLOW}No servers currently running${NC}                                                ${MAGENTA}│${NC}\n"
     else
-        printf "${MAGENTA}|${NC}  ${GREEN}$RUNNING_COUNT server(s)/watcher(s) running:${NC}                         ${MAGENTA}|${NC}\n"
-        printf "${MAGENTA}|${NC}                                                          ${MAGENTA}|${NC}\n"
+        # Calculate padding for the running count line. Assumes RUNNING_COUNT is max 2 digits.
+        _len_running_count_text=$(( 2 + ${#RUNNING_COUNT} + 33 )) # "  " + count + " server(s)/watcher(s) running:"
+        _padding_running_count=$(( 76 - _len_running_count_text ))
+        printf "${MAGENTA}│${NC}  ${GREEN}%d server(s)/watcher(s) running:${NC}%${_padding_running_count}s${MAGENTA}│${NC}\n" "$RUNNING_COUNT" ""
         printf "%b" "$RUNNING_SERVERS" | while IFS= read -r line; do
-            printf "${MAGENTA}|${NC}%-58b${MAGENTA}|${NC}\n" "$line"
+            printf "${MAGENTA}│${NC} %-74b${MAGENTA}│${NC}\n" "$line"
         done
     fi
 
-    printf "${MAGENTA}+----------------------------------------------------------+${NC}\n"
-    printf "\n"
+    printf "${MAGENTA}└────────────────────────────────────────────────────────────────────────────┘${NC}\n"
 }
 
 # Usage information
@@ -212,31 +255,37 @@ print_usage() {
     printf "\n"
     printf "${YELLOW}BUILD:${NC}\n"
     printf "  ${GREEN}build${NC}              # All projects\n"
-    printf "  ${GREEN}build-root${NC}         # Root - Sass + TypeScript\n"
-    printf "  ${GREEN}build-linktree${NC}     # Linktree - Static HTML/CSS/JS\n"
-    printf "  ${GREEN}build-cv-web${NC}       # CV Web - Sass\n"
-    printf "  ${GREEN}build-myfeed${NC}       # MyFeed - Vue 3 + Vite\n"
-    printf "  ${GREEN}build-myprofile${NC}    # MyProfile - SvelteKit\n"
-    printf "  ${GREEN}build-nexus${NC}        # Nexus - Vue 3 + Tailwind\n"
-    printf "  ${GREEN}build-cloud${NC}        # Cloud - Sass + TypeScript\n"
-    printf "  ${GREEN}build-feed${NC}         # Feed Yourself - Static HTML\n"
+    printf "  ${GREEN}build-landpage${NC}     # Landpage - Vanilla + Sass + TypeScript\n"
+    printf "  ${GREEN}build-linktree${NC}     # Linktree - Vanilla + Sass\n"
+    printf "  ${GREEN}build-cv-web${NC}       # CV Web - Vanilla + Sass\n"
+    printf "  ${GREEN}build-myfeed${NC}       # MyFeed - Vue 3 + Sass + TypeScript\n"
+    printf "  ${GREEN}build-mygames${NC}    # MyGames - SvelteKit + Sass + TypeScript\n"
+    printf "  ${GREEN}build-nexus${NC}        # Nexus - Vanilla + Sass+TW + TypeScript\n"
+    printf "  ${GREEN}build-cloud${NC}        # Cloud - Vanilla + Sass + TypeScript\n"
+    printf "  ${GREEN}build-feed${NC}         # Feed Yourself - Vanilla + Sass\n"
     printf "  ${GREEN}build-others${NC}       # Others - Python\n"
-    printf "  ${GREEN}build-health${NC}       # Health Tracker - Static HTML\n"
-    printf "  ${GREEN}build-market${NC}       # Market Watch - Sass + TypeScript\n"
+    printf "  ${GREEN}build-health${NC}       # Health Tracker - Vanilla + Tailwind\n"
+    printf "  ${GREEN}build-market${NC}       # Market Watch - Vanilla + Sass + TypeScript\n"
+    printf "  ${GREEN}build-centralbank${NC}  # Central Bank - Vanilla + Tailwind + TypeScript\n"
+    printf "  ${GREEN}build-mymaps${NC}       # MyMaps - Next.js + Sass + TypeScript\n"
+    printf "  ${GREEN}build-myprofile${NC}    # MyProfile - Nuxt 4 + Sass + TypeScript\n"
     printf "\n"
     printf "${YELLOW}DEV SERVER:${NC}\n"
     printf "  ${GREEN}dev${NC}                # All - Start all servers\n"
-    printf "  ${GREEN}dev-root${NC}           # Root - npm-live :8000\n"
+    printf "  ${GREEN}dev-landpage${NC}       # Landpage - npm-live :8000\n"
     printf "  ${GREEN}dev-linktree${NC}       # Linktree - npm-live :8001\n"
     printf "  ${GREEN}dev-cv-web${NC}         # CV Web - npm-live :8002\n"
     printf "  ${GREEN}dev-myfeed${NC}         # MyFeed - Vite :8003\n"
-    printf "  ${GREEN}dev-myprofile${NC}      # MyProfile - Vite :8004\n"
+    printf "  ${GREEN}dev-mygames${NC}      # MyGames - Vite :8004\n"
     printf "  ${GREEN}dev-nexus${NC}          # Nexus - Vite :8005\n"
     printf "  ${GREEN}dev-cloud${NC}          # Cloud - npm-live :8006\n"
     printf "  ${GREEN}dev-feed${NC}           # Feed Yourself - npm-live :8007\n"
     printf "  ${GREEN}dev-others${NC}         # Others - npm-live :8008\n"
     printf "  ${GREEN}dev-health${NC}         # Health Tracker - npm-live :8009\n"
     printf "  ${GREEN}dev-market${NC}         # Market Watch - npm-live :8010\n"
+    printf "  ${GREEN}dev-centralbank${NC}    # Central Bank - npm-live :8011\n"
+    printf "  ${GREEN}dev-mymaps${NC}         # MyMaps - Next.js :8012\n"
+    printf "  ${GREEN}dev-myprofile${NC}      # MyProfile - Nuxt :8013\n"
     printf "\n"
     printf "${YELLOW}UTILITY:${NC}\n"
     printf "  ${GREEN}list${NC}               # List running servers/watchers\n"
@@ -252,17 +301,20 @@ print_usage() {
     printf "${BLUE}------------------------------------------------------------------------------------------------------${NC}\n"
     printf "  ${MAGENTA}%-13s  %-10s  %-10s  %-10s  %-15s  %s${NC}\n" "Project" "Framework" "CSS" "JavaScript" "Dev Server" "Watch"
     printf "${BLUE}------------------------------------------------------------------------------------------------------${NC}\n"
-    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Root" "-" "Sass" "TypeScript" "npm-live :8000" "Sass, TS"
-    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Linktree" "-" "Vanilla" "Vanilla" "npm-live :8001" "-"
-    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "CV Web" "-" "Sass" "-" "npm-live :8002" "Sass"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Landpage" "Vanilla" "Sass" "TypeScript" "npm-live :8000" "Sass, TS"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Linktree" "Vanilla" "Sass" "Vanilla" "npm-live :8001" "Sass"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "CV Web" "Vanilla" "Sass" "Vanilla" "npm-live :8002" "Sass"
     printf "  ${CYAN}%-13s${NC}  ${GREEN}%-10s${NC}  %-10s  %-10s  ${CYAN}%-15s${NC}  ${YELLOW}%s${NC}\n" "MyFeed" "Vue 3" "Sass" "TypeScript" "Vite :8003" "HMR"
-    printf "  ${CYAN}%-13s${NC}  ${GREEN}%-10s${NC}  %-10s  %-10s  ${CYAN}%-15s${NC}  ${YELLOW}%s${NC}\n" "MyProfile" "SvelteKit" "Sass" "TypeScript" "Vite :8004" "HMR"
-    printf "  ${CYAN}%-13s${NC}  ${GREEN}%-10s${NC}  %-10s  %-10s  ${CYAN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Nexus" "Vue 3" "Tailwind" "TypeScript" "Vite :8005" "HMR"
-    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Cloud" "-" "Sass" "TypeScript" "npm-live :8006" "Sass, TS"
-    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Feed Yourself" "-" "Embedded" "Embedded" "npm-live :8007" "-"
-    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Others" "-" "-" "Python" "npm-live :8008" "-"
-    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "HealthTracker" "-" "Tailwind" "Vanilla" "npm-live :8009" "-"
-    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "MarketWatch" "-" "Sass" "TypeScript" "npm-live :8010" "Sass, TS"
+    printf "  ${CYAN}%-13s${NC}  ${GREEN}%-10s${NC}  %-10s  %-10s  ${CYAN}%-15s${NC}  ${YELLOW}%s${NC}\n" "MyGames" "SvelteKit" "Sass" "TypeScript" "Vite :8004" "HMR"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Nexus" "Vanilla" "Sass+TW" "TypeScript" "npm-live :8005" "Sass, TS"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Cloud" "Vanilla" "Sass" "TypeScript" "npm-live :8006" "Sass, TS"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Feed Yourself" "Vanilla" "Sass" "Vanilla" "npm-live :8007" "Sass"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "Others" "Python" "-" "-" "npm-live :8008" "-"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "HealthTracker" "Vanilla" "Tailwind" "Vanilla" "npm-live :8009" "-"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "MarketWatch" "Vanilla" "Sass" "TypeScript" "npm-live :8010" "Sass, TS"
+    printf "  ${CYAN}%-13s${NC}  %-10s  %-10s  %-10s  ${GREEN}%-15s${NC}  ${YELLOW}%s${NC}\n" "CentralBank" "Vanilla" "Tailwind" "TypeScript" "npm-live :8011" "-"
+    printf "  ${CYAN}%-13s${NC}  ${GREEN}%-10s${NC}  %-10s  %-10s  ${CYAN}%-15s${NC}  ${YELLOW}%s${NC}\n" "MyMaps" "Next.js" "Sass" "TypeScript" "Next.js :8012" "HMR"
+    printf "  ${CYAN}%-13s${NC}  ${GREEN}%-10s${NC}  %-10s  %-10s  ${CYAN}%-15s${NC}  ${YELLOW}%s${NC}\n" "MyProfile" "Nuxt 4" "Sass" "TypeScript" "Vite :8013" "HMR"
     printf "${BLUE}------------------------------------------------------------------------------------------------------${NC}\n"
 
     # Show status box in help
@@ -330,10 +382,7 @@ execute_build() {
     _action="$2"
     _build_script="$PROJECT_ROOT/$_project/1.ops/build.sh"
 
-    # Special case for myprofile which uses 1.1.ops
-    if [ "$_project" = "myprofile" ]; then
-        _build_script="$PROJECT_ROOT/$_project/1.1.ops/build.sh"
-    fi
+    # mygames now uses standard 1.ops path
 
     log_section "Building: $_project"
 
@@ -365,28 +414,26 @@ build_all() {
 
     _failed=0
 
-    # Build root Sass
-    log_info "Building root Sass..."
-    if [ -d "$PROJECT_ROOT/3.sass" ]; then
-        (cd "$PROJECT_ROOT/3.sass" && npm install > /dev/null 2>&1 && npm run sass:build) || _failed=$((_failed + 1))
-    fi
+    # Create dist directory for root
+    mkdir -p "$PROJECT_ROOT/dist"
 
-    # Build root TypeScript
-    log_info "Building root TypeScript..."
-    if [ -d "$PROJECT_ROOT/4.ts" ]; then
-        (cd "$PROJECT_ROOT/4.ts" && npm install > /dev/null 2>&1 && npm run ts:build) || _failed=$((_failed + 1))
-    fi
+    # Build landpage
+    log_info "Building Landpage..."
+    execute_build "landpage" "build" || _failed=$((_failed + 1))
 
     # Build each sub-project
     execute_build "linktree" "build" || _failed=$((_failed + 1))
     execute_build "cv_web" "build" || _failed=$((_failed + 1))
     execute_build "myfeed" "build" || _failed=$((_failed + 1))
-    execute_build "myprofile" "build" || _failed=$((_failed + 1))
+    execute_build "mygames" "build" || _failed=$((_failed + 1))
     execute_build "cloud" "build" || _failed=$((_failed + 1))
     execute_build "feed_yourself" "build" || _failed=$((_failed + 1))
     execute_build "others" "build" || _failed=$((_failed + 1))
     execute_build "health_tracker" "build" || _failed=$((_failed + 1))
     execute_build "market_watch" "build" || _failed=$((_failed + 1))
+    execute_build "central_bank" "build" || _failed=$((_failed + 1))
+    execute_build "mymaps" "build" || _failed=$((_failed + 1))
+    execute_build "myprofile" "build" || _failed=$((_failed + 1))
 
     if [ "$_failed" -eq 0 ]; then
         log_success "All builds completed successfully!"
@@ -401,21 +448,22 @@ build_all() {
 clean_all_builds() {
     log_section "Cleaning Build Artifacts"
 
-    # Clean root
-    log_info "Cleaning root build artifacts..."
-    rm -rf "$PROJECT_ROOT/style.css" "$PROJECT_ROOT/style.css.map"
-    rm -rf "$PROJECT_ROOT/script.js" "$PROJECT_ROOT/script.js.map"
+    # Clean landpage
+    execute_build "landpage" "clean" || true
 
     # Clean sub-projects
     execute_build "linktree" "clean" || true
     execute_build "cv_web" "clean" || true
     execute_build "myfeed" "clean" || true
-    execute_build "myprofile" "clean" || true
+    execute_build "mygames" "clean" || true
     execute_build "cloud" "clean" || true
     execute_build "feed_yourself" "clean" || true
     execute_build "others" "clean" || true
     execute_build "health_tracker" "clean" || true
     execute_build "market_watch" "clean" || true
+    execute_build "central_bank" "clean" || true
+    execute_build "mymaps" "clean" || true
+    execute_build "myprofile" "clean" || true
 
     log_success "All build artifacts cleaned"
 }
@@ -494,38 +542,43 @@ dev_all() {
     if command -v tmux >/dev/null 2>&1; then
         log_info "Starting servers in tmux sessions..."
 
-        tmux new-session -d -s build-root-sass "cd $PROJECT_ROOT/3.sass && npm install && npm run sass:watch" 2>/dev/null || true
-        tmux new-session -d -s build-root-ts "cd $PROJECT_ROOT/4.ts && npm install && npm run ts:watch" 2>/dev/null || true
+        tmux new-session -d -s build-landpage "cd $PROJECT_ROOT/landpage/1.ops && sh build.sh dev" 2>/dev/null || true
         tmux new-session -d -s build-linktree "cd $PROJECT_ROOT/linktree/1.ops && sh build.sh dev" 2>/dev/null || true
-        tmux new-session -d -s build-cv-web "cd $PROJECT_ROOT/cv_web/3.sass && npm install && npm run sass:watch" 2>/dev/null || true
+        tmux new-session -d -s build-cv-web "cd $PROJECT_ROOT/cv_web/1.ops && sh build.sh dev" 2>/dev/null || true
         tmux new-session -d -s build-myfeed "cd $PROJECT_ROOT/myfeed/1.ops && sh build.sh dev" 2>/dev/null || true
-        tmux new-session -d -s build-myprofile "cd $PROJECT_ROOT/myprofile/1.1.ops && sh build.sh dev" 2>/dev/null || true
+        tmux new-session -d -s build-mygames "cd $PROJECT_ROOT/mygames/1.ops && sh build.sh dev" 2>/dev/null || true
         tmux new-session -d -s build-nexus "cd $PROJECT_ROOT/nexus/1.ops && sh build.sh dev" 2>/dev/null || true
         tmux new-session -d -s build-cloud "cd $PROJECT_ROOT/cloud/1.ops && sh build.sh dev" 2>/dev/null || true
         tmux new-session -d -s build-feed "cd $PROJECT_ROOT/feed_yourself/1.ops && sh build.sh dev" 2>/dev/null || true
         tmux new-session -d -s build-others "cd $PROJECT_ROOT/others/1.ops && sh build.sh dev" 2>/dev/null || true
         tmux new-session -d -s build-health "cd $PROJECT_ROOT/health_tracker/1.ops && sh build.sh dev" 2>/dev/null || true
         tmux new-session -d -s build-market "cd $PROJECT_ROOT/market_watch/1.ops && sh build.sh dev" 2>/dev/null || true
+        tmux new-session -d -s build-centralbank "cd $PROJECT_ROOT/central_bank/1.ops && sh build.sh dev" 2>/dev/null || true
+        tmux new-session -d -s build-mymaps "cd $PROJECT_ROOT/mymaps/1.ops && sh build.sh dev" 2>/dev/null || true
+        tmux new-session -d -s build-myprofile "cd $PROJECT_ROOT/myprofile/1.ops && sh build.sh dev" 2>/dev/null || true
 
         log_success "All servers started in tmux sessions!"
         printf "\n"
         printf "${GREEN}============================================================${NC}\n"
         printf "${CYAN}  Development Servers Running (live-server):${NC}\n"
         printf "${GREEN}============================================================${NC}\n"
-        printf "  ${CYAN}%-15s${NC}  %s\n" "Root" "$URL_ROOT"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "Landpage" "$URL_LANDPAGE"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Linktree" "$URL_LINKTREE"
         printf "  ${CYAN}%-15s${NC}  %s\n" "CV Web" "$URL_CV_WEB"
         printf "  ${CYAN}%-15s${NC}  %s\n" "MyFeed" "$URL_MYFEED"
-        printf "  ${CYAN}%-15s${NC}  %s\n" "MyProfile" "$URL_MYPROFILE"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "MyGames" "$URL_MYGAMES"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Nexus" "$URL_NEXUS"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Cloud" "$URL_CLOUD"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Feed Yourself" "$URL_FEED"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Others" "$URL_OTHERS"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Health Tracker" "$URL_HEALTH"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Market Watch" "$URL_MARKET"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "Central Bank" "$URL_CENTRALBANK"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "MyMaps" "$URL_MYMAPS"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "MyProfile" "$URL_MYPROFILE"
         printf "${GREEN}============================================================${NC}\n"
         printf "\n"
-        log_info "Tmux Sessions: build-root-sass, build-root-ts, build-linktree, etc."
+        log_info "Tmux Sessions: build-landpage, build-linktree, etc."
         log_info "To view logs: tmux attach -t <session-name>"
         log_info "To kill all servers: ./1.ops/build_main.sh kill"
         printf "\n"
@@ -540,23 +593,20 @@ dev_all() {
         mkdir -p "$PROJECT_ROOT/1.ops/logs"
 
         # Start servers in background
-        log_info "Starting root Sass..."
-        (cd "$PROJECT_ROOT/3.sass" && nohup npm run sass:watch > "$PROJECT_ROOT/1.ops/logs/sass-dev.log" 2>&1 &)
-
-        log_info "Starting root TypeScript..."
-        (cd "$PROJECT_ROOT/4.ts" && nohup npm run ts:watch > "$PROJECT_ROOT/1.ops/logs/ts-dev.log" 2>&1 &)
+        log_info "Starting landpage..."
+        nohup sh "$PROJECT_ROOT/landpage/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/landpage-dev.log" 2>&1 &
 
         log_info "Starting linktree..."
         nohup sh "$PROJECT_ROOT/linktree/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/linktree-dev.log" 2>&1 &
 
-        log_info "Starting cv_web Sass..."
-        (cd "$PROJECT_ROOT/cv_web/3.sass" && nohup npm run sass:watch > "$PROJECT_ROOT/1.ops/logs/cv-web-dev.log" 2>&1 &)
+        log_info "Starting cv_web..."
+        nohup sh "$PROJECT_ROOT/cv_web/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/cv-web-dev.log" 2>&1 &
 
         log_info "Starting myfeed..."
         nohup sh "$PROJECT_ROOT/myfeed/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/myfeed-dev.log" 2>&1 &
 
-        log_info "Starting myprofile..."
-        nohup sh "$PROJECT_ROOT/myprofile/1.1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/myprofile-dev.log" 2>&1 &
+        log_info "Starting mygames..."
+        nohup sh "$PROJECT_ROOT/mygames/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/mygames-dev.log" 2>&1 &
 
         log_info "Starting nexus..."
         nohup sh "$PROJECT_ROOT/nexus/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/nexus-dev.log" 2>&1 &
@@ -576,6 +626,15 @@ dev_all() {
         log_info "Starting market_watch..."
         nohup sh "$PROJECT_ROOT/market_watch/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/market-dev.log" 2>&1 &
 
+        log_info "Starting central_bank..."
+        nohup sh "$PROJECT_ROOT/central_bank/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/centralbank-dev.log" 2>&1 &
+
+        log_info "Starting mymaps..."
+        nohup sh "$PROJECT_ROOT/mymaps/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/mymaps-dev.log" 2>&1 &
+
+        log_info "Starting myprofile..."
+        nohup sh "$PROJECT_ROOT/myprofile/1.ops/build.sh" dev > "$PROJECT_ROOT/1.ops/logs/myprofile-dev.log" 2>&1 &
+
         sleep 3  # Give servers time to start
 
         log_success "All servers started in background!"
@@ -583,17 +642,20 @@ dev_all() {
         printf "${GREEN}============================================================${NC}\n"
         printf "${CYAN}  Development Servers Running (live-server):${NC}\n"
         printf "${GREEN}============================================================${NC}\n"
-        printf "  ${CYAN}%-15s${NC}  %s\n" "Root" "$URL_ROOT"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "Landpage" "$URL_LANDPAGE"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Linktree" "$URL_LINKTREE"
         printf "  ${CYAN}%-15s${NC}  %s\n" "CV Web" "$URL_CV_WEB"
         printf "  ${CYAN}%-15s${NC}  %s\n" "MyFeed" "$URL_MYFEED"
-        printf "  ${CYAN}%-15s${NC}  %s\n" "MyProfile" "$URL_MYPROFILE"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "MyGames" "$URL_MYGAMES"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Nexus" "$URL_NEXUS"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Cloud" "$URL_CLOUD"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Feed Yourself" "$URL_FEED"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Others" "$URL_OTHERS"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Health Tracker" "$URL_HEALTH"
         printf "  ${CYAN}%-15s${NC}  %s\n" "Market Watch" "$URL_MARKET"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "Central Bank" "$URL_CENTRALBANK"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "MyMaps" "$URL_MYMAPS"
+        printf "  ${CYAN}%-15s${NC}  %s\n" "MyProfile" "$URL_MYPROFILE"
         printf "${GREEN}============================================================${NC}\n"
         printf "\n"
         log_info "Logs: $PROJECT_ROOT/1.ops/logs/<project>-dev.log"
@@ -613,12 +675,8 @@ dev_single() {
     log_section "Starting: $_project"
 
     case "$_project" in
-        root)
-            log_info "Starting root Sass + TypeScript watch..."
-            (cd "$PROJECT_ROOT/3.sass" && npm install && npm run sass:watch) &
-            (cd "$PROJECT_ROOT/4.ts" && npm install && npm run ts:watch) &
-            print_server_started "Root Sass + TypeScript" "$_url" "watcher"
-            wait
+        landpage)
+            execute_build "landpage" "dev"
             ;;
         linktree)
             execute_build "linktree" "dev" &
@@ -627,9 +685,9 @@ dev_single() {
             wait
             ;;
         cv-web)
-            log_info "Starting cv_web Sass watch..."
-            (cd "$PROJECT_ROOT/cv_web/3.sass" && npm install && npm run sass:watch) &
-            print_server_started "CV Web Sass" "$_url" "watcher"
+            execute_build "cv_web" "dev" &
+            sleep 2
+            print_server_started "CV Web" "$_url"
             wait
             ;;
         myfeed)
@@ -638,10 +696,10 @@ dev_single() {
             print_server_started "MyFeed" "$_url"
             wait
             ;;
-        myprofile)
-            execute_build "myprofile" "dev" &
+        mygames)
+            execute_build "mygames" "dev" &
             sleep 2
-            print_server_started "MyProfile" "$_url"
+            print_server_started "MyGames" "$_url"
             wait
             ;;
         nexus)
@@ -674,6 +732,21 @@ dev_single() {
         market)
             execute_build "market_watch" "dev"
             ;;
+        centralbank)
+            execute_build "central_bank" "dev"
+            ;;
+        mymaps)
+            execute_build "mymaps" "dev" &
+            sleep 2
+            print_server_started "MyMaps" "$_url"
+            wait
+            ;;
+        myprofile)
+            execute_build "myprofile" "dev" &
+            sleep 2
+            print_server_started "MyProfile" "$_url"
+            wait
+            ;;
     esac
 }
 
@@ -685,12 +758,51 @@ kill_servers() {
 
     # Kill tmux sessions if they exist
     if command -v tmux >/dev/null 2>&1; then
-        for session in build-root-sass build-root-ts build-linktree build-cv-web build-myfeed build-myprofile build-nexus build-cloud build-feed build-others build-health build-market; do
+        for session in build-landpage-sass build-landpage-ts build-linktree build-cv-web build-myfeed build-mygames build-nexus build-cloud build-feed build-others build-health build-market build-centralbank build-mymaps; do
             if tmux has-session -t "$session" 2>/dev/null; then
                 log_info "Killing tmux session: $session"
                 tmux kill-session -t "$session" 2>/dev/null && _killed=$((_killed + 1)) || true
             fi
         done
+    fi
+
+    # Kill Vite dev server processes
+    _vite_pids=$(pgrep -f "node.*vite" 2>/dev/null || true)
+    if [ -n "$_vite_pids" ]; then
+        log_info "Killing Vite dev server processes..."
+        echo "$_vite_pids" | xargs kill -15 2>/dev/null || true
+        _killed=$((_killed + $(echo "$_vite_pids" | wc -w)))
+        sleep 1
+        _vite_pids=$(pgrep -f "node.*vite" 2>/dev/null || true)
+        if [ -n "$_vite_pids" ]; then
+            echo "$_vite_pids" | xargs kill -9 2>/dev/null || true
+        fi
+    fi
+
+    # Kill Next.js processes
+    _next_pids=$(pgrep -f "node.*next" 2>/dev/null || true)
+    if [ -n "$_next_pids" ]; then
+        log_info "Killing Next.js server processes..."
+        echo "$_next_pids" | xargs kill -15 2>/dev/null || true
+        _killed=$((_killed + $(echo "$_next_pids" | wc -w)))
+        sleep 1
+        _next_pids=$(pgrep -f "node.*next" 2>/dev/null || true)
+        if [ -n "$_next_pids" ]; then
+            echo "$_next_pids" | xargs kill -9 2>/dev/null || true
+        fi
+    fi
+
+    # Kill Nuxt.js processes
+    _nuxt_pids=$(pgrep -f "nuxt" 2>/dev/null || true)
+    if [ -n "$_nuxt_pids" ]; then
+        log_info "Killing Nuxt.js server processes..."
+        echo "$_nuxt_pids" | xargs kill -15 2>/dev/null || true
+        _killed=$((_killed + $(echo "$_nuxt_pids" | wc -w)))
+        sleep 1
+        _nuxt_pids=$(pgrep -f "nuxt" 2>/dev/null || true)
+        if [ -n "$_nuxt_pids" ]; then
+            echo "$_nuxt_pids" | xargs kill -9 2>/dev/null || true
+        fi
     fi
 
     # Kill live-server processes
@@ -772,7 +884,7 @@ run_tests() {
     _failed=0
 
     execute_build "myfeed" "test" || _failed=$((_failed + 1))
-    execute_build "myprofile" "test" || _failed=$((_failed + 1))
+    execute_build "mygames" "test" || _failed=$((_failed + 1))
 
     if [ "$_failed" -eq 0 ]; then
         log_success "All tests passed!"
@@ -789,25 +901,25 @@ tui_menu() {
     _menu_items="
 BUILD ALL|build
 ─────────────────────────────|
-Root (Sass + TS)|build-root
-Linktree|build-linktree
-CV Web|build-cv-web
-MyFeed|build-myfeed
-MyProfile|build-myprofile
-Nexus|build-nexus
-Cloud|build-cloud
-Feed Yourself|build-feed
-Others|build-others
-Health Tracker|build-health
-Market Watch|build-market
+Landpage (Vanilla+Sass+TS)|build-landpage
+Linktree (Vanilla+Sass)|build-linktree
+CV Web (Vanilla+Sass)|build-cv-web
+MyFeed (Vue 3)|build-myfeed
+MyGames (SvelteKit)|build-mygames
+Nexus (Vanilla+Sass+TW)|build-nexus
+Cloud (Vanilla+Sass+TS)|build-cloud
+Feed Yourself (Vanilla+Sass)|build-feed
+Others (Python)|build-others
+Health Tracker (Vanilla+TW)|build-health
+Market Watch (Vanilla+Sass+TS)|build-market
 ─────────────────────────────|
 DEV ALL|dev
 ─────────────────────────────|
-Root :8000|dev-root
+Landpage :8000|dev-landpage
 Linktree :8001|dev-linktree
 CV Web :8002|dev-cv-web
 MyFeed :8003|dev-myfeed
-MyProfile :8004|dev-myprofile
+MyGames :8004|dev-mygames
 Nexus :8005|dev-nexus
 Cloud :8006|dev-cloud
 Feed Yourself :8007|dev-feed
@@ -987,85 +1099,182 @@ Exit|quit
     done
 }
 
+# Print project structure table
+print_project_table() {
+    printf "${YELLOW}PROJECT STRUCTURE:${NC}\n"
+    printf "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}\n"
+    printf "  ${MAGENTA}%-14s %-11s %-11s %-11s %-16s %s${NC}\n" "Project" "Framework" "CSS" "JavaScript" "Dev Server" "Watch"
+    printf "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}\n"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "Landpage" "Vanilla" "Sass" "TypeScript" "npm-live :8000" "Sass, TS"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "Linktree" "Vanilla" "Sass" "Vanilla" "npm-live :8001" "Sass"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "CV Web" "Vanilla" "Sass" "Vanilla" "npm-live :8002" "Sass"
+    printf "  ${CYAN}%-14s${NC} ${GREEN}%-11s${NC} %-11s %-11s ${CYAN}%-16s${NC} ${YELLOW}%s${NC}\n" "MyFeed" "Vue 3" "Sass" "TypeScript" "Vite :8003" "HMR"
+    printf "  ${CYAN}%-14s${NC} ${GREEN}%-11s${NC} %-11s %-11s ${CYAN}%-16s${NC} ${YELLOW}%s${NC}\n" "MyGames" "SvelteKit" "Sass" "TypeScript" "Vite :8004" "HMR"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "Nexus" "Vanilla" "Sass+TW" "TypeScript" "npm-live :8005" "Sass, TS"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "Cloud" "Vanilla" "Sass" "TypeScript" "npm-live :8006" "Sass, TS"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "Feed Yourself" "Vanilla" "Sass" "Vanilla" "npm-live :8007" "Sass"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "Others" "Python" "-" "-" "npm-live :8008" "-"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "HealthTracker" "Vanilla" "Tailwind" "Vanilla" "npm-live :8009" "-"
+    printf "  ${CYAN}%-14s${NC} %-11s %-11s %-11s ${GREEN}%-16s${NC} ${YELLOW}%s${NC}\n" "MarketWatch" "Vanilla" "Sass" "TypeScript" "npm-live :8010" "Sass, TS"
+    printf "${BLUE}────────────────────────────────────────────────────────────────────────────────${NC}\n"
+    printf "\n"
+}
+
+# Default project root
+DEFAULT_PROJECT_ROOT="$HOME/Documents/Git/front-Github_io"
+
+# Print working directory section
+print_workdir_section() {
+    printf "${YELLOW}WORKING DIRECTORY:${NC}\n"
+    printf "${BLUE}══════════════════${NC}\n"
+
+    # Determine which option is selected
+    _current_dir="$(pwd)"
+
+    if [ "$PROJECT_ROOT" = "$DEFAULT_PROJECT_ROOT" ]; then
+        printf "  ${GREEN}[●]${NC} Default: %s\n" "$DEFAULT_PROJECT_ROOT"
+        printf "  [ ] Current Directory: %s\n" "$_current_dir"
+        printf "  [ ] Custom Path\n"
+    elif [ "$PROJECT_ROOT" = "$_current_dir" ]; then
+        printf "  [ ] Default: %s\n" "$DEFAULT_PROJECT_ROOT"
+        printf "  ${GREEN}[●]${NC} Current Directory: %s\n" "$_current_dir"
+        printf "  [ ] Custom Path\n"
+    else
+        printf "  [ ] Default: %s\n" "$DEFAULT_PROJECT_ROOT"
+        printf "  [ ] Current Directory: %s\n" "$_current_dir"
+        printf "  ${GREEN}[●]${NC} Custom Path: %s\n" "$PROJECT_ROOT"
+    fi
+    printf "\n"
+}
+
 # Simple TUI (POSIX-compliant)
 tui_simple() {
+    _last_msg=""
+
+    # Helper to check status and return colored string
+    get_status() {
+        if eval "$1" >/dev/null 2>&1; then
+            echo "${GREEN}On ${NC}"
+        else
+            echo "${RED}Off${NC}"
+        fi
+    }
+
     while true; do
         clear
         print_banner
 
-        get_running_servers
-        if [ "$RUNNING_COUNT" -gt 0 ]; then
-            printf "${GREEN}● ${RUNNING_COUNT} server(s) running${NC}\n\n"
-        else
-            printf "${YELLOW}○ No servers running${NC}\n\n"
+        # Check statuses
+        _s1=$(get_status 'pgrep -f "live-server.*8000"')
+        _s2=$(get_status 'pgrep -f "live-server.*8001"')
+        _s3=$(get_status 'pgrep -f "live-server.*8002"')
+        _s4=$(get_status 'pgrep -f "myfeed.*vite" || pgrep -f "vite.*myfeed"')
+        _s5=$(get_status 'pgrep -f "mygames.*vite" || pgrep -f "vite.*mygames"')
+        _s6=$(get_status 'pgrep -f "live-server.*8005"')
+        _s7=$(get_status 'pgrep -f "live-server.*8006"')
+        _s8=$(get_status 'pgrep -f "live-server.*8007"')
+        _s9=$(get_status 'pgrep -f "live-server.*8008"')
+        _s10=$(get_status 'pgrep -f "live-server.*8009"')
+        _s11=$(get_status 'pgrep -f "live-server.*8010"')
+        _s12=$(get_status 'pgrep -f "live-server.*8011"')
+        _s13=$(get_status 'pgrep -f "next.*dev.*8012" || pgrep -f "mymaps.*next"')
+        _s14=$(get_status 'pgrep -f "nuxt.*dev.*8013" || pgrep -f "myprofile.*nuxt"')
+
+        # Table 1: Full project details
+        printf "${BLUE}┌────────────────────────────────────────────────────────────────────────────┐${NC}\n"
+        printf "${BLUE}│${NC}  ${YELLOW}PROJECTS${NC}                                                                  ${BLUE}│${NC}\n"
+        printf "${BLUE}├─────┬────────────────┬────────────┬──────────┬────────────┬───────┬────────┤${NC}\n"
+        printf "${BLUE}│${NC} ${GREEN}#${NC}   ${BLUE}│${NC} ${MAGENTA}Name${NC}           ${BLUE}│${NC} ${MAGENTA}Framework${NC}  ${BLUE}│${NC} ${MAGENTA}CSS${NC}      ${BLUE}│${NC} ${MAGENTA}JavaScript${NC} ${BLUE}│${NC} ${MAGENTA}Port${NC}  ${BLUE}│${NC} ${MAGENTA}Live${NC}   ${BLUE}│${NC}\n"
+        printf "${BLUE}├─────┼────────────────┼────────────┼──────────┼────────────┼───────┼────────┤${NC}\n"
+        printf "${BLUE}│${NC} ${GREEN}1${NC}   ${BLUE}│${NC} Landpage       ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8000 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s1"
+        printf "${BLUE}│${NC} ${GREEN}2${NC}   ${BLUE}│${NC} Linktree       ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8001 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s2"
+        printf "${BLUE}│${NC} ${GREEN}3${NC}   ${BLUE}│${NC} CV Web         ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8002 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s3"
+        printf "${BLUE}│${NC} ${GREEN}4${NC}   ${BLUE}│${NC} MyFeed         ${BLUE}│${NC} Vue 3      ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8003 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s4"
+        printf "${BLUE}│${NC} ${GREEN}5${NC}   ${BLUE}│${NC} MyGames        ${BLUE}│${NC} SvelteKit  ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8004 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s5"
+        printf "${BLUE}│${NC} ${GREEN}6${NC}   ${BLUE}│${NC} Nexus          ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Sass+TW  ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8005 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s6"
+        printf "${BLUE}│${NC} ${GREEN}7${NC}   ${BLUE}│${NC} Cloud          ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8006 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s7"
+        printf "${BLUE}│${NC} ${GREEN}8${NC}   ${BLUE}│${NC} Feed Yourself  ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Sass     ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} :8007 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s8"
+        printf "${BLUE}│${NC} ${GREEN}9${NC}   ${BLUE}│${NC} Others         ${BLUE}│${NC} Python     ${BLUE}│${NC} -        ${BLUE}│${NC} -          ${BLUE}│${NC} :8008 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s9"
+        printf "${BLUE}│${NC} ${GREEN}10${NC}  ${BLUE}│${NC} Health Tracker ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Tailwind ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} :8009 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s10"
+        printf "${BLUE}│${NC} ${GREEN}11${NC}  ${BLUE}│${NC} Market Watch   ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8010 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s11"
+        printf "${BLUE}│${NC} ${GREEN}12${NC}  ${BLUE}│${NC} Central Bank   ${BLUE}│${NC} Vanilla    ${BLUE}│${NC} Tailwind ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8011 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s12"
+        printf "${BLUE}│${NC} ${GREEN}13${NC}  ${BLUE}│${NC} MyMaps         ${BLUE}│${NC} Next.js    ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8012 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s13"
+        printf "${BLUE}│${NC} ${GREEN}14${NC}  ${BLUE}│${NC} MyProfile      ${BLUE}│${NC} Nuxt 4     ${BLUE}│${NC} Sass     ${BLUE}│${NC} TypeScript ${BLUE}│${NC} :8013 ${BLUE}│${NC} %b    ${BLUE}│${NC}\n" "$_s14"
+        printf "${BLUE}└─────┴────────────────┴────────────┴──────────┴────────────┴───────┴────────┘${NC}\n"
+
+        # Server status
+        print_status_box
+
+        # Show last action message if any
+        if [ -n "$_last_msg" ]; then
+            printf "${GREEN}[OK]${NC} %s\n\n" "$_last_msg"
         fi
 
-        printf "${BLUE}┌─────────────────────────────────────────────────────────────┐${NC}\n"
-        printf "${BLUE}│${NC}  ${YELLOW}BUILD${NC}                                                       ${BLUE}│${NC}\n"
-        printf "${BLUE}├─────────────────────────────────────────────────────────────┤${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}1)${NC}  build           ${CYAN}Build all projects${NC}                    ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}2)${NC}  build-root      ${CYAN}Root Sass + TypeScript${NC}                ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}3)${NC}  build-cloud     ${CYAN}Cloud Dashboard${NC}                       ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}4)${NC}  build-market    ${CYAN}Market Watch${NC}                          ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}5)${NC}  build-health    ${CYAN}Health Tracker${NC}                        ${BLUE}│${NC}\n"
-        printf "${BLUE}├─────────────────────────────────────────────────────────────┤${NC}\n"
-        printf "${BLUE}│${NC}  ${YELLOW}DEV SERVER${NC}                                                  ${BLUE}│${NC}\n"
-        printf "${BLUE}├─────────────────────────────────────────────────────────────┤${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}10)${NC} dev             ${CYAN}Start all dev servers${NC}                 ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}11)${NC} dev-root        ${CYAN}Root :8000${NC}                            ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}12)${NC} dev-linktree    ${CYAN}Linktree :8001${NC}                        ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}13)${NC} dev-cv-web      ${CYAN}CV Web :8002${NC}                          ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}14)${NC} dev-myfeed      ${CYAN}MyFeed :8003${NC}                          ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}15)${NC} dev-myprofile   ${CYAN}MyProfile :8004${NC}                       ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}16)${NC} dev-nexus       ${CYAN}Nexus :8005${NC}                           ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}17)${NC} dev-cloud       ${CYAN}Cloud :8006${NC}                           ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}18)${NC} dev-feed        ${CYAN}Feed Yourself :8007${NC}                   ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}19)${NC} dev-others      ${CYAN}Others :8008${NC}                          ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}20)${NC} dev-health      ${CYAN}Health Tracker :8009${NC}                  ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}21)${NC} dev-market      ${CYAN}Market Watch :8010${NC}                    ${BLUE}│${NC}\n"
-        printf "${BLUE}├─────────────────────────────────────────────────────────────┤${NC}\n"
-        printf "${BLUE}│${NC}  ${YELLOW}UTILITY${NC}                                                     ${BLUE}│${NC}\n"
-        printf "${BLUE}├─────────────────────────────────────────────────────────────┤${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}30)${NC} list            ${CYAN}List running servers${NC}                  ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}31)${NC} kill            ${CYAN}Kill all servers${NC}                      ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}32)${NC} clean           ${CYAN}Clean build artifacts${NC}                 ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}33)${NC} test            ${CYAN}Run tests${NC}                             ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}h)${NC}  help            ${CYAN}Show help${NC}                             ${BLUE}│${NC}\n"
-        printf "${BLUE}│${NC}  ${GREEN}q)${NC}  quit            ${CYAN}Exit TUI${NC}                              ${BLUE}│${NC}\n"
-        printf "${BLUE}└─────────────────────────────────────────────────────────────┘${NC}\n"
-        printf "\n"
-        printf "${GREEN}Enter choice: ${NC}"
+        # Legend section
+        printf "${BLUE}┌────────────────────────────────────────────────────────────────────────────┐${NC}\n"
+        printf "${BLUE}│${NC}  ${YELLOW}COMMANDS${NC}                                                                  ${BLUE}│${NC}\n"
+        printf "${BLUE}├────────────────────────────────────────────────────────────────────────────┤${NC}\n"
+        printf "${BLUE}│${NC}  ${GREEN}B${NC}[n] Build project    ${GREEN}D${NC}[n] Start dev server    ${GREEN}0${NC} All projects             ${BLUE}│${NC}\n"
+        printf "${BLUE}│${NC}  ${GREEN}K${NC}    Kill servers     ${GREEN}H${NC}    Help (full docs)    ${GREEN}Q${NC} Quit                     ${BLUE}│${NC}\n"
+        printf "${BLUE}├────────────────────────────────────────────────────────────────────────────┤${NC}\n"
+        printf "${BLUE}│${NC}  ${CYAN}Examples:${NC}  D3  D11  B0  K                                                 ${BLUE}│${NC}\n"
+        printf "${BLUE}└────────────────────────────────────────────────────────────────────────────┘${NC}\n"
+
+        # Input prompt
+        printf "\n${YELLOW}Enter command:${NC} "
 
         read -r _choice
 
-        case "$_choice" in
-            1|build)           _cmd="build" ;;
-            2|build-root)      _cmd="build-root" ;;
-            3|build-cloud)     _cmd="build-cloud" ;;
-            4|build-market)    _cmd="build-market" ;;
-            5|build-health)    _cmd="build-health" ;;
-            6|build-linktree)  _cmd="build-linktree" ;;
-            7|build-cv-web)    _cmd="build-cv-web" ;;
-            8|build-myfeed)    _cmd="build-myfeed" ;;
-            9|build-myprofile) _cmd="build-myprofile" ;;
-            10|dev)            _cmd="dev" ;;
-            11|dev-root)       _cmd="dev-root" ;;
-            12|dev-linktree)   _cmd="dev-linktree" ;;
-            13|dev-cv-web)     _cmd="dev-cv-web" ;;
-            14|dev-myfeed)     _cmd="dev-myfeed" ;;
-            15|dev-myprofile)  _cmd="dev-myprofile" ;;
-            16|dev-nexus)      _cmd="dev-nexus" ;;
-            17|dev-cloud)      _cmd="dev-cloud" ;;
-            18|dev-feed)       _cmd="dev-feed" ;;
-            19|dev-others)     _cmd="dev-others" ;;
-            20|dev-health)     _cmd="dev-health" ;;
-            21|dev-market)     _cmd="dev-market" ;;
-            30|list)           _cmd="list" ;;
-            31|kill)           _cmd="kill" ;;
-            32|clean)          _cmd="clean" ;;
-            33|test)           _cmd="test" ;;
-            h|help)            _cmd="help" ;;
-            q|quit|Q|exit)
+        # Convert to lowercase for easier matching
+        _choice_lower=$(echo "$_choice" | tr '[:upper:]' '[:lower:]')
+
+        case "$_choice_lower" in
+            # Build commands
+            b|b0)              _cmd="build"; _last_msg="Building all projects..." ;;
+            b1)                _cmd="build-landpage"; _last_msg="Building Landpage" ;;
+            b2)                _cmd="build-linktree"; _last_msg="Building Linktree" ;;
+            b3)                _cmd="build-cv-web"; _last_msg="Building CV Web" ;;
+            b4)                _cmd="build-myfeed"; _last_msg="Building MyFeed" ;;
+            b5)                _cmd="build-mygames"; _last_msg="Building MyGames" ;;
+            b6)                _cmd="build-nexus"; _last_msg="Building Nexus" ;;
+            b7)                _cmd="build-cloud"; _last_msg="Building Cloud" ;;
+            b8)                _cmd="build-feed"; _last_msg="Building Feed Yourself" ;;
+            b9)                _cmd="build-others"; _last_msg="Building Others" ;;
+            b10)               _cmd="build-health"; _last_msg="Building Health Tracker" ;;
+            b11)               _cmd="build-market"; _last_msg="Building Market Watch" ;;
+            b12)               _cmd="build-centralbank"; _last_msg="Building Central Bank" ;;
+            b13)               _cmd="build-mymaps"; _last_msg="Building MyMaps" ;;
+            b14)               _cmd="build-myprofile"; _last_msg="Building MyProfile" ;;
+            # Dev commands
+            d|d0)              _cmd="dev"; _last_msg="Starting all dev servers..." ;;
+            d1)                _cmd="dev-landpage"; _last_msg="Started Landpage :8000" ;;
+            d2)                _cmd="dev-linktree"; _last_msg="Started Linktree :8001" ;;
+            d3)                _cmd="dev-cv-web"; _last_msg="Started CV Web :8002" ;;
+            d4)                _cmd="dev-myfeed"; _last_msg="Started MyFeed :8003" ;;
+            d5)                _cmd="dev-mygames"; _last_msg="Started MyGames :8004" ;;
+            d6)                _cmd="dev-nexus"; _last_msg="Started Nexus :8005" ;;
+            d7)                _cmd="dev-cloud"; _last_msg="Started Cloud :8006" ;;
+            d8)                _cmd="dev-feed"; _last_msg="Started Feed Yourself :8007" ;;
+            d9)                _cmd="dev-others"; _last_msg="Started Others :8008" ;;
+            d10)               _cmd="dev-health"; _last_msg="Started Health Tracker :8009" ;;
+            d11)               _cmd="dev-market"; _last_msg="Started Market Watch :8010" ;;
+            d12)               _cmd="dev-centralbank"; _last_msg="Started Central Bank :8011" ;;
+            d13)               _cmd="dev-mymaps"; _last_msg="Started MyMaps :8012" ;;
+            d14)               _cmd="dev-myprofile"; _last_msg="Started MyProfile :8013" ;;
+            # Utility commands
+            k|kill)            _cmd="kill"; _last_msg="Killed all servers" ;;
+            c|clean)           _cmd="clean"; _last_msg="Cleaned build artifacts" ;;
+            h|help)
+                clear
+                print_usage
+                printf "\n${CYAN}Press any key to return to TUI...${NC}"
+                _old_tty=$(stty -g 2>/dev/null)
+                stty -icanon min 1 time 0 2>/dev/null
+                dd bs=1 count=1 >/dev/null 2>&1
+                stty "$_old_tty" 2>/dev/null
+                continue
+                ;;
+            q|quit|exit)
                 clear
                 printf "${GREEN}Goodbye!${NC}\n"
                 exit 0
@@ -1074,21 +1283,49 @@ tui_simple() {
                 continue
                 ;;
             *)
-                printf "${RED}Invalid option: %s${NC}\n" "$_choice"
-                sleep 1
+                _last_msg="Invalid: $_choice"
                 continue
                 ;;
         esac
 
-        clear
-        main "$_cmd"
-        printf "\n${CYAN}Press any key to continue...${NC}"
-        # Read single key (POSIX-compatible)
-        _old_tty=$(stty -g 2>/dev/null)
-        stty -icanon min 1 time 0 2>/dev/null
-        dd bs=1 count=1 >/dev/null 2>&1
-        stty "$_old_tty" 2>/dev/null
-        printf "\n"
+        # Run command silently in background
+        case "$_cmd" in
+            dev-landpage)    sh "$PROJECT_ROOT/landpage/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-linktree)    sh "$PROJECT_ROOT/linktree/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-cv-web)      sh "$PROJECT_ROOT/cv_web/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-myfeed)      sh "$PROJECT_ROOT/myfeed/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-mygames)     sh "$PROJECT_ROOT/mygames/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-nexus)       sh "$PROJECT_ROOT/nexus/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-cloud)       sh "$PROJECT_ROOT/cloud/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-feed)        sh "$PROJECT_ROOT/feed_yourself/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-others)      sh "$PROJECT_ROOT/others/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-health)      sh "$PROJECT_ROOT/health_tracker/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-market)      sh "$PROJECT_ROOT/market_watch/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-centralbank) sh "$PROJECT_ROOT/central_bank/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-mymaps)      sh "$PROJECT_ROOT/mymaps/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev-myprofile)   sh "$PROJECT_ROOT/myprofile/1.ops/build.sh" dev > /dev/null 2>&1 & ;;
+            dev)             dev_all > /dev/null 2>&1 & ;;
+            kill)            kill_servers > /dev/null 2>&1 ;;
+            build-landpage)    sh "$PROJECT_ROOT/landpage/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-linktree)    sh "$PROJECT_ROOT/linktree/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-cv-web)      sh "$PROJECT_ROOT/cv_web/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-myfeed)      sh "$PROJECT_ROOT/myfeed/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-mygames)   sh "$PROJECT_ROOT/mygames/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-nexus)       sh "$PROJECT_ROOT/nexus/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-cloud)       sh "$PROJECT_ROOT/cloud/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-feed)        sh "$PROJECT_ROOT/feed_yourself/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-others)      sh "$PROJECT_ROOT/others/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-health)      sh "$PROJECT_ROOT/health_tracker/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-market)      sh "$PROJECT_ROOT/market_watch/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-centralbank) sh "$PROJECT_ROOT/central_bank/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-mymaps)      sh "$PROJECT_ROOT/mymaps/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build-myprofile)   sh "$PROJECT_ROOT/myprofile/1.ops/build.sh" build > /dev/null 2>&1 & ;;
+            build)           build_all > /dev/null 2>&1 & ;;
+            clean)           clean_all > /dev/null 2>&1 ;;
+        esac
+
+        # Small delay to let processes start
+        sleep 0.5
     done
 }
 
@@ -1138,12 +1375,8 @@ main() {
         build)
             build_all "$_force"
             ;;
-        build-root)
-            log_section "Building Root Sass"
-            (cd "$PROJECT_ROOT/3.sass" && npm install && npm run sass:build)
-            log_section "Building Root TypeScript"
-            (cd "$PROJECT_ROOT/4.ts" && npm install && npm run ts:build)
-            log_success "Root build completed"
+        build-landpage)
+            execute_build "landpage" "build"
             ;;
         build-linktree)
             execute_build "linktree" "build"
@@ -1154,8 +1387,8 @@ main() {
         build-myfeed)
             execute_build "myfeed" "build"
             ;;
-        build-myprofile)
-            execute_build "myprofile" "build"
+        build-mygames)
+            execute_build "mygames" "build"
             ;;
         build-nexus)
             execute_build "nexus" "build"
@@ -1175,11 +1408,20 @@ main() {
         build-market)
             execute_build "market_watch" "build"
             ;;
+        build-centralbank)
+            execute_build "central_bank" "build"
+            ;;
+        build-mymaps)
+            execute_build "mymaps" "build"
+            ;;
+        build-myprofile)
+            execute_build "myprofile" "build"
+            ;;
         dev)
             dev_all "$_verbose"
             ;;
-        dev-root)
-            dev_single "root" "$URL_ROOT" "watcher"
+        dev-landpage)
+            dev_single "landpage" "$URL_LANDPAGE"
             ;;
         dev-linktree)
             dev_single "linktree" "$URL_LINKTREE"
@@ -1190,8 +1432,8 @@ main() {
         dev-myfeed)
             dev_single "myfeed" "$URL_MYFEED"
             ;;
-        dev-myprofile)
-            dev_single "myprofile" "$URL_MYPROFILE"
+        dev-mygames)
+            dev_single "mygames" "$URL_MYGAMES"
             ;;
         dev-nexus)
             dev_single "nexus" "$URL_NEXUS"
@@ -1210,6 +1452,15 @@ main() {
             ;;
         dev-market)
             dev_single "market" "$URL_MARKET"
+            ;;
+        dev-centralbank)
+            dev_single "centralbank" "$URL_CENTRALBANK"
+            ;;
+        dev-mymaps)
+            dev_single "mymaps" "$URL_MYMAPS"
+            ;;
+        dev-myprofile)
+            dev_single "myprofile" "$URL_MYPROFILE"
             ;;
         list)
             list_servers
@@ -1232,9 +1483,7 @@ main() {
         *)
             log_error "Unknown command: $_action"
             printf "\n"
-            printf "${YELLOW}Launching TUI menu...${NC}\n"
-            sleep 1
-            tui_simple
+            print_usage
             ;;
     esac
 }

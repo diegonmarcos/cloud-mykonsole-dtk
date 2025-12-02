@@ -4,6 +4,65 @@ Rclone Sync Manager
 A comprehensive tool for managing rclone mount and bisync operations
 """
 
+"""
+# IMPORTANT: The Shebang is changed to #!/bin/sh for POSIX compatibility.
+# If you run this file, please use 'sh rclone_mount.sh' or ensure it has execute permissions.
+
+# ... Header ...
+# Script Name:  rclone_mount.sh
+# Description:  GUI startup commands
+# Author:       Diego
+# Date:
+
+#ACTIONS:
+
+# 1.Rclone config menu
+
+
+#2. Check Status Mount (flags used)
+# Mount
+# Umount (force)
+# Reset (Umount+Mount)
+
+#rclone mount remote:path /local/mountpoint \
+#--vfs-cache-mode full \
+##--cache-dir', '~/.cache/rclone/
+##--poll-interval 60s \
+###--tpslimit 10 \
+##--vfs-cache-max-age 1h \
+##--vfs-cache-max-size 50G \
+##--vfs-read-chunk-size 32M \
+##--vfs-read-chunk-size-limit off \
+#--dir-cache-time 10000h \
+#--drive-skip-gdocs \
+#--log-level INFO \
+##--log-file PATH \
+#--daemon \
+#--rc
+
+
+#3. Check If the list of localmoutpoint/folder (s) folders already exists and rclone check
+#rclone check /local/path/folder1 remote:path/folder1 --combined -
+#rclone bisync /local/path/folder1 remote:path/folder1 --dry-run --verbose
+
+# 4. Bisync it
+#rclone bisync /local/path/folder1 remote:path/folder1 --resync --verbose --drive-skip-gdocs --log-level INFO
+#rclone bisync /local/path/folder1 remote:path/folder1 --verbose --drive-skip-gdocs --log-level INFO
+
+#rclone bisync remote:path/folder1 /local/mountpoint/folder1 \
+#--conflict-resolve path1
+#--tpslimit 10 \
+#--drive-skip-gdocs \
+#--log-level INFO
+
+#rclone bisync remote:path/folder2 /local/mountpoint/folder2 \
+#--conflict-resolve path1
+#--tpslimit 10 \
+#--drive-skip-gdocs \
+#--log-level INFO
+
+"""
+
 import os
 import sys
 import subprocess
@@ -128,6 +187,7 @@ class RcloneManager:
             '--dir-cache-time', '10000h',
             '--drive-skip-gdocs',
             '--log-level', 'INFO',
+            '--rc',
             '--log-file', str(log_file)
         ]
 

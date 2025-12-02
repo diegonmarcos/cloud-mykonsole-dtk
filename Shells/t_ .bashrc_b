@@ -110,3 +110,11 @@ qfind() {
 }
 
 echo "Bash aliases loaded successfully!"
+
+
+
+alias py='python3'
+export PATH="/home/diego/.local/bin:$PATH"
+
+# WakaTime for Bash
+source ~/.bash-wakatime/bash-wakatime.sh
