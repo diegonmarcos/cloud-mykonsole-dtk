@@ -213,13 +213,15 @@ class RcloneManager:
     def get_job_progress(self, job: SyncJob) -> Dict[str, str]:
         """Get detailed progress info from job log file"""
         result = {
-            'status': 'Processing...',
+            'status': 'Starting...',
             'transferred': '',
             'speed': '',
             'eta': '',
             'percent': '',
             'files': '',
-            'errors': ''
+            'errors': '',
+            'files_done': '',
+            'files_total': ''
         }
 
         if not job.log_file or not Path(job.log_file).exists():
@@ -231,38 +233,58 @@ class RcloneManager:
                 content = f.read()
                 lines = content.split('\n')
 
-                # Parse the log for stats - rclone outputs stats periodically
-                # Look for the most recent stats block
-                transferred_line = ''
-                errors_line = ''
-                checks_line = ''
+                # Count files being processed
+                copied_count = content.count('Copied (new)') + content.count('Copied (replaced')
+                if copied_count > 0:
+                    result['status'] = f'Copying files... ({copied_count} done)'
 
-                for line in reversed(lines[-100:]):
+                # Parse the log for stats - rclone outputs stats periodically
+                # Format: "Transferred:   	   1.234 GiB / 5.678 GiB, 22%, 10.5 MiB/s, ETA 5m30s"
+                # Or with log level prefix: "<5>NOTICE: Transferred: ..."
+                transferred_bytes_line = ''
+                transferred_files_line = ''
+                errors_line = ''
+
+                for line in reversed(lines[-200:]):
                     line = line.strip()
 
-                    # Match transferred line: "Transferred: 1.234 GiB / 5.678 GiB, 22%, 10.5 MiB/s, ETA 5m30s"
-                    if 'Transferred:' in line and ('GiB' in line or 'MiB' in line or 'KiB' in line or 'B' in line):
-                        if not transferred_line:
-                            transferred_line = line
-                            # Extract transferred/total
-                            match = re.search(r'Transferred:\s*([\d.]+\s*\w+)\s*/\s*([\d.]+\s*\w+)', line)
+                    # Match bytes transferred line
+                    # Format: "Transferred:   	   1.234 GiB / 5.678 GiB, 22%, 10.5 MiB/s, ETA 5m30s"
+                    if 'Transferred:' in line and ('/' in line) and ('B' in line or 'iB' in line):
+                        if not transferred_bytes_line:
+                            transferred_bytes_line = line
+
+                            # Extract transferred/total bytes
+                            # Pattern handles both "1.234 GiB" and "1.234GiB" formats
+                            match = re.search(r'Transferred:\s*([\d.]+\s*\w*B)\s*/\s*([\d.]+\s*\w*B)', line, re.IGNORECASE)
                             if match:
-                                result['transferred'] = f"{match.group(1)} / {match.group(2)}"
+                                result['transferred'] = f"{match.group(1).strip()} / {match.group(2).strip()}"
 
                             # Extract percentage
-                            pct_match = re.search(r'(\d+)%', line)
+                            pct_match = re.search(r',\s*(\d+)%', line)
                             if pct_match:
                                 result['percent'] = pct_match.group(1)
 
                             # Extract speed
-                            speed_match = re.search(r'(\d+\.?\d*\s*\w+/s)', line)
+                            speed_match = re.search(r'(\d+\.?\d*\s*\w*B/s)', line, re.IGNORECASE)
                             if speed_match:
-                                result['speed'] = speed_match.group(1)
+                                result['speed'] = speed_match.group(1).strip()
 
                             # Extract ETA
-                            eta_match = re.search(r'ETA\s*(\S+)', line)
-                            if eta_match:
+                            eta_match = re.search(r'ETA\s+(\S+)', line)
+                            if eta_match and eta_match.group(1) != '-':
                                 result['eta'] = eta_match.group(1)
+
+                    # Match files transferred line
+                    # Format: "Transferred:            1 / 10, 10%"
+                    elif 'Transferred:' in line and '/' in line and 'B' not in line.upper():
+                        if not transferred_files_line:
+                            transferred_files_line = line
+                            match = re.search(r'Transferred:\s*(\d+)\s*/\s*(\d+)', line)
+                            if match:
+                                result['files_done'] = match.group(1)
+                                result['files_total'] = match.group(2)
+                                result['files'] = f"{match.group(1)}/{match.group(2)} files"
 
                     # Match errors line
                     if 'Errors:' in line and not errors_line:
@@ -271,32 +293,24 @@ class RcloneManager:
                         if match and int(match.group(1)) > 0:
                             result['errors'] = match.group(1)
 
-                    # Match checks/files line
-                    if 'Checks:' in line and not checks_line:
-                        checks_line = line
-                        match = re.search(r'Checks:\s*(\d+)\s*/\s*(\d+)', line)
-                        if match:
-                            result['files'] = f"{match.group(1)}/{match.group(2)} files"
-
-                    # Check for completion
-                    if 'Transferred:' in line and '100%' in line:
-                        result['status'] = 'Finishing...'
-
-                    # Check for errors
-                    if 'ERROR' in line or 'FAILED' in line:
-                        result['status'] = 'Error detected'
+                    # Check for fatal errors
+                    if 'ERROR' in line and 'Fatal' in line:
+                        result['status'] = 'Fatal error!'
 
                 # Set status based on what we found
-                if transferred_line:
-                    if result['percent']:
-                        result['status'] = f"{result['percent']}% complete"
+                if result['percent']:
+                    pct = int(result['percent'])
+                    if pct >= 100:
+                        result['status'] = 'Finishing...'
                     else:
-                        result['status'] = 'Syncing...'
-                elif checks_line:
-                    result['status'] = 'Checking files...'
+                        result['status'] = f"{pct}% complete"
+                elif result['files']:
+                    result['status'] = f"Transferring ({result['files']})"
+                elif transferred_bytes_line:
+                    result['status'] = 'Syncing...'
 
         except Exception as e:
-            result['status'] = f"Error reading log: {str(e)[:30]}"
+            result['status'] = f"Error: {str(e)[:30]}"
 
         return result
 
@@ -729,16 +743,16 @@ class RcloneManager:
         log_file = str(self.sync_log_dir / f"{job_id}.log")
 
         # Build the command based on sync type
+        # Use --use-json-log for structured output that includes stats
         if sync_type in ['bisync', 'local_bisync']:
             cmd = [
                 'rclone', 'bisync',
                 source, dest,
                 '--tpslimit', '10',
                 '--drive-skip-gdocs',
-                '--verbose',
-                '--stats', '2s',  # Output stats every 2 seconds
-                '--stats-one-line',  # Compact stats format
-                '--log-file', log_file
+                '-v',
+                '--stats', '3s',  # Output stats every 3 seconds
+                '--stats-log-level', 'NOTICE',  # Ensure stats are logged
             ]
             # Check if bisync state exists
             bisync_cache = Path.home() / '.cache' / 'rclone' / 'bisync'
@@ -757,18 +771,17 @@ class RcloneManager:
                 source, dest,
                 '--tpslimit', '10',
                 '--drive-skip-gdocs',
-                '--verbose',
-                '--stats', '2s',  # Output stats every 2 seconds
-                '--stats-one-line',  # Compact stats format
-                '--progress',  # Enable progress tracking
-                '--log-file', log_file
+                '-v',
+                '--stats', '3s',  # Output stats every 3 seconds
+                '--stats-log-level', 'NOTICE',  # Ensure stats are logged
             ])
 
-        # Start the process
+        # Start the process - capture all output to log file
+        log_handle = open(log_file, 'w')
         process = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,  # Redirect stderr to stdout (which goes to log)
             start_new_session=True  # Detach from terminal
         )
 
