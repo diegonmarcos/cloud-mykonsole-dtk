@@ -12,6 +12,7 @@ import argparse
 import json
 import signal
 import threading
+import re
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, asdict, field
@@ -209,26 +210,115 @@ class RcloneManager:
 
         return running
 
-    def get_job_progress(self, job: SyncJob) -> str:
-        """Get progress info from job log file"""
+    def get_job_progress(self, job: SyncJob) -> Dict[str, str]:
+        """Get detailed progress info from job log file"""
+        result = {
+            'status': 'Processing...',
+            'transferred': '',
+            'speed': '',
+            'eta': '',
+            'percent': '',
+            'files': '',
+            'errors': ''
+        }
+
         if not job.log_file or not Path(job.log_file).exists():
-            return "No log available"
+            result['status'] = "No log available"
+            return result
 
         try:
             with open(job.log_file, 'r') as f:
-                lines = f.readlines()
-                # Look for progress lines (last lines with transfer info)
-                for line in reversed(lines[-20:]):
+                content = f.read()
+                lines = content.split('\n')
+
+                # Parse the log for stats - rclone outputs stats periodically
+                # Look for the most recent stats block
+                transferred_line = ''
+                errors_line = ''
+                checks_line = ''
+
+                for line in reversed(lines[-100:]):
                     line = line.strip()
-                    if 'Transferred:' in line or 'Checks:' in line:
-                        return line
-                    if 'ERROR' in line:
-                        return f"ERROR: {line[:60]}..."
-                if lines:
-                    return lines[-1].strip()[:60]
-        except Exception:
-            pass
-        return "Processing..."
+
+                    # Match transferred line: "Transferred: 1.234 GiB / 5.678 GiB, 22%, 10.5 MiB/s, ETA 5m30s"
+                    if 'Transferred:' in line and ('GiB' in line or 'MiB' in line or 'KiB' in line or 'B' in line):
+                        if not transferred_line:
+                            transferred_line = line
+                            # Extract transferred/total
+                            match = re.search(r'Transferred:\s*([\d.]+\s*\w+)\s*/\s*([\d.]+\s*\w+)', line)
+                            if match:
+                                result['transferred'] = f"{match.group(1)} / {match.group(2)}"
+
+                            # Extract percentage
+                            pct_match = re.search(r'(\d+)%', line)
+                            if pct_match:
+                                result['percent'] = pct_match.group(1)
+
+                            # Extract speed
+                            speed_match = re.search(r'(\d+\.?\d*\s*\w+/s)', line)
+                            if speed_match:
+                                result['speed'] = speed_match.group(1)
+
+                            # Extract ETA
+                            eta_match = re.search(r'ETA\s*(\S+)', line)
+                            if eta_match:
+                                result['eta'] = eta_match.group(1)
+
+                    # Match errors line
+                    if 'Errors:' in line and not errors_line:
+                        errors_line = line
+                        match = re.search(r'Errors:\s*(\d+)', line)
+                        if match and int(match.group(1)) > 0:
+                            result['errors'] = match.group(1)
+
+                    # Match checks/files line
+                    if 'Checks:' in line and not checks_line:
+                        checks_line = line
+                        match = re.search(r'Checks:\s*(\d+)\s*/\s*(\d+)', line)
+                        if match:
+                            result['files'] = f"{match.group(1)}/{match.group(2)} files"
+
+                    # Check for completion
+                    if 'Transferred:' in line and '100%' in line:
+                        result['status'] = 'Finishing...'
+
+                    # Check for errors
+                    if 'ERROR' in line or 'FAILED' in line:
+                        result['status'] = 'Error detected'
+
+                # Set status based on what we found
+                if transferred_line:
+                    if result['percent']:
+                        result['status'] = f"{result['percent']}% complete"
+                    else:
+                        result['status'] = 'Syncing...'
+                elif checks_line:
+                    result['status'] = 'Checking files...'
+
+        except Exception as e:
+            result['status'] = f"Error reading log: {str(e)[:30]}"
+
+        return result
+
+    def get_job_progress_simple(self, job: SyncJob) -> str:
+        """Get simple one-line progress string"""
+        progress = self.get_job_progress(job)
+
+        parts = []
+        if progress['percent']:
+            parts.append(f"{progress['percent']}%")
+        if progress['transferred']:
+            parts.append(progress['transferred'])
+        if progress['speed']:
+            parts.append(progress['speed'])
+        if progress['eta']:
+            parts.append(f"ETA: {progress['eta']}")
+        if progress['errors']:
+            parts.append(f"Errors: {progress['errors']}")
+
+        if parts:
+            return ' | '.join(parts)
+        return progress['status']
 
     def cancel_sync_job(self, job_id: str) -> bool:
         """Cancel a running sync job"""
@@ -646,6 +736,8 @@ class RcloneManager:
                 '--tpslimit', '10',
                 '--drive-skip-gdocs',
                 '--verbose',
+                '--stats', '2s',  # Output stats every 2 seconds
+                '--stats-one-line',  # Compact stats format
                 '--log-file', log_file
             ]
             # Check if bisync state exists
@@ -666,6 +758,9 @@ class RcloneManager:
                 '--tpslimit', '10',
                 '--drive-skip-gdocs',
                 '--verbose',
+                '--stats', '2s',  # Output stats every 2 seconds
+                '--stats-one-line',  # Compact stats format
+                '--progress',  # Enable progress tracking
                 '--log-file', log_file
             ])
 
@@ -845,11 +940,40 @@ class TUI:
                     elapsed = ""
                     try:
                         start = datetime.fromisoformat(job.started)
-                        elapsed = f" ({int((datetime.now() - start).total_seconds())}s)"
+                        elapsed_sec = int((datetime.now() - start).total_seconds())
+                        mins, secs = divmod(elapsed_sec, 60)
+                        elapsed = f" ({mins}m{secs}s)"
                     except:
                         pass
+
+                    # Build progress bar if we have percentage
+                    progress_bar = ""
+                    if progress['percent']:
+                        pct = int(progress['percent'])
+                        bar_width = 20
+                        filled = int(bar_width * pct / 100)
+                        progress_bar = f"[{'█' * filled}{'░' * (bar_width - filled)}] {pct}%"
+
                     print(f"{Colors.WARNING}│{Colors.ENDC}  {Colors.OKGREEN}▶{Colors.ENDC} {job.name}{elapsed}")
-                    print(f"{Colors.WARNING}│{Colors.ENDC}    {Colors.DIM}{progress[:50]}{Colors.ENDC}")
+
+                    if progress_bar:
+                        print(f"{Colors.WARNING}│{Colors.ENDC}    {Colors.OKCYAN}{progress_bar}{Colors.ENDC}")
+                        # Show transfer details
+                        details = []
+                        if progress['transferred']:
+                            details.append(progress['transferred'])
+                        if progress['speed']:
+                            details.append(progress['speed'])
+                        if progress['eta']:
+                            details.append(f"ETA: {progress['eta']}")
+                        if details:
+                            print(f"{Colors.WARNING}│{Colors.ENDC}    {Colors.DIM}{' | '.join(details)}{Colors.ENDC}")
+                    else:
+                        print(f"{Colors.WARNING}│{Colors.ENDC}    {Colors.DIM}{progress['status']}{Colors.ENDC}")
+
+                    if progress['errors']:
+                        print(f"{Colors.WARNING}│{Colors.ENDC}    {Colors.FAIL}Errors: {progress['errors']}{Colors.ENDC}")
+
                 if len(running_jobs) > 2:
                     print(f"{Colors.WARNING}│{Colors.ENDC}  {Colors.DIM}... and {len(running_jobs) - 2} more running{Colors.ENDC}")
             else:
@@ -964,7 +1088,32 @@ class TUI:
                     sync_icon = "↔" if 'bisync' in job.sync_type else "→"
                     print(f"  {i}. {Colors.OKGREEN}▶{Colors.ENDC} {job.name}{elapsed}")
                     print(f"     {Colors.DIM}{job.source} {sync_icon} {job.dest}{Colors.ENDC}")
-                    print(f"     {Colors.OKCYAN}{progress}{Colors.ENDC}")
+
+                    # Progress bar
+                    if progress['percent']:
+                        pct = int(progress['percent'])
+                        bar_width = 30
+                        filled = int(bar_width * pct / 100)
+                        progress_bar = f"[{'█' * filled}{'░' * (bar_width - filled)}] {pct}%"
+                        print(f"     {Colors.OKCYAN}{progress_bar}{Colors.ENDC}")
+
+                        # Details line
+                        details = []
+                        if progress['transferred']:
+                            details.append(progress['transferred'])
+                        if progress['speed']:
+                            details.append(progress['speed'])
+                        if progress['eta']:
+                            details.append(f"ETA: {progress['eta']}")
+                        if details:
+                            print(f"     {Colors.DIM}{' | '.join(details)}{Colors.ENDC}")
+                    else:
+                        print(f"     {Colors.OKCYAN}{progress['status']}{Colors.ENDC}")
+                        if progress['files']:
+                            print(f"     {Colors.DIM}{progress['files']}{Colors.ENDC}")
+
+                    if progress['errors']:
+                        print(f"     {Colors.FAIL}Errors: {progress['errors']}{Colors.ENDC}")
                     print()
                 print(f"{'─'*60}")
             else:
