@@ -1,1 +1,1 @@
-/home/diego/Documents/Git/ops-Tooling/Git/gcl.sh
+Git/gcl.sh
