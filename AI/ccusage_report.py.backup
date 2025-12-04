@@ -19,36 +19,25 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-# Claude plan limits per 5-hour window (Input + Output tokens)
-# Source: Internal usage data analysis
-PRO_TOTAL_5H = 200000       # Pro: 45 messages, ~200k tokens per 5h
-MAX5_TOTAL_5H = 450000      # Max 5x: 225 messages, ~450k tokens per 5h
-MAX20_TOTAL_5H = 1800000    # Max 20x: 900 messages, ~1.8M tokens per 5h
+# Claude Max5 plan limits per 5-hour window
+# Source: https://support.claude.com/en/articles/11014257-about-claude-s-max-plan-usage
+# NOTE: Anthropic does NOT disclose exact token limits publicly!
+# The "225 messages per 5h" is the only official guidance for Max5x
+# Token counting formula is not disclosed - these are ESTIMATES only
+MAX5_TOTAL_5H = 225000      # ESTIMATE - actual limit unknown, varies by usage pattern
 
 # Daily limits (3 windows per day as reasonable usage)
 WINDOWS_PER_DAY = 3
-MAX_INPUT_DAILY = 1350000   # 1.35M input/day (Max5x)
-MAX_OUTPUT_DAILY = 450000   # 450k output/day (Max5x)
-MAX_CACHE_DAILY = 9000000   # 9M cache/day (Max5x)
+MAX_INPUT_DAILY = 900000    # 900k input/day
+MAX_OUTPUT_DAILY = 300000   # 300k output/day
+MAX_CACHE_DAILY = 3000000   # 3M cache/day
 
-# API Pricing per 1M tokens (Claude 3.5/3.7 Sonnet - DEFAULT)
+# API Pricing per 1M tokens (Claude 3.5/3.7 Sonnet)
 # Source: https://www.anthropic.com/pricing
 PRICE_INPUT = 3.00          # $3.00 per 1M input tokens
 PRICE_OUTPUT = 15.00        # $15.00 per 1M output tokens
 PRICE_CACHE_READ = 0.30     # $0.30 per 1M cache read tokens
 PRICE_CACHE_CREATE = 3.75   # $3.75 per 1M cache creation tokens
-
-# Model-specific pricing (per 1M tokens)
-MODEL_PRICING = {
-    "haiku": {"input": 0.80, "output": 4.00, "cache_read": 0.08, "cache_create": 1.00},
-    "sonnet": {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_create": 3.75},
-    "opus": {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_create": 18.75},
-}
-
-# Budget configuration
-MONTHLY_BUDGET = 100.00  # USD
-ALERT_THRESHOLDS = [50, 75, 90, 100]  # percent
-OPUS_ALERT_PERCENT = 10  # Alert if Opus > 10% of tokens
 
 
 def check_ccusage_installed() -> bool:
@@ -184,110 +173,6 @@ def format_tokens(n: int) -> str:
     return str(n)
 
 
-def normalize_model_name(model_name: str) -> str:
-    """Convert full model name to simple category (haiku/sonnet/opus)."""
-    model_lower = model_name.lower()
-    if 'haiku' in model_lower:
-        return 'haiku'
-    elif 'opus' in model_lower:
-        return 'opus'
-    elif 'sonnet' in model_lower:
-        return 'sonnet'
-    return 'unknown'
-
-
-def get_model_breakdown_from_daily(data: dict) -> dict:
-    """Extract per-model breakdown from daily ccusage data."""
-    breakdown = {
-        "haiku": {"tokens_in": 0, "tokens_out": 0, "cost": 0},
-        "sonnet": {"tokens_in": 0, "tokens_out": 0, "cost": 0},
-        "opus": {"tokens_in": 0, "tokens_out": 0, "cost": 0},
-        "unknown": {"tokens_in": 0, "tokens_out": 0, "cost": 0}
-    }
-
-    daily = data.get("daily", [])
-    for day in daily:
-        model_breakdowns = day.get("modelBreakdowns", [])
-        for model_data in model_breakdowns:
-            model_name = model_data.get("modelName", "")
-            category = normalize_model_name(model_name)
-
-            breakdown[category]["tokens_in"] += model_data.get("inputTokens", 0)
-            breakdown[category]["tokens_out"] += model_data.get("outputTokens", 0)
-            breakdown[category]["cost"] += model_data.get("cost", 0)
-
-    return breakdown
-
-
-def get_model_distribution(breakdown: dict) -> dict:
-    """Calculate percentage distribution of tokens by model."""
-    total_tokens = sum(
-        m["tokens_in"] + m["tokens_out"]
-        for m in breakdown.values()
-    )
-
-    if total_tokens == 0:
-        return {model: 0 for model in breakdown.keys()}
-
-    distribution = {}
-    for model, stats in breakdown.items():
-        model_tokens = stats["tokens_in"] + stats["tokens_out"]
-        distribution[model] = (model_tokens / total_tokens) * 100
-
-    return distribution
-
-
-def calculate_mtd_budget(daily_data: list) -> dict:
-    """Calculate month-to-date budget status with alerts."""
-    from datetime import datetime
-
-    # Get current month
-    now = datetime.now()
-    current_month = now.month
-    current_year = now.year
-    current_day = now.day
-
-    # Filter to current month and sum costs
-    mtd_cost = 0
-    for day in daily_data:
-        date_str = day.get("date", "")
-        if not date_str:
-            continue
-
-        day_date = datetime.strptime(date_str, "%Y-%m-%d")
-        if day_date.month == current_month and day_date.year == current_year:
-            mtd_cost += day.get("cost", 0)
-
-    # Calculate metrics
-    mtd_days = current_day
-    daily_avg = mtd_cost / mtd_days if mtd_days > 0 else 0
-
-    # Project to end of month (approximate 30 days)
-    days_in_month = 30
-    projected_eom = daily_avg * days_in_month
-
-    # Budget percentage
-    budget_pct = (mtd_cost / MONTHLY_BUDGET) * 100 if MONTHLY_BUDGET > 0 else 0
-
-    # Determine alert level
-    alert_level = "ok"
-    if budget_pct >= 100:
-        alert_level = "exceeded"
-    elif budget_pct >= 90:
-        alert_level = "danger"
-    elif budget_pct >= 75:
-        alert_level = "warning"
-
-    return {
-        "mtd_cost": mtd_cost,
-        "mtd_days": mtd_days,
-        "daily_avg": daily_avg,
-        "projected_eom": projected_eom,
-        "budget_pct": budget_pct,
-        "alert_level": alert_level
-    }
-
-
 def output_now_detailed(data: dict):
     """Print detailed current 5h block status with cost breakdown."""
 
@@ -376,7 +261,7 @@ def output_now_detailed(data: dict):
     filled = int(bar_width * min(usage_pct, 100) / 100)
     bar = "█" * filled + "░" * (bar_width - filled)
     print("║" + f"  [{bar}] {usage_pct:.1f}%".ljust(78) + "║")
-    print("║" + f"  Plan: {format_tokens(plan_tokens)} / ~450k (Input + Output vs Max5x estimate)".ljust(78) + "║")
+    print("║" + f"  Plan: {format_tokens(plan_tokens)} / ~225k (Input + Output vs Max5x estimate)".ljust(78) + "║")
     print("╠" + "═" * 78 + "╣")
 
     # Stats section
@@ -398,7 +283,7 @@ def output_now_detailed(data: dict):
     print("║" + "-" * 78 + "║")
     print("║" + f"  Burn rate: {format_tokens(int(plan_per_min))}/min plan, ${cost_per_hour:.2f}/hour API".ljust(78) + "║")
     if time_to_limit != float('inf') and time_to_limit > 0:
-        print("║" + f"  Time to 450k: {format_duration(time_to_limit)} (~${cost_at_limit:.2f} API) | E: {format_duration(elapsed_minutes)} | R: {format_duration(remaining_minutes)}".ljust(78) + "║")
+        print("║" + f"  Time to 225k: {format_duration(time_to_limit)} (~${cost_at_limit:.2f} API) | E: {format_duration(elapsed_minutes)} | R: {format_duration(remaining_minutes)}".ljust(78) + "║")
     if time_to_100 != float('inf') and time_to_100 > 0:
         print("║" + f"  Time to $100: {format_duration(time_to_100)} (~{format_tokens(int(plan_at_100))} plan)".ljust(78) + "║")
     print("║" + f"  End of 5h: ~{format_tokens(int(projected_plan))} plan, ~${projected_cost:.2f} API".ljust(78) + "║")
@@ -409,8 +294,9 @@ def output_now_detailed(data: dict):
     print("║" + "-" * 78 + "║")
     print("║" + "  Current plan: Max 5x".ljust(78) + "║")
     print("║" + "-" * 78 + "║")
-    print("║" + "  Plan Limits (per 5h window):".ljust(78) + "║")
-    print("║" + "    Pro: 45 msgs (~200k)  Max5x: 225 msgs (~450k)  Max20x: 900 msgs (~1.8M)".ljust(78) + "║")
+    print("║" + "  Plan Limits (per 5h window, estimates):".ljust(78) + "║")
+    print("║" + "    Pro: ~45 msgs (~45k tokens)   Max5x: ~225 msgs (~225k tokens)".ljust(78) + "║")
+    print("║" + "    Max20x: ~900 msgs (~900k tokens)".ljust(78) + "║")
     print("║" + "-" * 78 + "║")
     print("║" + "  API Prices (per 1M tokens):".ljust(78) + "║")
     print("║" + "    Input: $3.00   Output: $15.00   Cache Read: $0.30   Cache Create: $3.75".ljust(78) + "║")
@@ -812,151 +698,6 @@ def main():
 
     if not (do_now or do_daily or do_csv or do_md):
         show_help()
-
-
-# =============================================================================
-# FLASK API MODULE INTERFACE
-# =============================================================================
-# These functions provide a clean interface for importing into Flask apps.
-# They return JSON-serializable dicts without any print side effects.
-
-def get_now_json() -> dict:
-    """Return current 5h block status as JSON-serializable dict for API."""
-    data = get_blocks_data()
-    if not data or "blocks" not in data:
-        return {"error": "No blocks data available"}
-
-    # Find active block
-    blocks = data.get("blocks", [])
-    block = None
-    for b in blocks:
-        if b.get("isActive", False):
-            block = b
-            break
-
-    if not block:
-        return {"error": "No active block found"}
-
-    # Extract data
-    token_counts = block.get("tokenCounts", {})
-    tokens_in = token_counts.get("inputTokens", 0)
-    tokens_out = token_counts.get("outputTokens", 0)
-    cache_read = token_counts.get("cacheReadInputTokens", 0)
-    cache_create = token_counts.get("cacheCreationInputTokens", 0)
-    total_tokens = block.get("totalTokens", 0)
-
-    # Calculate costs (using default Sonnet pricing)
-    cost_in = (tokens_in / 1_000_000) * PRICE_INPUT
-    cost_out = (tokens_out / 1_000_000) * PRICE_OUTPUT
-    cost_cache_read = (cache_read / 1_000_000) * PRICE_CACHE_READ
-    cost_cache_create = (cache_create / 1_000_000) * PRICE_CACHE_CREATE
-    total_cost = cost_in + cost_out + cost_cache_read + cost_cache_create
-
-    # Get time info
-    elapsed_ms = block.get("elapsedMs", 0)
-    remaining_ms = block.get("remainingMs", 0)
-    elapsed_hours = elapsed_ms / (1000 * 60 * 60)
-
-    # Calculate rates
-    burn_rate_tokens = (total_tokens / (elapsed_ms / 1000)) * 60 if elapsed_ms > 0 else 0
-    burn_rate_cost = (total_cost / elapsed_hours) if elapsed_hours > 0 else 0
-
-    # Get model info if available
-    models = block.get("models", [])
-
-    return {
-        "block_start": block.get("startTime"),
-        "block_end": block.get("endTime"),
-        "elapsed_ms": elapsed_ms,
-        "remaining_ms": remaining_ms,
-        "tokens": {
-            "input": tokens_in,
-            "output": tokens_out,
-            "cache_read": cache_read,
-            "cache_create": cache_create,
-            "total": total_tokens
-        },
-        "costs": {
-            "input": cost_in,
-            "output": cost_out,
-            "cache_read": cost_cache_read,
-            "cache_create": cost_cache_create,
-            "total": total_cost
-        },
-        "rates": {
-            "tokens_per_min": burn_rate_tokens,
-            "cost_per_hour": burn_rate_cost
-        },
-        "models": models
-    }
-
-
-def get_daily_json() -> list:
-    """Return daily usage rows as list of dicts for API."""
-    data = get_ccusage_data()
-    if not data or "daily" not in data:
-        return []
-
-    rows = []
-    for day in data["daily"]:
-        # Calculate costs
-        tokens_in = day.get("inputTokens", 0)
-        tokens_out = day.get("outputTokens", 0)
-        cache_read = day.get("cacheReadInputTokens", 0)
-        cache_create = day.get("cacheCreationInputTokens", 0)
-        total_tokens = day.get("totalTokens", 0)
-
-        cost = (tokens_in / 1_000_000) * PRICE_INPUT + \
-               (tokens_out / 1_000_000) * PRICE_OUTPUT + \
-               (cache_read / 1_000_000) * PRICE_CACHE_READ + \
-               (cache_create / 1_000_000) * PRICE_CACHE_CREATE
-
-        row = {
-            "date": day.get("date", ""),
-            "tokens_in": tokens_in,
-            "tokens_out": tokens_out,
-            "cache_read": cache_read,
-            "cache_create": cache_create,
-            "total_tokens": total_tokens,
-            "cost": cost
-        }
-
-        # Add model breakdowns if available
-        if "modelBreakdowns" in day:
-            row["model_breakdowns"] = day["modelBreakdowns"]
-
-        rows.append(row)
-
-    return rows
-
-
-def get_budget_json() -> dict:
-    """Return budget status as dict for API."""
-    data = get_ccusage_data()
-    if not data or "daily" not in data:
-        return {"error": "No data available"}
-
-    budget = calculate_mtd_budget(data["daily"])
-    return budget
-
-
-def get_models_json() -> dict:
-    """Return model breakdown as dict for API."""
-    data = get_ccusage_data()
-    if not data or "daily" not in data:
-        return {"error": "No data available"}
-
-    breakdown = get_model_breakdown_from_daily(data)
-    distribution = get_model_distribution(breakdown)
-
-    # Check for Opus alert
-    opus_alert = distribution.get("opus", 0) > OPUS_ALERT_PERCENT
-
-    return {
-        "breakdown": breakdown,
-        "distribution": distribution,
-        "opus_alert": opus_alert
-    }
 
 
 if __name__ == "__main__":
