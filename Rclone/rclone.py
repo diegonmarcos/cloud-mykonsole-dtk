@@ -440,6 +440,7 @@ class RcloneManager:
             '--drive-skip-gdocs',
             '--log-level', 'INFO',
             '--rc',
+            '--rc-addr', '127.0.0.1:0',  # Use dynamic port to avoid conflicts
             '--log-file', str(log_file)
         ]
 
