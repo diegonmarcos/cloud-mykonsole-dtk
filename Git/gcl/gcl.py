@@ -254,14 +254,9 @@ def process_repo(repo_dir: str, repo_url: str, strategy: str, action: str, work_
 
     repo_path = str(Path(work_dir) / repo_dir)
 
-    # Read-only actions should not clone
-    read_only_actions = ['status', 'untracked', 'ignored']
-
+    # NEVER auto-clone. Only clone with explicit 'clone' action.
     if not Path(repo_path).is_dir():
-        if action in read_only_actions:
-            logs.append(f"  ⚠ Repository not cloned yet")
-            return logs
-        else:
+        if action == 'clone':
             logs.append(f"  Cloning '{repo_dir}'...")
             ret, output = run_git(work_dir, 'clone', repo_url, repo_dir)
             if output.strip():
@@ -271,7 +266,9 @@ def process_repo(repo_dir: str, repo_url: str, strategy: str, action: str, work_
                 logs.append(f"  ✓ Clone complete.")
             else:
                 logs.append(f"  ✗ Clone failed.")
-            return logs
+        else:
+            logs.append(f"  ⚠ Skipped - not cloned (use 'clone' action first)")
+        return logs
 
     if action == 'sync':
         # Commit uncommitted changes
@@ -436,6 +433,9 @@ def process_repo(repo_dir: str, repo_url: str, strategy: str, action: str, work_
                 logs.append(f"    {f}")
         else:
             logs.append("  ✓ No ignored files")
+
+    elif action == 'clone':
+        logs.append(f"  ✓ Already cloned")
 
     elif action == 'deploys':
         logs.append(f"  Checking GitHub Actions for '{repo_dir}'")
@@ -1206,6 +1206,17 @@ def run_cli_deploys(repos: Optional[List[str]] = None, work_dir: str = "."):
                 print(log_msg)
             print()
 
+def run_cli_clone(repos: Optional[List[str]] = None, work_dir: str = "."):
+    log("Cloning repositories")
+    repos_to_process = repos if repos else list(ALL_REPOS.keys())
+    for repo_name in repos_to_process:
+        repo_url = ALL_REPOS.get(repo_name, '')
+        if repo_url:
+            logs = process_repo(repo_name, repo_url, 'theirs', 'clone', work_dir)
+            for log_msg in logs:
+                print(log_msg)
+            print()
+
 def print_help():
     """Print help message"""
     print(f"{Colors.BOLD}{Colors.CYAN}gcl.py - Git Clone/Pull/Push Manager{Colors.RESET}\n")
@@ -1218,14 +1229,16 @@ def print_help():
     print(f"  {Colors.GREEN}-h, --help{Colors.RESET}\t\tShow this help message\n")
     print(f"{Colors.BOLD}{Colors.YELLOW}COMMANDS:{Colors.RESET}")
     print(f"  (no command)\t\tLaunches the interactive TUI menu.")
+    print(f"  {Colors.GREEN}clone{Colors.RESET}\t\t\t{Colors.BOLD}Clone repos that don't exist locally.{Colors.RESET}")
     print(f"  {Colors.GREEN}sync [local|remote]{Colors.RESET}\tBidirectional sync. (Add/Commit, Fetch, Pull, Add/Commit, Push). Default: 'remote'.")
-    print(f"  {Colors.GREEN}push{Colors.RESET}\t\t\tPushes committed changes.")
-    print(f"  {Colors.GREEN}pull{Colors.RESET}\t\t\tPulls using 'remote' strategy.")
-    print(f"  {Colors.GREEN}fetch{Colors.RESET}\t\t\tFetches from remote.")
+    print(f"  {Colors.GREEN}push{Colors.RESET}\t\t\tPushes committed changes. {Colors.YELLOW}Skips repos not cloned.{Colors.RESET}")
+    print(f"  {Colors.GREEN}pull{Colors.RESET}\t\t\tPulls using 'remote' strategy. {Colors.YELLOW}Skips repos not cloned.{Colors.RESET}")
+    print(f"  {Colors.GREEN}fetch{Colors.RESET}\t\t\tFetches from remote. {Colors.YELLOW}Skips repos not cloned.{Colors.RESET}")
     print(f"  {Colors.GREEN}status{Colors.RESET}\t\t\tChecks for local untracked and uncommitted changes.")
     print(f"  {Colors.GREEN}untracked{Colors.RESET}\t\tLists untracked files (excluding ignored).")
     print(f"  {Colors.GREEN}ignored{Colors.RESET}\t\t\tLists all ignored files.")
     print(f"  {Colors.GREEN}deploys{Colors.RESET}\t\t\tShows GitHub Actions workflow runs.\n")
+    print(f"{Colors.BOLD}{Colors.RED}NOTE:{Colors.RESET} Commands NEVER auto-clone. Use 'clone' explicitly to clone missing repos.\n")
     print(f"{Colors.BOLD}{Colors.YELLOW}REPOS:{Colors.RESET}")
     print(f"  Specify repository names to operate on (space-separated).")
     print(f"  If not specified, operates on all repositories.\n")
@@ -1346,6 +1359,8 @@ def main():
         run_cli_fetch(repos=repos, work_dir=work_dir)
     elif cmd == 'deploys':
         run_cli_deploys(repos=repos, work_dir=work_dir)
+    elif cmd == 'clone':
+        run_cli_clone(repos=repos, work_dir=work_dir)
     else:
         error(f"Invalid command: {cmd}")
         print()
