@@ -10,6 +10,7 @@ import os
 import sys
 import subprocess
 import curses
+import json
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 import argparse
@@ -18,27 +19,31 @@ import threading
 import queue
 import time
 
-# --- Configuration: Repository Lists ---
-PUBLIC_REPOS = {
-    "front-Github_profile": "git@github.com:diegonmarcos/diegonmarcos.git",
-    "front-Github_io": "git@github.com:diegonmarcos/diegonmarcos.github.io.git",
-    "back-System": "git@github.com:diegonmarcos/back-System.git",
-    "back-Algo": "git@github.com:diegonmarcos/back-Algo.git",
-    "back-Graphic": "git@github.com:diegonmarcos/back-Graphic.git",
-    "cyber-Cyberwarfare": "git@github.com:diegonmarcos/cyber-Cyberwarfare.git",
-    "ops-Tooling": "git@github.com:diegonmarcos/ops-Tooling.git",
-    "ops-Mylibs": "git@github.com:diegonmarcos/ops-Mylibs.git",
-    "ml-MachineLearning": "git@github.com:diegonmarcos/ml-MachineLearning.git",
-    "ml-DataScience": "git@github.com:diegonmarcos/ml-DataScience.git",
-    "ml-Agentic": "git@github.com:diegonmarcos/ml-Agentic.git",
-}
+# --- Configuration: Load from JSON ---
+SCRIPT_DIR = Path(__file__).parent.parent  # Go up from gcl/ to Git/
+CONFIG_FILE = SCRIPT_DIR / "gcl.json"
 
-PRIVATE_REPOS = {
-    "front-Notes_md": "git@github.com:diegonmarcos/front-Notes_md.git",
-    "z-lecole42": "git@github.com:diegonmarcos/lecole42.git",
-    "z-dev": "git@github.com:diegonmarcos/dev.git",
-}
+def load_config() -> dict:
+    """Load configuration from gcl.json"""
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                return config
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: Failed to load config from {CONFIG_FILE}: {e}")
+    # Fallback defaults if config file missing
+    return {
+        "workdir": "/home/diego/Documents/Git",
+        "public_repos": {},
+        "private_repos": {}
+    }
 
+# Load config on module import
+_config = load_config()
+PUBLIC_REPOS = _config.get("public_repos", {})
+PRIVATE_REPOS = _config.get("private_repos", {})
+DEFAULT_WORKDIR = _config.get("workdir", "/home/diego/Documents/Git")
 ALL_REPOS = {**PUBLIC_REPOS, **PRIVATE_REPOS}
 
 # --- Color Codes (for non-curses output) ---
@@ -484,7 +489,7 @@ class TUI:
         self.repo_push_status = ["?"] * len(self.repos)
 
         self.workdir_selected = 1  # 0=current dir, 1=custom path
-        self.workdir_path = "/home/diego/Documents/Git"
+        self.workdir_path = DEFAULT_WORKDIR
         self.strategy_selected = 1  # 0=local (ours), 1=remote (theirs)
         self.action_selected = 0  # 0=sync, 1=push, 2=pull, 3=status, 4=fetch, 5=untracked, 6=ignored, 7=deploys
         self.repo_cursor = 0
@@ -1208,7 +1213,7 @@ def print_help():
     print(f"{Colors.BOLD}{Colors.YELLOW}USAGE:{Colors.RESET}")
     print("  gcl.py [OPTIONS] [COMMAND] [REPOS...]\n")
     print(f"{Colors.BOLD}{Colors.YELLOW}OPTIONS:{Colors.RESET}")
-    print(f"  {Colors.GREEN}-w, --workdir PATH{Colors.RESET}\tSet working directory (default: /home/diego/Documents/Git)")
+    print(f"  {Colors.GREEN}-w, --workdir PATH{Colors.RESET}\tSet working directory (default: {DEFAULT_WORKDIR})")
     print(f"  {Colors.GREEN}-c, --current{Colors.RESET}\t\tUse current directory as working directory")
     print(f"  {Colors.GREEN}-h, --help{Colors.RESET}\t\tShow this help message\n")
     print(f"{Colors.BOLD}{Colors.YELLOW}COMMANDS:{Colors.RESET}")
@@ -1257,7 +1262,7 @@ def main():
         add_help=False,
         exit_on_error=False
     )
-    parser.add_argument('-w', '--workdir', type=str, default='/home/diego/Documents/Git',
+    parser.add_argument('-w', '--workdir', type=str, default=DEFAULT_WORKDIR,
                         help='Working directory for repositories')
     parser.add_argument('-c', '--current', action='store_true',
                         help='Use current directory as working directory')

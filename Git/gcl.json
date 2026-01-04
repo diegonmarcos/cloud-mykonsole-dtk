@@ -1,0 +1,31 @@
+{
+  "_comment": "gcl.py configuration - Git Clone/Pull/Push Manager",
+  "_schema": {
+    "public_repos": "Dictionary of public repository names to git URLs",
+    "private_repos": "Dictionary of private repository names to git URLs",
+    "workdir": "Default working directory for git operations"
+  },
+  "workdir": "/home/diego/mnt_git",
+  "public_repos": {
+    "front-Github_profile": "git@github.com:diegonmarcos/diegonmarcos.git",
+    "front-Github_io": "git@github.com:diegonmarcos/diegonmarcos.github.io.git",
+    "back-System": "git@github.com:diegonmarcos/back-System.git",
+    "back-Algo": "git@github.com:diegonmarcos/back-Algo.git",
+    "back-Graphic": "git@github.com:diegonmarcos/back-Graphic.git",
+    "cyber-Cyberwarfare": "git@github.com:diegonmarcos/cyber-Cyberwarfare.git",
+    "ops-Tooling": "git@github.com:diegonmarcos/ops-Tooling.git",
+    "tools": "git@github.com:diegonmarcos/ops-Tooling.git",
+    "ops-Mylibs": "git@github.com:diegonmarcos/ops-Mylibs.git",
+    "ml-MachineLearning": "git@github.com:diegonmarcos/ml-MachineLearning.git",
+    "ml-DataScience": "git@github.com:diegonmarcos/ml-DataScience.git",
+    "ml-Agentic": "git@github.com:diegonmarcos/ml-Agentic.git",
+    "cloud": "git@github.com:diegonmarcos/cloud.git",
+    "unix": "git@github.com:diegonmarcos/unix.git"
+  },
+  "private_repos": {
+    "front-Notes_md": "git@github.com:diegonmarcos/front-Notes_md.git",
+    "notes": "git@github.com:diegonmarcos/front-Notes_md.git",
+    "z-lecole42": "git@github.com:diegonmarcos/lecole42.git",
+    "z-dev": "git@github.com:diegonmarcos/dev.git"
+  }
+}

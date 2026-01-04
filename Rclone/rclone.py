@@ -81,8 +81,8 @@ class RcloneManager:
 
         # Default paths
         self.user = os.environ.get('USER') or os.environ.get('LOGNAME') or os.getlogin()
-        self.default_mount = Path.home() / 'Documents' / 'Gdrive'
-        self.log_dir = Path.home() / 'Documents' / 'Gdrive' / 'system' / '.rclone'
+        self.default_mount = Path.home() / 'fuses' / 'Gdrive_me'
+        self.log_dir = Path.home() / 'fuses' / 'Gdrive_me' / 'system' / '.rclone'
         self.sync_log_dir = self.config_dir / 'logs'
         self.sync_log_dir.mkdir(parents=True, exist_ok=True)
         self.default_remote = 'Gdrive'
