@@ -1,277 +1,702 @@
 #!/bin/sh
-# gcl.sh - Unified launcher for gcl
+# gcl.sh - Git Clone/Pull/Push Manager
+# POSIX-compliant engine with optional Python TUI
+#
 # Usage:
-#   ./gcl.sh [command]              # Run natively (default)
-#   ./gcl.sh --venv [command]       # Use venv mode
-#   ./gcl.sh --py_docker [command]  # Use Docker mode
-#   ./gcl.sh --sh [command]         # Use shell POSIX script
-#   ./gcl.sh --help                 # Show help
+#   ./gcl.sh              # Launch TUI (Python if available, else shell)
+#   ./gcl.sh --sh         # Force shell TUI
+#   ./gcl.sh --py         # Force Python TUI
+#   ./gcl.sh <command>    # CLI mode (sync|pull|push|status|fetch)
+#   ./gcl.sh --help       # Show help
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
 
-# Colors
-C_RESET="\033[0m"
-C_BOLD="\033[1m"
-C_GREEN="\033[32m"
-C_CYAN="\033[36m"
-C_YELLOW="\033[33m"
-C_PURPLE="\033[38;5;141m"
-C_GRAY="\033[90m"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/gcl.json"
+PYTHON_TUI="$SCRIPT_DIR/gcl/gcl.py"
 
-# Show help
-show_help() {
-    printf "\n"
-    printf "${C_BOLD}${C_CYAN}╔════════════════════════════════════════════════════════════╗${C_RESET}\n"
-    printf "${C_BOLD}${C_CYAN}║                                                            ║${C_RESET}\n"
-    printf "${C_BOLD}${C_CYAN}║     gcl.sh - Git Clone/Pull/Push Manager Launcher          ║${C_RESET}\n"
-    printf "${C_BOLD}${C_CYAN}║                                                            ║${C_RESET}\n"
-    printf "${C_BOLD}${C_CYAN}╚════════════════════════════════════════════════════════════╝${C_RESET}\n\n"
+# Colors (disable if not a terminal)
+if [ -t 1 ]; then
+    C_RESET="\033[0m"
+    C_BOLD="\033[1m"
+    C_RED="\033[31m"
+    C_GREEN="\033[32m"
+    C_YELLOW="\033[33m"
+    C_BLUE="\033[34m"
+    C_CYAN="\033[36m"
+    C_DIM="\033[2m"
+    C_BG_BLUE="\033[44m"
+else
+    C_RESET='' C_BOLD='' C_RED='' C_GREEN='' C_YELLOW='' C_BLUE='' C_CYAN='' C_DIM='' C_BG_BLUE=''
+fi
 
-    printf "${C_BOLD}SYNTAX${C_RESET}\n"
-    printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-    printf "  sh gcl.sh [${C_YELLOW}--MODE${C_RESET}] [${C_PURPLE}ACTIONS${C_RESET}]\n\n"
+# Symbols
+OK="${C_GREEN}✓${C_RESET}"
+FAIL="${C_RED}✗${C_RESET}"
+WARN="${C_YELLOW}!${C_RESET}"
+INFO="${C_BLUE}→${C_RESET}"
 
-    printf "${C_BOLD}MODES${C_RESET}\n"
-    printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-    printf "  ${C_GREEN}(no mode)${C_RESET}\t\t\t${C_GRAY}Run directly with Python (default)${C_RESET}\n"
-    printf "  ${C_YELLOW}--venv${C_RESET}\t\t\t${C_GRAY}Run in Python virtual environment (auto-setups if needed)${C_RESET}\n"
-    printf "  ${C_YELLOW}--py_docker${C_RESET}\t\t\t${C_GRAY}Run in Docker container (auto-builds if needed)${C_RESET}\n"
-    printf "  ${C_YELLOW}--sh${C_RESET}\t\t\t\t${C_GRAY}Run the shell POSIX script${C_RESET}\n\n"
+# =============================================================================
+# CONFIG PARSER (reads gcl.json)
+# =============================================================================
 
-    printf "${C_BOLD}ACTIONS${C_RESET}\n"
-    printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-    printf "  ${C_PURPLE}(no command)${C_RESET}\t\t\t${C_GRAY}Launch interactive TUI${C_RESET}\n\n"
-    printf "  ${C_PURPLE}sync${C_RESET}\t\t\t\t${C_GRAY}Sync (Commit Local, Fetch, Pull w/ Strategy, Commit Merge, Push)${C_RESET}\n"
-    printf "  ${C_PURPLE}fetch${C_RESET}\t\t\t\t${C_GRAY}Fetch from remote${C_RESET}\n"
-    printf "  ${C_PURPLE}push${C_RESET}\t\t\t\t${C_GRAY}Push changes with Merge Strategy Default${C_RESET}\n"
-    printf "  ${C_PURPLE}pull${C_RESET}\t\t\t\t${C_GRAY}Pull changes with Merge Strategy Default${C_RESET}\n\n"
-    printf "  ${C_PURPLE}status${C_RESET}\t\t\t${C_GRAY}Check repository status${C_RESET}\n"
-    printf "  ${C_PURPLE}untracked${C_RESET}\t\t\t${C_GRAY}List untracked files${C_RESET}\n"
-    printf "  ${C_PURPLE}ignored${C_RESET}\t\t\t${C_GRAY}List ignored files${C_RESET}\n\n\n"
-
-    printf "${C_BOLD}EXAMPLES${C_RESET}\n"
-    printf "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-    printf "  ./gcl.sh\t\t\t${C_GRAY}# Run TUI natively${C_RESET}\n"
-    printf "  ./gcl.sh --venv\t\t${C_GRAY}# Run TUI natively (venv)${C_RESET}\n"
-    printf "  ./gcl.sh --py_docker\t\t${C_GRAY}# Run TUI in Docker${C_RESET}\n"
-    printf "  ./gcl.sh --sh\t\t\t${C_GRAY}# Run TUI in sh Posix${C_RESET}\n\n"
-    printf "  ./gcl.sh status\t\t${C_GRAY}# Check status (native)${C_RESET}\n"
-    printf "  ./gcl.sh --venv status\t${C_GRAY}# Check status (venv)${C_RESET}\n\n\n"
-
-    printf "${C_BOLD}OPTIONS${C_RESET}\n"
-    printf "${C_GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-    printf "  ${C_GREEN}--help, -h${C_RESET}\t\t\t${C_GRAY}Show this help message${C_RESET}\n"
-    printf "  ${C_GREEN}--install${C_RESET}\t\t\t${C_GRAY}This will fetch the bin files from the remoto repo${C_RESET}\n"
-    printf "  ${C_GREEN}--install_dev${C_RESET}\t\t\t${C_GRAY}Fetch the repo tools and symlink it${C_RESET}\n\n"
-
-    printf "${C_BOLD}SETUP${C_RESET}\n"
-    printf "${C_GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-    printf "  --venv\t\t\t${C_GRAY}Mode will setup the virtual environment on first run${C_RESET}\n"
-    printf "  --py_docker\t\t\t${C_GRAY}Mode will automatically build the image on first run${C_RESET}\n"
-    printf "  (no mode)\t\t\t${C_GRAY}Requires Python 3 to be installed on your system${C_RESET}\n"
-    printf "  MERGE\t\t\t\t${C_GRAY}Merge Strategy Default is: remote (theirs)${C_RESET}\n"
-    printf "  UI\t\t\t\t${C_GRAY}Designed for Half-Full-screen (80x24 terminal, 640x400 px)${C_RESET}\n\n"
-}
-
-# Run natively
-run_native() {
-    # Check if command is valid (if provided)
-    if [ $# -gt 0 ]; then
-        case "${1}" in
-            sync|fetch|push|pull|status|untracked|ignored|help)
-                # Valid command, proceed
-                ;;
-            *)
-                # Unknown command, show help
-                printf "\n${C_BOLD}${C_YELLOW}Unknown command: ${1}${C_RESET}\n\n"
-                show_help
-                exit 1
-                ;;
-        esac
+# Parse JSON config file - extracts workdir and repos
+# Uses grep/sed for POSIX compatibility (no jq dependency)
+parse_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        printf "$FAIL ${C_RED}Config file not found: $CONFIG_FILE${C_RESET}\n"
+        exit 1
     fi
 
-    # Check terminal size for TUI mode
-    if [ $# -eq 0 ]; then
-        # Only check terminal for TUI mode (no args)
-        if ! command -v tput > /dev/null 2>&1; then
-            printf "Warning: tput not found, terminal check skipped\n" >&2
-        else
-            TERM_ROWS=$(tput lines 2>/dev/null || echo 0)
-            TERM_COLS=$(tput cols 2>/dev/null || echo 0)
-            if [ "$TERM_ROWS" -lt 24 ] || [ "$TERM_COLS" -lt 80 ]; then
-                printf "Error: Terminal too small for TUI (need 24x80, got ${TERM_ROWS}x${TERM_COLS})\n" >&2
-                printf "Try: ./gcl.sh status  (to run CLI mode instead)\n" >&2
-                exit 1
+    # Extract workdir (match "workdir": "/path" pattern - path starts with /)
+    WORKDIR=$(grep -E '"workdir"[[:space:]]*:[[:space:]]*"/[^"]*"' "$CONFIG_FILE" | sed 's/.*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+
+    # Extract all repos (public + private) as "name:url" pairs
+    REPOS=$(grep -E '^\s*"[^_][^"]*":\s*"git@' "$CONFIG_FILE" | \
+            sed 's/.*"\([^"]*\)"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1:\2/')
+
+    REPO_COUNT=$(echo "$REPOS" | grep -c ':' || echo 0)
+}
+
+# Get list of repo names
+get_repo_names() {
+    echo "$REPOS" | cut -d: -f1
+}
+
+# Get repo URL by name
+get_repo_url() {
+    echo "$REPOS" | grep "^$1:" | cut -d: -f2-
+}
+
+# =============================================================================
+# GIT ENGINE (POSIX shell)
+# =============================================================================
+
+# Check repo status (local changes, unpushed commits)
+repo_status() {
+    repo_dir="$1"
+
+    if [ ! -d "$repo_dir" ]; then
+        printf "${C_RED}Not Cloned${C_RESET}"
+        return
+    fi
+
+    if [ ! -d "$repo_dir/.git" ]; then
+        printf "${C_RED}Not a Repo${C_RESET}"
+        return
+    fi
+
+    # Check for uncommitted changes
+    if [ -n "$(git -C "$repo_dir" status --porcelain 2>/dev/null)" ]; then
+        printf "${C_YELLOW}Uncommitted${C_RESET}"
+        return
+    fi
+
+    # Check if tracking remote
+    if ! git -C "$repo_dir" rev-parse @{u} >/dev/null 2>&1; then
+        printf "${C_YELLOW}No Upstream${C_RESET}"
+        return
+    fi
+
+    # Check for unpushed commits
+    unpushed=$(git -C "$repo_dir" log @{u}.. --oneline 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$unpushed" -gt 0 ]; then
+        printf "${C_YELLOW}${unpushed} Unpushed${C_RESET}"
+        return
+    fi
+
+    # Check for unpulled commits
+    unpulled=$(git -C "$repo_dir" log ..@{u} --oneline 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$unpulled" -gt 0 ]; then
+        printf "${C_CYAN}${unpulled} To Pull${C_RESET}"
+        return
+    fi
+
+    printf "${C_GREEN}OK${C_RESET}"
+}
+
+# Clone a repository
+repo_clone() {
+    repo_name="$1"
+    repo_url="$2"
+    repo_dir="$WORKDIR/$repo_name"
+
+    printf "$INFO Cloning ${C_BOLD}$repo_name${C_RESET}...\n"
+
+    if git clone "$repo_url" "$repo_dir" 2>&1; then
+        printf "$OK ${C_GREEN}Cloned${C_RESET}\n"
+        return 0
+    else
+        printf "$FAIL ${C_RED}Clone failed${C_RESET}\n"
+        return 1
+    fi
+}
+
+# Pull changes
+repo_pull() {
+    repo_name="$1"
+    strategy="${2:-theirs}"  # default: remote wins
+    repo_dir="$WORKDIR/$repo_name"
+
+    if [ ! -d "$repo_dir" ]; then
+        repo_clone "$repo_name" "$(get_repo_url "$repo_name")"
+        return
+    fi
+
+    printf "$INFO Pulling ${C_BOLD}$repo_name${C_RESET} (strategy: $strategy)...\n"
+
+    # Stash local changes if any
+    if [ -n "$(git -C "$repo_dir" status --porcelain 2>/dev/null)" ]; then
+        printf "  ${C_DIM}Stashing local changes...${C_RESET}\n"
+        git -C "$repo_dir" stash -q
+        STASHED=1
+    else
+        STASHED=0
+    fi
+
+    # Pull with strategy
+    if git -C "$repo_dir" pull --no-rebase --strategy-option="$strategy" 2>&1; then
+        printf "$OK ${C_GREEN}Pulled${C_RESET}\n"
+    else
+        printf "$FAIL ${C_RED}Pull failed${C_RESET}\n"
+    fi
+
+    # Restore stashed changes
+    if [ "$STASHED" = "1" ]; then
+        printf "  ${C_DIM}Restoring local changes...${C_RESET}\n"
+        git -C "$repo_dir" stash pop -q 2>/dev/null || true
+    fi
+}
+
+# Push changes
+repo_push() {
+    repo_name="$1"
+    repo_dir="$WORKDIR/$repo_name"
+
+    if [ ! -d "$repo_dir" ]; then
+        printf "$FAIL ${C_RED}$repo_name not cloned${C_RESET}\n"
+        return 1
+    fi
+
+    printf "$INFO Pushing ${C_BOLD}$repo_name${C_RESET}...\n"
+
+    if git -C "$repo_dir" push 2>&1; then
+        printf "$OK ${C_GREEN}Pushed${C_RESET}\n"
+    else
+        printf "$FAIL ${C_RED}Push failed${C_RESET}\n"
+    fi
+}
+
+# Sync: commit local, pull, push
+repo_sync() {
+    repo_name="$1"
+    strategy="${2:-theirs}"
+    repo_dir="$WORKDIR/$repo_name"
+
+    if [ ! -d "$repo_dir" ]; then
+        repo_clone "$repo_name" "$(get_repo_url "$repo_name")"
+        return
+    fi
+
+    printf "$INFO Syncing ${C_BOLD}$repo_name${C_RESET}...\n"
+
+    # Stage and commit local changes
+    if [ -n "$(git -C "$repo_dir" status --porcelain 2>/dev/null)" ]; then
+        printf "  ${C_DIM}Committing local changes...${C_RESET}\n"
+        git -C "$repo_dir" add -A
+        git -C "$repo_dir" commit -q -m "sync: auto-commit" 2>/dev/null || true
+    fi
+
+    # Fetch and pull
+    git -C "$repo_dir" fetch -q 2>/dev/null || true
+
+    if git -C "$repo_dir" pull --no-rebase --strategy-option="$strategy" -q 2>&1; then
+        printf "$OK ${C_GREEN}Pulled${C_RESET}\n"
+    else
+        printf "$WARN ${C_YELLOW}Pull had conflicts${C_RESET}\n"
+    fi
+
+    # Push
+    if git -C "$repo_dir" push -q 2>&1; then
+        printf "$OK ${C_GREEN}Pushed${C_RESET}\n"
+    else
+        printf "$WARN ${C_YELLOW}Push failed${C_RESET}\n"
+    fi
+}
+
+# Fetch all repos
+repo_fetch() {
+    repo_name="$1"
+    repo_dir="$WORKDIR/$repo_name"
+
+    if [ ! -d "$repo_dir" ]; then
+        printf "$FAIL ${C_RED}$repo_name not cloned${C_RESET}\n"
+        return
+    fi
+
+    printf "$INFO Fetching ${C_BOLD}$repo_name${C_RESET}..."
+
+    if git -C "$repo_dir" fetch -q 2>&1; then
+        printf " $OK\n"
+    else
+        printf " $FAIL\n"
+    fi
+}
+
+# =============================================================================
+# DETAILED STATUS FUNCTIONS
+# =============================================================================
+
+# Check if repo is cloned
+check_cloned() {
+    [ -d "$1/.git" ] && echo "1" || echo "0"
+}
+
+# Check for uncommitted changes
+check_uncommitted() {
+    repo_dir="$1"
+    [ ! -d "$repo_dir/.git" ] && echo "-" && return
+    if [ -n "$(git -C "$repo_dir" status --porcelain 2>/dev/null)" ]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+# Check for unpushed commits
+check_unpushed() {
+    repo_dir="$1"
+    [ ! -d "$repo_dir/.git" ] && echo "-" && return
+    if ! git -C "$repo_dir" rev-parse @{u} >/dev/null 2>&1; then
+        echo "?"  # No upstream
+        return
+    fi
+    count=$(git -C "$repo_dir" log @{u}.. --oneline 2>/dev/null | wc -l | tr -d ' ')
+    echo "$count"
+}
+
+# Check for unpulled commits (requires fetch first)
+check_unpulled() {
+    repo_dir="$1"
+    [ ! -d "$repo_dir/.git" ] && echo "-" && return
+    if ! git -C "$repo_dir" rev-parse @{u} >/dev/null 2>&1; then
+        echo "?"  # No upstream
+        return
+    fi
+    count=$(git -C "$repo_dir" log ..@{u} --oneline 2>/dev/null | wc -l | tr -d ' ')
+    echo "$count"
+}
+
+# Check GitHub Actions status (requires gh CLI)
+check_gh_actions() {
+    repo_dir="$1"
+    repo_name="$2"
+
+    [ ! -d "$repo_dir/.git" ] && echo "-" && return
+
+    # Check if gh is available
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "?"
+        return
+    fi
+
+    # Get remote URL and extract owner/repo
+    remote_url=$(git -C "$repo_dir" remote get-url origin 2>/dev/null)
+    if [ -z "$remote_url" ]; then
+        echo "?"
+        return
+    fi
+
+    # Extract owner/repo from git@github.com:owner/repo.git
+    gh_repo=$(echo "$remote_url" | sed 's/.*github.com[:/]\([^/]*\/[^.]*\).*/\1/')
+
+    # Get last workflow run status
+    status=$(gh run list --repo "$gh_repo" --limit 1 --json conclusion -q '.[0].conclusion' 2>/dev/null)
+
+    case "$status" in
+        success) echo "✓" ;;
+        failure) echo "✗" ;;
+        cancelled) echo "○" ;;
+        "") echo "-" ;;
+        *) echo "?" ;;
+    esac
+}
+
+# Format cell with color based on value
+format_cell() {
+    value="$1"
+    type="$2"  # cloned, uncommitted, unpushed, unpulled, actions
+
+    case "$type" in
+        cloned)
+            if [ "$value" = "1" ]; then
+                printf "${C_GREEN}Yes${C_RESET}"
+            else
+                printf "${C_RED}No${C_RESET}"
             fi
-        fi
-
-        # Set TERM if not set
-        if [ -z "$TERM" ] || [ "$TERM" = "dumb" ]; then
-            export TERM=xterm-256color
-        fi
-    fi
-
-    python3 "$SCRIPT_DIR/gcl/gcl.py" "$@"
+            ;;
+        uncommitted)
+            case "$value" in
+                "-") printf "${C_DIM}--${C_RESET}" ;;
+                "0") printf "${C_GREEN}Clean${C_RESET}" ;;
+                "1") printf "${C_YELLOW}Dirty${C_RESET}" ;;
+                *) printf "${C_DIM}?${C_RESET}" ;;
+            esac
+            ;;
+        unpushed)
+            case "$value" in
+                "-") printf "${C_DIM}--${C_RESET}" ;;
+                "?") printf "${C_DIM}?${C_RESET}" ;;
+                "0") printf "${C_GREEN}0${C_RESET}" ;;
+                *) printf "${C_YELLOW}${value}${C_RESET}" ;;
+            esac
+            ;;
+        unpulled)
+            case "$value" in
+                "-") printf "${C_DIM}--${C_RESET}" ;;
+                "?") printf "${C_DIM}?${C_RESET}" ;;
+                "0") printf "${C_GREEN}0${C_RESET}" ;;
+                *) printf "${C_CYAN}${value}${C_RESET}" ;;
+            esac
+            ;;
+        actions)
+            case "$value" in
+                "-") printf "${C_DIM}--${C_RESET}" ;;
+                "?") printf "${C_DIM}?${C_RESET}" ;;
+                "✓") printf "${C_GREEN}✓${C_RESET}" ;;
+                "✗") printf "${C_RED}✗${C_RESET}" ;;
+                "○") printf "${C_YELLOW}○${C_RESET}" ;;
+                *) printf "${C_DIM}?${C_RESET}" ;;
+            esac
+            ;;
+    esac
 }
 
-# Run via Docker
-run_docker() {
-    cd "$SCRIPT_DIR/gcl/gcl_py-docker"
-    if docker compose version > /dev/null 2>&1; then
-        docker compose run --rm gcl "$@"
-    else
-        docker-compose run --rm gcl "$@"
-    fi
-}
+# =============================================================================
+# CLI COMMANDS
+# =============================================================================
 
-# Run via venv
-run_venv() {
-    VENV_DIR="$SCRIPT_DIR/gcl/gcl_py-venv/venv"
-    VENV_SCRIPT="$SCRIPT_DIR/gcl/gcl_py-venv/gcl-venv.sh"
+cmd_status() {
+    printf "${C_BOLD}=== Repository Status ===${C_RESET}\n"
+    printf "${C_DIM}Workdir: $WORKDIR${C_RESET}\n\n"
 
-    # Check if venv exists, if not, run setup
-    if [ ! -d "$VENV_DIR" ]; then
-        printf "${C_CYAN}==>${C_RESET} ${C_BOLD}Virtual environment not found. Setting up...${C_RESET}\n"
-        "$VENV_SCRIPT" setup
+    # Header
+    printf "${C_BOLD}%-20s  %-8s  %-8s  %-8s  %-8s  %-4s${C_RESET}\n" \
+        "Repository" "Cloned" "Local" "Unpushed" "To Pull" "CI"
+    printf "${C_DIM}────────────────────  ────────  ────────  ────────  ────────  ────${C_RESET}\n"
+
+    for repo_name in $(get_repo_names); do
+        repo_dir="$WORKDIR/$repo_name"
+
+        # Get all statuses
+        cloned=$(check_cloned "$repo_dir")
+        uncommitted=$(check_uncommitted "$repo_dir")
+        unpushed=$(check_unpushed "$repo_dir")
+        unpulled=$(check_unpulled "$repo_dir")
+        actions=$(check_gh_actions "$repo_dir" "$repo_name")
+
+        # Print repo name (padded)
+        printf "%-20s  " "$repo_name"
+
+        # Cloned column (8 chars)
+        if [ "$cloned" = "1" ]; then
+            printf "${C_GREEN}%-8s${C_RESET}" "Yes"
+        else
+            printf "${C_RED}%-8s${C_RESET}" "No"
+        fi
+        printf "  "
+
+        # Local column (8 chars)
+        case "$uncommitted" in
+            "-") printf "${C_DIM}%-8s${C_RESET}" "--" ;;
+            "0") printf "${C_GREEN}%-8s${C_RESET}" "Clean" ;;
+            "1") printf "${C_YELLOW}%-8s${C_RESET}" "Dirty" ;;
+            *) printf "${C_DIM}%-8s${C_RESET}" "?" ;;
+        esac
+        printf "  "
+
+        # Unpushed column (8 chars)
+        case "$unpushed" in
+            "-") printf "${C_DIM}%-8s${C_RESET}" "--" ;;
+            "?") printf "${C_DIM}%-8s${C_RESET}" "?" ;;
+            "0") printf "${C_GREEN}%-8s${C_RESET}" "0" ;;
+            *) printf "${C_YELLOW}%-8s${C_RESET}" "$unpushed" ;;
+        esac
+        printf "  "
+
+        # To Pull column (8 chars)
+        case "$unpulled" in
+            "-") printf "${C_DIM}%-8s${C_RESET}" "--" ;;
+            "?") printf "${C_DIM}%-8s${C_RESET}" "?" ;;
+            "0") printf "${C_GREEN}%-8s${C_RESET}" "0" ;;
+            *) printf "${C_CYAN}%-8s${C_RESET}" "$unpulled" ;;
+        esac
+        printf "  "
+
+        # CI column (4 chars)
+        case "$actions" in
+            "-") printf "${C_DIM}%-4s${C_RESET}" "--" ;;
+            "?") printf "${C_DIM}%-4s${C_RESET}" "?" ;;
+            "✓") printf "${C_GREEN}%-4s${C_RESET}" "✓" ;;
+            "✗") printf "${C_RED}%-4s${C_RESET}" "✗" ;;
+            "○") printf "${C_YELLOW}%-4s${C_RESET}" "○" ;;
+            *) printf "${C_DIM}%-4s${C_RESET}" "?" ;;
+        esac
+
         printf "\n"
-    fi
+    done
 
-    # Now run with venv
-    "$VENV_SCRIPT" run "$@"
+    printf "\n${C_DIM}Legend: Local=uncommitted changes, CI=GitHub Actions${C_RESET}\n"
 }
 
-# Run via shell script
-run_sh() {
-    "$SCRIPT_DIR/gcl/gcl.sh" "$@"
-}
+cmd_status_fetch() {
+    printf "${C_BOLD}=== Repository Status (with fetch) ===${C_RESET}\n"
+    printf "${C_DIM}Workdir: $WORKDIR${C_RESET}\n"
+    printf "${C_DIM}Fetching from remotes...${C_RESET}\n\n"
 
-# Run via shell script
-run_sh() {
-    "$SCRIPT_DIR/gcl/gcl.sh" "$@"
-}
-
-# Run installer
-run_install() {
-    printf "${C_CYAN}==>${C_RESET} ${C_BOLD}Starting gcl installation...${C_RESET}\n"
-
-    REPO_URL="git@github.com:diegonmarcos/ops-Tooling.git"
-    INSTALL_DIR="gcl_install_temp"
-
-    # Clone the repo
-    printf "Cloning repository from ${REPO_URL}...\n"
-    if ! git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"; then
-        printf "Error: Failed to clone repository. Make sure you have SSH access and the repository exists.\n" >&2
-        exit 1
-    fi
-
-    # Check if the gcl folder exists in the cloned repo
-    if [ ! -d "$INSTALL_DIR/Git/gcl" ]; then
-        printf "Error: 'Git/gcl' directory not found in the cloned repository. Expected structure: ops-Tooling/Git/gcl\n" >&2
-        rm -rf "$INSTALL_DIR"
-        exit 1
-    fi
-
-    # Move the gcl folder
-    printf "Installing gcl...\n"
-    rm -rf ./gcl
-    mv "$INSTALL_DIR/Git/gcl" ./gcl
-
-    # Cleanup
-    printf "Cleaning up...\n"
-    rm -rf "$INSTALL_DIR"
-
-    printf "${C_GREEN}==>${C_RESET} ${C_BOLD}gcl installed successfully.${C_RESET}\n"
-}
-
-
-# Run developer installer
-run_install_dev() {
-    printf "${C_CYAN}==>${C_RESET} ${C_BOLD}Setting up developer environment (symlink mode)...${C_RESET}\n"
-
-    REPO_URL="git@github.com:diegonmarcos/ops-Tooling.git"
-    CLONE_DIR_NAME="ops-Tooling-dev"
-    # Place it in the parent of SCRIPT_DIR
-    CLONE_DIR_PATH="$(dirname "$SCRIPT_DIR")/$CLONE_DIR_NAME"
-
-    if [ -d "$CLONE_DIR_PATH" ]; then
-        printf "Dev repository already exists. Pulling latest changes from ${REPO_URL}...\n"
-        if ! git -C "$CLONE_DIR_PATH" pull; then
-            printf "Error: Failed to pull latest changes. Please check for conflicts in ${CLONE_DIR_PATH}\n" >&2
-            exit 1
+    # Fetch all repos first
+    for repo_name in $(get_repo_names); do
+        repo_dir="$WORKDIR/$repo_name"
+        if [ -d "$repo_dir/.git" ]; then
+            git -C "$repo_dir" fetch -q 2>/dev/null &
         fi
-    else
-        printf "Cloning dev repository from ${REPO_URL} into ${CLONE_DIR_PATH}...\n"
-        if ! git clone "$REPO_URL" "$CLONE_DIR_PATH"; then
-            printf "Error: Failed to clone repository. Make sure you have SSH access and the repository exists.\n" >&2
-            exit 1
-        fi
-    fi
+    done
+    wait
 
-    # The gcl.sh to link to, inside the cloned repo
-    TARGET_GCL_SH="$CLONE_DIR_PATH/Git/gcl.sh"
-    # The symlink we want to create
-    SYMLINK_PATH="$SCRIPT_DIR/gcl.sh"
-
-    # Check if the target file exists
-    if [ ! -f "$TARGET_GCL_SH" ]; then
-        printf "Error: Target file not found in cloned repository: ${TARGET_GCL_SH}\n" >&2
-        exit 1
-    fi
-
-    printf "Creating symlink to development version of gcl.sh...\n"
-
-    # Remove the original file only if it is not a symlink.
-    if [ -f "$SYMLINK_PATH" ] && [ ! -L "$SYMLINK_PATH" ]; then
-        printf "Removing original gcl.sh file...\n"
-        rm "$SYMLINK_PATH"
-    elif [ -L "$SYMLINK_PATH" ]; then
-        # If it's already a symlink, remove it to update it.
-        rm "$SYMLINK_PATH"
-    fi
-
-    # Create a relative symlink from the current script dir
-    printf "Symlinking ./gcl.sh -> ../${CLONE_DIR_NAME}/Git/gcl.sh\n"
-    cd "$SCRIPT_DIR"
-    ln -s "../${CLONE_DIR_NAME}/Git/gcl.sh" "gcl.sh"
-
-    printf "${C_GREEN}==>${C_RESET} ${C_BOLD}Developer environment setup complete.${C_RESET}\n"
-    printf "'gcl.sh' is now a symlink. Run it to use the development version.\n"
+    # Now show status
+    cmd_status
 }
 
-# Main
-case "${1:-}" in
-    --help|-h)
-        show_help
-        exit 0
-        ;;
-    --install)
-        run_install
-        exit 0
-        ;;
-    --install_dev)
-        run_install_dev
-        exit 0
-        ;;
-    --py_docker|--docker)
-        shift
-        run_docker "$@"
-        ;;
-    --venv)
-        shift
-        run_venv "$@"
-        ;;
-    --sh)
-        shift
-        run_sh "$@"
-        ;;
-    --native)
-        shift
-        run_native "$@"
-        ;;
-    *)
-        # Default to native with all args
-        run_native "$@"
-        ;;
-esac
+cmd_clone_menu() {
+    printf "${C_BOLD}=== Clone Repositories ===${C_RESET}\n"
+    printf "${C_DIM}Workdir: $WORKDIR${C_RESET}\n\n"
+
+    # Build list of uncloned repos
+    uncloned=""
+    idx=1
+    for repo_name in $(get_repo_names); do
+        repo_dir="$WORKDIR/$repo_name"
+        if [ ! -d "$repo_dir/.git" ]; then
+            uncloned="$uncloned$idx:$repo_name\n"
+            printf "  ${C_CYAN}%2d${C_RESET}) %s\n" "$idx" "$repo_name"
+            idx=$((idx + 1))
+        fi
+    done
+
+    if [ -z "$uncloned" ]; then
+        printf "${C_GREEN}All repositories are already cloned.${C_RESET}\n"
+        return
+    fi
+
+    printf "\n  ${C_CYAN} a${C_RESET}) Clone ALL uncloned repos\n"
+    printf "  ${C_CYAN} q${C_RESET}) Cancel\n"
+    printf "\n${C_BOLD}Select repos to clone (comma-separated, e.g., 1,3,5):${C_RESET} "
+    read -r selection
+
+    case "$selection" in
+        q|Q|"") return ;;
+        a|A)
+            # Clone all uncloned
+            for repo_name in $(get_repo_names); do
+                repo_dir="$WORKDIR/$repo_name"
+                if [ ! -d "$repo_dir/.git" ]; then
+                    repo_url=$(get_repo_url "$repo_name")
+                    repo_clone "$repo_name" "$repo_url"
+                    echo ""
+                fi
+            done
+            ;;
+        *)
+            # Parse comma-separated numbers
+            echo "$selection" | tr ',' '\n' | while read -r num; do
+                num=$(echo "$num" | tr -d ' ')
+                [ -z "$num" ] && continue
+
+                # Find repo by index
+                repo_name=$(printf "$uncloned" | grep "^$num:" | cut -d: -f2)
+                if [ -n "$repo_name" ]; then
+                    repo_url=$(get_repo_url "$repo_name")
+                    repo_clone "$repo_name" "$repo_url"
+                    echo ""
+                else
+                    printf "$WARN ${C_YELLOW}Invalid selection: $num${C_RESET}\n"
+                fi
+            done
+            ;;
+    esac
+}
+
+cmd_sync() {
+    strategy="${1:-theirs}"
+    printf "${C_BOLD}=== Syncing All Repos ===${C_RESET}\n\n"
+
+    for repo_name in $(get_repo_names); do
+        repo_sync "$repo_name" "$strategy"
+        echo ""
+    done
+}
+
+cmd_pull() {
+    strategy="${1:-theirs}"
+    printf "${C_BOLD}=== Pulling All Repos ===${C_RESET}\n\n"
+
+    for repo_name in $(get_repo_names); do
+        repo_pull "$repo_name" "$strategy"
+        echo ""
+    done
+}
+
+cmd_push() {
+    printf "${C_BOLD}=== Pushing All Repos ===${C_RESET}\n\n"
+
+    for repo_name in $(get_repo_names); do
+        repo_push "$repo_name"
+        echo ""
+    done
+}
+
+cmd_fetch() {
+    printf "${C_BOLD}=== Fetching All Repos ===${C_RESET}\n\n"
+
+    for repo_name in $(get_repo_names); do
+        repo_fetch "$repo_name"
+    done
+}
+
+# =============================================================================
+# SHELL TUI (fallback)
+# =============================================================================
+
+tui_shell() {
+    # Simple interactive menu using shell
+    while true; do
+        clear
+        printf "${C_BOLD}${C_CYAN}╔════════════════════════════════════════╗${C_RESET}\n"
+        printf "${C_BOLD}${C_CYAN}║       gcl - Git Manager (Shell TUI)    ║${C_RESET}\n"
+        printf "${C_BOLD}${C_CYAN}╚════════════════════════════════════════╝${C_RESET}\n\n"
+
+        printf "${C_DIM}Workdir: $WORKDIR${C_RESET}\n"
+        printf "${C_DIM}Repos:   $REPO_COUNT${C_RESET}\n\n"
+
+        printf "${C_BOLD}Commands:${C_RESET}\n"
+        printf "  ${C_CYAN}1${C_RESET}) Status   - Show repo status\n"
+        printf "  ${C_CYAN}2${C_RESET}) Sync     - Commit, pull, push all\n"
+        printf "  ${C_CYAN}3${C_RESET}) Pull     - Pull all repos\n"
+        printf "  ${C_CYAN}4${C_RESET}) Push     - Push all repos\n"
+        printf "  ${C_CYAN}5${C_RESET}) Fetch    - Fetch all repos\n"
+        printf "  ${C_CYAN}q${C_RESET}) Quit\n\n"
+
+        printf "Choice: "
+        read -r choice
+
+        case "$choice" in
+            1) cmd_status; printf "\nPress Enter..."; read -r _ ;;
+            2) cmd_sync; printf "\nPress Enter..."; read -r _ ;;
+            3) cmd_pull; printf "\nPress Enter..."; read -r _ ;;
+            4) cmd_push; printf "\nPress Enter..."; read -r _ ;;
+            5) cmd_fetch; printf "\nPress Enter..."; read -r _ ;;
+            q|Q) exit 0 ;;
+            *) ;;
+        esac
+    done
+}
+
+# =============================================================================
+# HELP
+# =============================================================================
+
+show_help() {
+    printf "${C_BOLD}gcl - Git Clone/Pull/Push Manager${C_RESET}\n\n"
+
+    printf "${C_BOLD}Usage:${C_RESET}\n"
+    printf "  ./gcl.sh              ${C_DIM}# Launch TUI (Python or Shell)${C_RESET}\n"
+    printf "  ./gcl.sh --sh         ${C_DIM}# Force shell TUI${C_RESET}\n"
+    printf "  ./gcl.sh --py         ${C_DIM}# Force Python TUI${C_RESET}\n"
+    printf "  ./gcl.sh <command>    ${C_DIM}# CLI mode${C_RESET}\n\n"
+
+    printf "${C_BOLD}Commands:${C_RESET}\n"
+    printf "  ${C_CYAN}status${C_RESET}    Show repository status table\n"
+    printf "  ${C_CYAN}fetch${C_RESET}     Fetch + show status (checks remote)\n"
+    printf "  ${C_CYAN}clone${C_RESET}     Interactive clone menu\n"
+    printf "  ${C_CYAN}sync${C_RESET}      Commit local, pull, push all\n"
+    printf "  ${C_CYAN}pull${C_RESET}      Pull all repositories\n"
+    printf "  ${C_CYAN}push${C_RESET}      Push all repositories\n\n"
+
+    printf "${C_BOLD}Status Columns:${C_RESET}\n"
+    printf "  ${C_DIM}Cloned${C_RESET}    - Repository exists locally\n"
+    printf "  ${C_DIM}Local${C_RESET}     - Uncommitted changes (Clean/Dirty)\n"
+    printf "  ${C_DIM}Unpushed${C_RESET}  - Commits not pushed to remote\n"
+    printf "  ${C_DIM}To Pull${C_RESET}   - Commits on remote not pulled\n"
+    printf "  ${C_DIM}CI${C_RESET}        - GitHub Actions status (requires gh)\n\n"
+
+    printf "${C_BOLD}Config:${C_RESET}\n"
+    printf "  ${C_DIM}$CONFIG_FILE${C_RESET}\n\n"
+
+    printf "${C_BOLD}Workdir:${C_RESET}\n"
+    printf "  ${C_DIM}$WORKDIR${C_RESET}\n"
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+main() {
+    # Parse config first
+    parse_config
+
+    case "${1:-}" in
+        --help|-h|help)
+            show_help
+            ;;
+        --sh|--shell)
+            tui_shell
+            ;;
+        --py|--python)
+            if [ -f "$PYTHON_TUI" ] && command -v python3 >/dev/null 2>&1; then
+                python3 "$PYTHON_TUI" "${@:2}"
+            else
+                printf "$FAIL ${C_RED}Python TUI not available${C_RESET}\n"
+                printf "Falling back to shell TUI...\n\n"
+                sleep 1
+                tui_shell
+            fi
+            ;;
+        status)
+            cmd_status
+            ;;
+        fetch)
+            cmd_status_fetch
+            ;;
+        clone)
+            cmd_clone_menu
+            ;;
+        sync)
+            cmd_sync "${2:-theirs}"
+            ;;
+        pull)
+            cmd_pull "${2:-theirs}"
+            ;;
+        push)
+            cmd_push
+            ;;
+        "")
+            # Default: try Python TUI, fallback to shell
+            if [ -f "$PYTHON_TUI" ] && command -v python3 >/dev/null 2>&1; then
+                python3 "$PYTHON_TUI"
+            else
+                tui_shell
+            fi
+            ;;
+        *)
+            printf "$FAIL ${C_RED}Unknown command: $1${C_RESET}\n\n"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

@@ -1,13 +1,13 @@
 {
-  "_comment": "gcl.py configuration - Git Clone/Pull/Push Manager",
+  "_comment": "gcl - Git Clone/Pull/Push Manager configuration",
   "_schema": {
-    "public_repos": "Dictionary of public repository names to git URLs",
-    "private_repos": "Dictionary of private repository names to git URLs",
-    "workdir": "Default working directory for git operations"
+    "workdir": "Base directory where repos are cloned",
+    "public_repos": "Public repository name -> git URL",
+    "private_repos": "Private repository name -> git URL"
   },
-  "workdir": "/home/diego/mnt_git",
+  "workdir": "/home/diego/Mounts",
   "public_repos": {
-    "tools": "git@github.com:diegonmarcos/ops-Tooling.git",
+    "Tools": "git@github.com:diegonmarcos/ops-Tooling.git",
     "unix": "git@github.com:diegonmarcos/unix.git",
     "cloud": "git@github.com:diegonmarcos/cloud.git",
     "front": "git@github.com:diegonmarcos/diegonmarcos.github.io.git",
@@ -15,10 +15,10 @@
     "back-System": "git@github.com:diegonmarcos/back-System.git",
     "back-Graphic": "git@github.com:diegonmarcos/back-Graphic.git",
     "cyber-Cyberwarfare": "git@github.com:diegonmarcos/cyber-Cyberwarfare.git",
-    "ops-Mylibs": "git@github.com:diegonmarcos/ops-Mylibs.git",
+    "ops-Mylibs": "git@github.com:diegonmarcos/ops-Mylibs.git"
   },
   "private_repos": {
-    "vault": "git@github.com:diegonmarcos/vault.git",
+    "Vault": "git@github.com:diegonmarcos/vault.git",
     "notes": "git@github.com:diegonmarcos/front-Notes_md.git",
     "z-lecole42": "git@github.com:diegonmarcos/lecole42.git",
     "z-dev": "git@github.com:diegonmarcos/dev.git"
