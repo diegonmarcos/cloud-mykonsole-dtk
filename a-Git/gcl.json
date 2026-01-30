@@ -1,11 +1,14 @@
 {
   "_comment": "gcl - Git Clone/Pull/Push Manager configuration",
-  "_schema": {
-    "workdir": "Base directory where repos are cloned",
-    "public_repos": "Public repository name -> git URL",
-    "private_repos": "Private repository name -> git URL"
+  "settings": {
+    "workdir": "/home/diego/Mounts/Git",
+    "merge_strategy": "theirs",
+    "auto_fetch": false
   },
-  "workdir": "/home/diego/Mounts",
+  "dependencies": {
+    "required": ["git"],
+    "optional": ["gh"]
+  },
   "public_repos": {
     "Tools": "git@github.com:diegonmarcos/ops-Tooling.git",
     "unix": "git@github.com:diegonmarcos/unix.git",
