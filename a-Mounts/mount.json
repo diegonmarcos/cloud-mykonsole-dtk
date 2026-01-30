@@ -10,6 +10,13 @@
     }
   },
   {
+    "_settings": {
+      "mount_dir": "/home/diego/Mounts/Storage",
+      "rclone_opts": "--vfs-cache-mode writes",
+      "log_file": ".mount.log"
+    }
+  },
+  {
     "_oci_flex": {
       "instance_id": "ocid1.instance.oc1.eu-marseille-1.anwxeljruadvczachwpa3qrh7n25vfez3smidz4o7gpmtj4ga4d7zqlja5yq",
       "region": "eu-marseille-1"

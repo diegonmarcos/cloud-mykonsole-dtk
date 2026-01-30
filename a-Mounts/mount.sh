@@ -1,20 +1,525 @@
 #!/bin/sh
 # FUSE Mount Manager - Unified mount manager for VMs, Drives, and Phones
 # Author: Diego Nepomuceno Marcos
-# Version: 1.1
+# Version: 1.3
 
 set -e
 
-FUSE_DIR="/home/diego/mnt_mnt"
-CONFIG_FILE="$FUSE_DIR/mount.json"
-LOG_FILE="$FUSE_DIR/.mount.log"
-RCLONE_OPTS="--vfs-cache-mode writes"
+# Config file is relative to script location
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/mount.json"
+
+# ==============================================================================
+# COLORS (defined early for dependency messages)
+# ==============================================================================
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+DIM='\033[2m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Unicode symbols
+SYM_CHECK="✓"
+SYM_CROSS="✗"
+SYM_DOT="●"
+SYM_CIRCLE="○"
+SYM_ARROW="→"
+SYM_WARN="⚠"
+
+# ==============================================================================
+# DISTRO DETECTION
+# ==============================================================================
+
+detect_distro() {
+    if [ -f /etc/NIXOS ] || [ -d /nix/store ]; then
+        echo "nixos"
+    elif [ -f /etc/arch-release ]; then
+        echo "arch"
+    elif [ -f /etc/debian_version ]; then
+        echo "debian"
+    elif [ -f /etc/fedora-release ]; then
+        echo "fedora"
+    elif [ -f /etc/alpine-release ]; then
+        echo "alpine"
+    else
+        echo "unknown"
+    fi
+}
+
+DISTRO="$(detect_distro)"
+
+# ==============================================================================
+# DEPENDENCY DEFINITIONS
+# ==============================================================================
+
+# Format: "command|description|arch_pkg|debian_pkg|fedora_pkg|nix_pkg|required"
+DEPS_CORE="
+jq|JSON processor|jq|jq|jq|jq|yes
+rclone|Cloud storage mounter|rclone|rclone|rclone|rclone|yes
+fusermount|FUSE unmount utility|fuse2|fuse|fuse|fuse|yes
+"
+
+DEPS_PHONE="
+kdeconnect-cli|KDE Connect CLI|kdeconnect|kdeconnect|kdeconnect|kdeconnect|no
+qdbus|Qt D-Bus tool|qt5-tools|qttools5-dev-tools|qt5-qttools|qt5.qttools|no
+"
+
+DEPS_OCI="
+oci|Oracle Cloud CLI|oci-cli(AUR)|python3-oci-cli|oci-cli|oci-cli|no
+"
+
+# ==============================================================================
+# DEPENDENCY FUNCTIONS
+# ==============================================================================
+
+get_pkg_manager_cmd() {
+    case "$DISTRO" in
+        nixos)   echo "nix-env -iA nixpkgs" ;;
+        arch)    echo "sudo pacman -S --noconfirm" ;;
+        debian)  echo "sudo apt-get install -y" ;;
+        fedora)  echo "sudo dnf install -y" ;;
+        alpine)  echo "sudo apk add" ;;
+        *)       echo "" ;;
+    esac
+}
+
+get_pkg_name() {
+    dep_line="$1"
+    case "$DISTRO" in
+        arch)    echo "$dep_line" | cut -d'|' -f3 ;;
+        debian)  echo "$dep_line" | cut -d'|' -f4 ;;
+        fedora)  echo "$dep_line" | cut -d'|' -f5 ;;
+        nixos)   echo "$dep_line" | cut -d'|' -f6 ;;
+        *)       echo "$dep_line" | cut -d'|' -f3 ;;
+    esac
+}
+
+check_dep() {
+    cmd="$1"
+    command -v "$cmd" >/dev/null 2>&1
+}
+
+install_dep() {
+    dep_line="$1"
+    cmd=$(echo "$dep_line" | cut -d'|' -f1)
+    pkg=$(get_pkg_name "$dep_line")
+    pkg_cmd=$(get_pkg_manager_cmd)
+
+    if [ -z "$pkg_cmd" ]; then
+        printf "${RED}${SYM_CROSS}${NC} Unknown distro. Install manually: %s\n" "$pkg"
+        return 1
+    fi
+
+    # NixOS special handling
+    if [ "$DISTRO" = "nixos" ]; then
+        printf "${YELLOW}${SYM_WARN}${NC} NixOS detected. Recommended approaches:\n"
+        printf "  ${DIM}1. Add to configuration.nix:${NC}\n"
+        printf "     ${CYAN}environment.systemPackages = [ pkgs.%s ];${NC}\n" "$pkg"
+        printf "  ${DIM}2. Temporary install:${NC}\n"
+        printf "     ${CYAN}nix-shell -p %s${NC}\n" "$pkg"
+        printf "  ${DIM}3. User profile (not recommended):${NC}\n"
+        printf "     ${CYAN}nix-env -iA nixpkgs.%s${NC}\n" "$pkg"
+        printf "\nInstall to user profile now? [y/N] "
+        read -r answer
+        case "$answer" in
+            [Yy]*)
+                nix-env -iA "nixpkgs.$pkg"
+                return $?
+                ;;
+            *)
+                printf "${YELLOW}Skipped.${NC} Add to configuration.nix for persistent install.\n"
+                return 1
+                ;;
+        esac
+    fi
+
+    # Check for AUR packages on Arch
+    if [ "$DISTRO" = "arch" ] && echo "$pkg" | grep -q "(AUR)"; then
+        pkg=$(echo "$pkg" | sed 's/(AUR)//')
+        if command -v yay >/dev/null 2>&1; then
+            printf "${CYAN}Installing %s from AUR...${NC}\n" "$pkg"
+            yay -S --noconfirm "$pkg"
+            return $?
+        elif command -v paru >/dev/null 2>&1; then
+            printf "${CYAN}Installing %s from AUR...${NC}\n" "$pkg"
+            paru -S --noconfirm "$pkg"
+            return $?
+        else
+            printf "${RED}${SYM_CROSS}${NC} AUR helper (yay/paru) required for: %s\n" "$pkg"
+            printf "  Install yay: ${CYAN}sudo pacman -S --needed git base-devel && git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si${NC}\n"
+            return 1
+        fi
+    fi
+
+    printf "${CYAN}Installing %s...${NC}\n" "$pkg"
+    # shellcheck disable=SC2086
+    $pkg_cmd $pkg
+    return $?
+}
+
+check_all_deps() {
+    missing_core=""
+    missing_phone=""
+    missing_oci=""
+
+    # Check core deps
+    echo "$DEPS_CORE" | while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        cmd=$(echo "$line" | cut -d'|' -f1)
+        if ! check_dep "$cmd"; then
+            echo "$cmd"
+        fi
+    done
+}
+
+show_deps_status() {
+    printf "\n${CYAN}${BOLD}╔════════════════════════════════════════════════╗${NC}\n"
+    printf "${CYAN}${BOLD}║           Dependencies Status                  ║${NC}\n"
+    printf "${CYAN}${BOLD}╚════════════════════════════════════════════════╝${NC}\n\n"
+
+    printf "${DIM}Detected distro:${NC} ${YELLOW}%s${NC}\n\n" "$DISTRO"
+
+    # Core dependencies
+    printf "${GREEN}${BOLD}▸ Core (Required)${NC}\n"
+    printf "${DIM}────────────────────────────────────────────────${NC}\n"
+    echo "$DEPS_CORE" | while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        cmd=$(echo "$line" | cut -d'|' -f1)
+        desc=$(echo "$line" | cut -d'|' -f2)
+        pkg=$(get_pkg_name "$line")
+        if check_dep "$cmd"; then
+            printf "  ${GREEN}${SYM_CHECK}${NC} %-18s ${DIM}%s${NC}\n" "$cmd" "$desc"
+        else
+            printf "  ${RED}${SYM_CROSS}${NC} %-18s ${DIM}%s${NC} ${RED}[%s]${NC}\n" "$cmd" "$desc" "$pkg"
+        fi
+    done
+
+    # Phone dependencies
+    printf "\n${BLUE}${BOLD}▸ Phone Mount (Optional)${NC}\n"
+    printf "${DIM}────────────────────────────────────────────────${NC}\n"
+    echo "$DEPS_PHONE" | while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        cmd=$(echo "$line" | cut -d'|' -f1)
+        desc=$(echo "$line" | cut -d'|' -f2)
+        pkg=$(get_pkg_name "$line")
+        if check_dep "$cmd"; then
+            printf "  ${GREEN}${SYM_CHECK}${NC} %-18s ${DIM}%s${NC}\n" "$cmd" "$desc"
+        else
+            printf "  ${DIM}${SYM_CIRCLE}${NC} %-18s ${DIM}%s${NC} ${YELLOW}[%s]${NC}\n" "$cmd" "$desc" "$pkg"
+        fi
+    done
+
+    # OCI dependencies
+    printf "\n${MAGENTA}${BOLD}▸ OCI Flex Control (Optional)${NC}\n"
+    printf "${DIM}────────────────────────────────────────────────${NC}\n"
+    echo "$DEPS_OCI" | while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        cmd=$(echo "$line" | cut -d'|' -f1)
+        desc=$(echo "$line" | cut -d'|' -f2)
+        pkg=$(get_pkg_name "$line")
+        if check_dep "$cmd"; then
+            printf "  ${GREEN}${SYM_CHECK}${NC} %-18s ${DIM}%s${NC}\n" "$cmd" "$desc"
+        else
+            printf "  ${DIM}${SYM_CIRCLE}${NC} %-18s ${DIM}%s${NC} ${YELLOW}[%s]${NC}\n" "$cmd" "$desc" "$pkg"
+        fi
+    done
+
+    # NixOS notice
+    if [ "$DISTRO" = "nixos" ]; then
+        printf "\n${YELLOW}${BOLD}NixOS Note:${NC}\n"
+        printf "${DIM}────────────────────────────────────────────────${NC}\n"
+        printf "  For persistent installs, add packages to:\n"
+        printf "  ${CYAN}/etc/nixos/configuration.nix${NC}\n"
+        printf "  Then run: ${CYAN}sudo nixos-rebuild switch${NC}\n"
+    fi
+
+    printf "\n"
+}
+
+deps_menu() {
+    printf "\n${CYAN}${BOLD}╔════════════════════════════════════════════════╗${NC}\n"
+    printf "${CYAN}${BOLD}║           Dependencies Manager                 ║${NC}\n"
+    printf "${CYAN}${BOLD}╚════════════════════════════════════════════════╝${NC}\n\n"
+
+    printf "${DIM}Distro:${NC} ${YELLOW}%s${NC}    " "$DISTRO"
+    pkg_cmd=$(get_pkg_manager_cmd)
+    if [ -n "$pkg_cmd" ]; then
+        printf "${DIM}Pkg manager:${NC} ${GREEN}%s${NC}\n\n" "$(echo "$pkg_cmd" | cut -d' ' -f1-2)"
+    else
+        printf "${RED}Unknown package manager${NC}\n\n"
+    fi
+
+    printf "${BOLD}Actions:${NC}\n"
+    printf "  ${GREEN}1${NC}  Show dependency status\n"
+    printf "  ${GREEN}2${NC}  Install ALL missing (core + optional)\n"
+    printf "  ${GREEN}3${NC}  Install core only (jq, rclone, fuse)\n"
+    printf "  ${GREEN}4${NC}  Install phone support (kdeconnect)\n"
+    printf "  ${GREEN}5${NC}  Install OCI CLI\n"
+    printf "  ${DIM}0${NC}  Back\n"
+    printf "\n${BOLD}Choice:${NC} "
+    read -r choice
+
+    case "$choice" in
+        1) show_deps_status ;;
+        2) install_all_deps ;;
+        3) install_core_deps ;;
+        4) install_phone_deps ;;
+        5) install_oci_deps ;;
+        0) return ;;
+        *) printf "${RED}Invalid choice${NC}\n" ;;
+    esac
+}
+
+# Collect missing packages from a dep list
+get_missing_pkgs() {
+    deps="$1"
+    missing=""
+    echo "$deps" | while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        cmd=$(echo "$line" | cut -d'|' -f1)
+        if ! check_dep "$cmd"; then
+            pkg=$(get_pkg_name "$line")
+            echo "$pkg"
+        fi
+    done
+}
+
+# NixOS batch installer
+nixos_install_batch() {
+    pkgs="$1"
+    category="$2"
+
+    if [ -z "$pkgs" ]; then
+        printf "${GREEN}${SYM_CHECK}${NC} All %s dependencies installed!\n" "$category"
+        return 0
+    fi
+
+    # Convert newlines to spaces
+    pkg_list=$(echo "$pkgs" | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
+
+    printf "\n${YELLOW}${BOLD}NixOS - Missing %s packages:${NC} %s\n\n" "$category" "$pkg_list"
+    printf "${BOLD}How to install:${NC}\n"
+    printf "  ${GREEN}1${NC}  Open nix-shell with packages ${DIM}(temporary, recommended for testing)${NC}\n"
+    printf "  ${GREEN}2${NC}  Copy configuration.nix snippet ${DIM}(persistent, recommended)${NC}\n"
+    printf "  ${GREEN}3${NC}  Install to user profile ${DIM}(nix-env, not recommended)${NC}\n"
+    printf "  ${DIM}0${NC}  Skip\n"
+    printf "\n${BOLD}Choice:${NC} "
+    read -r choice
+
+    case "$choice" in
+        1)
+            printf "\n${CYAN}${BOLD}Run this command:${NC}\n\n"
+            printf "  ${GREEN}nix-shell -p %s --run '%s'${NC}\n\n" "$pkg_list" "$0"
+            printf "${DIM}Or for interactive shell:${NC}\n"
+            printf "  ${GREEN}nix-shell -p %s${NC}\n" "$pkg_list"
+            printf "  ${DIM}Then run:${NC} ${GREEN}./mount.sh${NC} ${DIM}(not 'sh mount.sh')${NC}\n\n"
+            printf "Open interactive nix-shell now? [Y/n] "
+            read -r open_shell
+            case "$open_shell" in
+                [Nn]*) printf "${YELLOW}Skipped.${NC}\n" ;;
+                *)
+                    printf "\n${CYAN}Opening nix-shell...${NC}\n"
+                    printf "${DIM}Run ${GREEN}./mount.sh${NC}${DIM} inside the shell, then 'exit' when done${NC}\n\n"
+                    # shellcheck disable=SC2086
+                    nix-shell -p $pkg_list
+                    printf "\n${GREEN}${SYM_CHECK}${NC} Exited nix-shell\n"
+                    ;;
+            esac
+            ;;
+        2)
+            printf "\n${CYAN}Add this to your configuration.nix:${NC}\n\n"
+            printf "${GREEN}environment.systemPackages = with pkgs; [${NC}\n"
+            for pkg in $pkg_list; do
+                printf "  ${GREEN}%s${NC}\n" "$pkg"
+            done
+            printf "${GREEN}];${NC}\n\n"
+            printf "${DIM}Then run: ${CYAN}sudo nixos-rebuild switch${NC}\n"
+            printf "\n${YELLOW}Copied to clipboard?${NC} "
+            if command -v wl-copy >/dev/null 2>&1; then
+                snippet="environment.systemPackages = with pkgs; [\n"
+                for pkg in $pkg_list; do
+                    snippet="$snippet  $pkg\n"
+                done
+                snippet="$snippet];"
+                printf "%b" "$snippet" | wl-copy
+                printf "${GREEN}Yes (wl-copy)${NC}\n"
+            elif command -v xclip >/dev/null 2>&1; then
+                snippet="environment.systemPackages = with pkgs; [\n"
+                for pkg in $pkg_list; do
+                    snippet="$snippet  $pkg\n"
+                done
+                snippet="$snippet];"
+                printf "%b" "$snippet" | xclip -selection clipboard
+                printf "${GREEN}Yes (xclip)${NC}\n"
+            else
+                printf "${DIM}No clipboard tool found${NC}\n"
+            fi
+            ;;
+        3)
+            printf "\n${CYAN}Installing to user profile...${NC}\n"
+            for pkg in $pkg_list; do
+                printf "  ${CYAN}Installing %s...${NC}\n" "$pkg"
+                nix-env -iA "nixpkgs.$pkg" || true
+            done
+            printf "${GREEN}${SYM_CHECK}${NC} Done!\n"
+            ;;
+        0|*)
+            printf "${YELLOW}Skipped.${NC}\n"
+            ;;
+    esac
+}
+
+# Generic installer (for non-NixOS)
+install_deps_generic() {
+    deps="$1"
+    category="$2"
+
+    printf "\n${CYAN}${BOLD}Installing %s dependencies...${NC}\n\n" "$category"
+
+    echo "$deps" | while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        cmd=$(echo "$line" | cut -d'|' -f1)
+        if ! check_dep "$cmd"; then
+            install_dep "$line" || true
+        else
+            printf "${GREEN}${SYM_CHECK}${NC} %s already installed\n" "$cmd"
+        fi
+    done
+}
+
+install_core_deps() {
+    if [ "$DISTRO" = "nixos" ]; then
+        missing=$(get_missing_pkgs "$DEPS_CORE")
+        nixos_install_batch "$missing" "core"
+    else
+        install_deps_generic "$DEPS_CORE" "core"
+    fi
+}
+
+install_phone_deps() {
+    if [ "$DISTRO" = "nixos" ]; then
+        missing=$(get_missing_pkgs "$DEPS_PHONE")
+        nixos_install_batch "$missing" "phone"
+    else
+        install_deps_generic "$DEPS_PHONE" "phone"
+    fi
+}
+
+install_oci_deps() {
+    if [ "$DISTRO" = "nixos" ]; then
+        missing=$(get_missing_pkgs "$DEPS_OCI")
+        nixos_install_batch "$missing" "OCI"
+    else
+        install_deps_generic "$DEPS_OCI" "OCI"
+    fi
+}
+
+install_all_deps() {
+    if [ "$DISTRO" = "nixos" ]; then
+        # Collect all missing
+        missing_core=$(get_missing_pkgs "$DEPS_CORE")
+        missing_phone=$(get_missing_pkgs "$DEPS_PHONE")
+        missing_oci=$(get_missing_pkgs "$DEPS_OCI")
+        all_missing=$(printf "%s\n%s\n%s" "$missing_core" "$missing_phone" "$missing_oci" | grep -v '^$' | sort -u)
+        nixos_install_batch "$all_missing" "all"
+    else
+        install_deps_generic "$DEPS_CORE" "core"
+        install_deps_generic "$DEPS_PHONE" "phone"
+        install_deps_generic "$DEPS_OCI" "OCI"
+        printf "\n${GREEN}${SYM_CHECK}${NC} Done!\n"
+    fi
+}
+
+# ==============================================================================
+# JQ CHECK (after colors are defined)
+# ==============================================================================
+
+# Commands that work without jq
+case "${1:-}" in
+    deps)
+        show_deps_status
+        exit 0
+        ;;
+    deps-install)
+        install_core_deps
+        exit 0
+        ;;
+    deps-phone)
+        install_phone_deps
+        exit 0
+        ;;
+    deps-oci)
+        install_oci_deps
+        exit 0
+        ;;
+    deps-all)
+        install_all_deps
+        exit 0
+        ;;
+    -h|--help|help)
+        # Minimal help without jq
+        if ! command -v jq >/dev/null 2>&1; then
+            printf "\n${CYAN}${BOLD}FUSE Mount Manager v1.3${NC}\n\n"
+            printf "${YELLOW}${SYM_WARN} jq not installed${NC} - showing minimal help\n\n"
+            printf "${BOLD}Dependency commands (work without jq):${NC}\n"
+            printf "  ${BLUE}deps${NC}           Show dependency status\n"
+            printf "  ${BLUE}deps-install${NC}   Install core deps (jq, rclone, fuse)\n"
+            printf "  ${BLUE}deps-phone${NC}     Install phone deps (kdeconnect)\n"
+            printf "  ${BLUE}deps-oci${NC}       Install OCI CLI\n"
+            printf "  ${BLUE}deps-all${NC}       Install all dependencies\n"
+            printf "\nRun ${CYAN}%s deps-install${NC} first, then ${CYAN}%s --help${NC} for full help.\n" "$0" "$0"
+            exit 0
+        fi
+        ;;
+esac
+
+# Check jq for other commands
+if ! command -v jq >/dev/null 2>&1; then
+    # Special message if inside a nix-shell (shouldn't happen but helps debug)
+    if [ -n "$IN_NIX_SHELL" ]; then
+        printf "${RED}${SYM_CROSS}${NC} jq not found even though you're in a nix-shell.\n"
+        printf "  This can happen if you ran ${DIM}sh mount.sh${NC} instead of ${CYAN}./mount.sh${NC}\n"
+        printf "  Try: ${CYAN}chmod +x mount.sh && ./mount.sh${NC}\n"
+        exit 1
+    fi
+    printf "${RED}${SYM_CROSS}${NC} jq is required for this command.\n"
+    printf "  Run: ${CYAN}%s deps${NC} to check dependencies\n" "$0"
+    printf "  Run: ${CYAN}%s deps-install${NC} to install core deps\n" "$0"
+    exit 1
+fi
+
+# Load settings from JSON (with fallbacks)
+# Note: _settings is inside an array element, so we need to search for it
+get_setting() {
+    key="$1"
+    default="$2"
+    val=$(jq -r ".[] | select(has(\"_settings\")) | ._settings.$key // empty" "$CONFIG_FILE" 2>/dev/null)
+    if [ -n "$val" ] && [ "$val" != "null" ]; then
+        echo "$val"
+    else
+        echo "$default"
+    fi
+}
+
+FUSE_DIR="$(get_setting "mount_dir" "/home/diego/mnt_mnt")"
+RCLONE_OPTS="$(get_setting "rclone_opts" "--vfs-cache-mode writes")"
+LOG_FILE_NAME="$(get_setting "log_file" ".mount.log")"
+LOG_FILE="$FUSE_DIR/$LOG_FILE_NAME"
 
 # ==============================================================================
 # LOGGING
 # ==============================================================================
 
 init_log() {
+    # Create directory if it doesn't exist
+    if [ ! -d "$FUSE_DIR" ]; then
+        mkdir -p "$FUSE_DIR"
+    fi
     if [ ! -f "$LOG_FILE" ]; then
         touch "$LOG_FILE"
     fi
@@ -39,65 +544,45 @@ init_log
 # JSON CONFIG HELPERS
 # ==============================================================================
 
-check_jq() {
-    if ! command -v jq >/dev/null 2>&1; then
-        error "jq is required. Install: sudo pacman -S jq"
-        exit 1
-    fi
-}
-
 # Get phone config from JSON
 get_phone_config() {
     key="$1"
-    check_jq
     jq -r ".[\"_phone\"].$key // empty" "$CONFIG_FILE" 2>/dev/null
 }
 
 # Get OCI Flex config from JSON
 get_oci_flex_config() {
     key="$1"
-    check_jq
     jq -r ".[\"_oci_flex\"].$key // empty" "$CONFIG_FILE" 2>/dev/null
 }
 
 # List enabled mounts by type
 list_mounts() {
     mount_type="$1"
-    check_jq
     jq -r ".[] | select(.type == \"$mount_type\" and .enabled == true) | .name" "$CONFIG_FILE" 2>/dev/null
 }
 
 # Get mount remote name
 get_mount_remote() {
     name="$1"
-    check_jq
     jq -r ".[] | select(.name == \"$name\") | .remote" "$CONFIG_FILE" 2>/dev/null
 }
 
 # Get all mounts (for status display)
 list_all_mounts() {
-    check_jq
     jq -r '.[] | select(has("name") and has("type")) | "\(.name)|\(.type)|\(.enabled)"' "$CONFIG_FILE" 2>/dev/null
 }
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-DIM='\033[2m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-# Unicode symbols
-SYM_CHECK="✓"
-SYM_CROSS="✗"
-SYM_DOT="●"
-SYM_CIRCLE="○"
-SYM_ARROW="→"
-SYM_WARN="⚠"
+# Update a setting in JSON
+update_setting() {
+    key="$1"
+    value="$2"
+    tmp_file=$(mktemp)
+    # Find the _settings object and update the key
+    jq --arg k "$key" --arg v "$value" '
+        map(if has("_settings") then ._settings[$k] = $v else . end)
+    ' "$CONFIG_FILE" > "$tmp_file" && mv "$tmp_file" "$CONFIG_FILE"
+}
 
 # ==============================================================================
 # HELPERS
@@ -696,12 +1181,13 @@ show_menu() {
     clear
     printf "${CYAN}${BOLD}"
     printf "╔══════════════════════════════════════════════╗\n"
-    printf "║         FUSE Mount Manager v1.1              ║\n"
+    printf "║         FUSE Mount Manager v1.3              ║\n"
     printf "╚══════════════════════════════════════════════╝${NC}\n\n"
 
     # Status bar
     printf "${DIM}─────────────────── Status ───────────────────${NC}\n"
     compact_status
+    printf "${DIM}%s${NC}\n" "$FUSE_DIR"
     printf "${DIM}───────────────────────────────────────────────${NC}\n\n"
 
     # Mount section
@@ -725,8 +1211,9 @@ show_menu() {
 
     # Utils section
     printf "${CYAN}${BOLD}▸ Utils${NC}\n"
-    printf "  ${CYAN}s${NC}  Full status    ${CYAN}l${NC}  View log    ${CYAN}c${NC}  Clear log\n"
-    printf "  ${CYAN}r${NC}  Configure remote (rclone)              ${CYAN}q${NC}  Quit\n"
+    printf "  ${CYAN}s${NC}  Full status    ${CYAN}l${NC}  View log      ${CYAN}c${NC}  Clear log\n"
+    printf "  ${CYAN}r${NC}  Rclone config  ${YELLOW}e${NC}  Settings      ${BLUE}d${NC}  Dependencies\n"
+    printf "                                          ${CYAN}q${NC}  Quit\n"
     printf "\n"
 
     printf "${BOLD}Choice:${NC} "
@@ -843,6 +1330,92 @@ clear_log() {
     fi
 }
 
+settings_menu() {
+    printf "\n${CYAN}${BOLD}╔════════════════════════════════════════════╗${NC}\n"
+    printf "${CYAN}${BOLD}║              Settings                      ║${NC}\n"
+    printf "${CYAN}${BOLD}╚════════════════════════════════════════════╝${NC}\n\n"
+
+    printf "${BLUE}${BOLD}Current Settings${NC}\n"
+    printf "${DIM}────────────────────────────────────────────${NC}\n"
+    printf "  ${YELLOW}1${NC}  Mount directory:  ${GREEN}%s${NC}\n" "$FUSE_DIR"
+    printf "  ${YELLOW}2${NC}  Rclone options:   ${GREEN}%s${NC}\n" "$RCLONE_OPTS"
+    printf "  ${YELLOW}3${NC}  Log file:         ${GREEN}%s${NC}\n" "$LOG_FILE_NAME"
+    printf "\n"
+    printf "  ${DIM}e${NC}  Edit config JSON  ${DIM}(%s)${NC}\n" "$CONFIG_FILE"
+    printf "  ${DIM}0${NC}  Back\n"
+    printf "\n${BOLD}Choice:${NC} "
+    read -r choice
+
+    case "$choice" in
+        1)
+            printf "\n${BOLD}Current mount directory:${NC} %s\n" "$FUSE_DIR"
+            printf "${BOLD}New mount directory:${NC} "
+            read -r new_dir
+            if [ -n "$new_dir" ]; then
+                # Expand ~ if present
+                new_dir=$(eval echo "$new_dir")
+                if [ ! -d "$new_dir" ]; then
+                    printf "Directory doesn't exist. Create it? [y/N] "
+                    read -r create
+                    case "$create" in
+                        [Yy]*) mkdir -p "$new_dir" ;;
+                        *) warn "Aborted"; return ;;
+                    esac
+                fi
+                update_setting "mount_dir" "$new_dir"
+                log "Mount directory changed to: $new_dir"
+                printf "${GREEN}${SYM_CHECK}${NC} Mount directory updated to: %s\n" "$new_dir"
+                printf "${YELLOW}${SYM_WARN}${NC} Restart the script to apply changes.\n"
+            fi
+            ;;
+        2)
+            printf "\n${BOLD}Current rclone options:${NC} %s\n" "$RCLONE_OPTS"
+            printf "${DIM}Common options:${NC}\n"
+            printf "  ${DIM}--vfs-cache-mode off${NC}      No caching (default rclone)\n"
+            printf "  ${DIM}--vfs-cache-mode minimal${NC}  Cache only open files\n"
+            printf "  ${DIM}--vfs-cache-mode writes${NC}   Cache writes (recommended)\n"
+            printf "  ${DIM}--vfs-cache-mode full${NC}     Full caching\n"
+            printf "\n${BOLD}New rclone options:${NC} "
+            read -r new_opts
+            if [ -n "$new_opts" ]; then
+                update_setting "rclone_opts" "$new_opts"
+                log "Rclone options changed to: $new_opts"
+                printf "${GREEN}${SYM_CHECK}${NC} Rclone options updated.\n"
+                printf "${YELLOW}${SYM_WARN}${NC} Restart the script to apply changes.\n"
+            fi
+            ;;
+        3)
+            printf "\n${BOLD}Current log file:${NC} %s\n" "$LOG_FILE_NAME"
+            printf "${BOLD}New log file name:${NC} "
+            read -r new_log
+            if [ -n "$new_log" ]; then
+                update_setting "log_file" "$new_log"
+                log "Log file changed to: $new_log"
+                printf "${GREEN}${SYM_CHECK}${NC} Log file updated.\n"
+                printf "${YELLOW}${SYM_WARN}${NC} Restart the script to apply changes.\n"
+            fi
+            ;;
+        e|E)
+            if command -v "${EDITOR:-nano}" >/dev/null 2>&1; then
+                "${EDITOR:-nano}" "$CONFIG_FILE"
+            else
+                printf "${RED}No editor found. Set \$EDITOR or install nano.${NC}\n"
+            fi
+            ;;
+        0) return ;;
+        *) error "Invalid choice" ;;
+    esac
+}
+
+show_settings() {
+    printf "\n${CYAN}${BOLD}Settings${NC} ${DIM}(from %s)${NC}\n" "$CONFIG_FILE"
+    printf "${DIM}────────────────────────────────────────────${NC}\n"
+    printf "  ${BLUE}mount_dir:${NC}    %s\n" "$FUSE_DIR"
+    printf "  ${BLUE}rclone_opts:${NC}  %s\n" "$RCLONE_OPTS"
+    printf "  ${BLUE}log_file:${NC}     %s\n" "$LOG_FILE"
+    printf "\n"
+}
+
 run_tui() {
     while true; do
         show_menu
@@ -872,6 +1445,8 @@ run_tui() {
             l|L) view_log ;;
             c|C) clear_log ;;
             r|R) configure_remote_menu ;;
+            e|E) settings_menu ;;
+            d|D) deps_menu ;;
             q|Q) printf "${GREEN}Bye!${NC}\n"; exit 0 ;;
             *) error "Invalid choice: $choice" ;;
         esac
@@ -885,70 +1460,111 @@ run_tui() {
 # ==============================================================================
 
 show_help() {
-    cat << 'EOF'
-FUSE Mount Manager v1.1 - Unified mount manager for VMs, Drives, and Phones
+    printf "\n"
+    printf "${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════════╗${NC}\n"
+    printf "${CYAN}${BOLD}║           FUSE Mount Manager v1.3                                ║${NC}\n"
+    printf "${CYAN}${BOLD}║     Unified mount manager for VMs, Drives, and Phones           ║${NC}\n"
+    printf "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════════╝${NC}\n"
+    printf "\n"
 
-USAGE:
-    mount.sh [COMMAND] [OPTIONS]
+    printf "${YELLOW}${BOLD}USAGE${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${GREEN}mount.sh${NC} ${DIM}[COMMAND] [OPTIONS]${NC}\n"
+    printf "    ${GREEN}mount.sh${NC}                      ${DIM}# Launch interactive TUI${NC}\n"
+    printf "\n"
 
-COMMANDS:
-    (none)          Launch interactive TUI menu
-    mount           Mount all (VMs + Drives)
-    mount-vms       Mount all VMs
-    mount-drives    Mount all Drives
-    mount-phone     Mount phone via KDE Connect
-    mount-vm NAME   Mount specific VM (OCI_micro_0, OCI_micro_1, OCI_Flex_1, GCP_micro_1)
+    printf "${GREEN}${BOLD}▸ MOUNT COMMANDS${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${GREEN}mount${NC}              Mount all ${DIM}(VMs + Drives)${NC}\n"
+    printf "    ${GREEN}mount-vms${NC}          Mount all VMs\n"
+    printf "    ${GREEN}mount-drives${NC}       Mount all Drives\n"
+    printf "    ${GREEN}mount-phone${NC}        Mount phone via KDE Connect\n"
+    printf "    ${GREEN}mount-vm${NC} ${CYAN}NAME${NC}      Mount specific VM\n"
+    printf "                       ${DIM}Names: OCI_micro_0, OCI_micro_1, OCI_Flex_1, GCP_micro_1${NC}\n"
+    printf "\n"
 
-    unmount         Unmount everything
-    unmount-vms     Unmount all VMs
-    unmount-drives  Unmount all Drives
-    unmount-phone   Unmount phone
-    unmount-vm NAME Unmount specific VM
+    printf "${RED}${BOLD}▸ UNMOUNT COMMANDS${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${RED}unmount${NC}            Unmount everything\n"
+    printf "    ${RED}unmount-vms${NC}        Unmount all VMs\n"
+    printf "    ${RED}unmount-drives${NC}     Unmount all Drives\n"
+    printf "    ${RED}unmount-phone${NC}      Unmount phone\n"
+    printf "    ${RED}unmount-vm${NC} ${CYAN}NAME${NC}    Unmount specific VM\n"
+    printf "\n"
 
-    flex-start      Start OCI Flex VM (wake-on-demand)
-    flex-stop       Stop OCI Flex VM
-    flex-reset      Force reset OCI Flex VM
-    flex-status     Show OCI Flex VM status
+    printf "${MAGENTA}${BOLD}▸ OCI FLEX (Wake-on-Demand)${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${MAGENTA}flex-start${NC}         Start OCI Flex VM\n"
+    printf "    ${MAGENTA}flex-stop${NC}          Stop OCI Flex VM\n"
+    printf "    ${MAGENTA}flex-reset${NC}         Force reset OCI Flex VM\n"
+    printf "    ${MAGENTA}flex-status${NC}        Show OCI Flex VM status\n"
+    printf "\n"
 
-    status, s       Show mount status
-    log             View debug log (last 50 lines)
-    log-clear       Clear debug log
-    help, -h        Show this help
+    printf "${BLUE}${BOLD}▸ UTILITIES${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${BLUE}status${NC}, ${BLUE}s${NC}          Show mount status\n"
+    printf "    ${BLUE}log${NC}                View debug log ${DIM}(last 50 lines)${NC}\n"
+    printf "    ${BLUE}log-clear${NC}          Clear debug log\n"
+    printf "    ${BLUE}-h${NC}, ${BLUE}--help${NC}        Show this help\n"
+    printf "\n"
 
-EXAMPLES:
-    mount.sh                    # Launch TUI
-    mount.sh mount              # Mount all
-    mount.sh mount-vm OCI_Flex_1
-    mount.sh flex-start         # Wake up OCI Flex
-    mount.sh status
-    mount.sh log                # View errors/debug info
+    printf "${YELLOW}${BOLD}▸ CONFIGURATION${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${YELLOW}config${NC}             Show current settings\n"
+    printf "    ${YELLOW}config-edit${NC}        Interactive settings menu\n"
+    printf "    ${YELLOW}config-set${NC} ${CYAN}K V${NC}    Set config key ${DIM}(mount_dir, rclone_opts, log_file)${NC}\n"
+    printf "\n"
 
-MOUNT STRUCTURE:
-    ~/mnt_mnt/
-    ├── .mount.log        # Debug log (hidden)
-    ├── OCI_micro_0/      # Oracle VM 1 (Mail)
-    │   ├── sys/          # Root filesystem
-    │   ├── home/         # Home directories
-    │   ├── docker/       # Docker volumes
-    │   └── mnt/          # Mount points
-    ├── OCI_micro_1/      # Oracle VM 2 (Analytics)
-    ├── OCI_Flex_1/       # Oracle Flex (Photos) - wake-on-demand
-    ├── GCP_micro_1/      # Google Cloud (Proxy)
-    ├── Gdrive_dnm/       # Google Drive (dnm account)
-    ├── Gdrive_me/        # Google Drive (me account)
-    ├── samsung_gS21/     # Phone (KDE Connect)
-    └── Containers/       # Symlinks to all docker volumes
+    printf "${BLUE}${BOLD}▸ DEPENDENCIES${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${BLUE}deps${NC}               Show dependency status ${DIM}(works without jq)${NC}\n"
+    printf "    ${BLUE}deps-install${NC}       Install core dependencies\n"
+    printf "    ${BLUE}deps-phone${NC}         Install phone mount deps ${DIM}(kdeconnect)${NC}\n"
+    printf "    ${BLUE}deps-oci${NC}           Install OCI CLI\n"
+    printf "    ${BLUE}deps-all${NC}           Install ALL dependencies\n"
+    printf "\n"
 
-REQUIREMENTS:
-    - rclone (configured with remotes: rclone config)
-    - fusermount
-    - oci CLI (for flex control)
-    - kdeconnect-cli, qdbus (for phone)
+    printf "${CYAN}${BOLD}EXAMPLES${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${DIM}\$${NC} ${GREEN}mount.sh${NC}                      ${DIM}# Launch TUI${NC}\n"
+    printf "    ${DIM}\$${NC} ${GREEN}mount.sh${NC} deps                 ${DIM}# Check dependencies${NC}\n"
+    printf "    ${DIM}\$${NC} ${GREEN}mount.sh${NC} deps-install         ${DIM}# Install core deps${NC}\n"
+    printf "    ${DIM}\$${NC} ${GREEN}mount.sh${NC} mount                ${DIM}# Mount all${NC}\n"
+    printf "    ${DIM}\$${NC} ${GREEN}mount.sh${NC} mount-vm OCI_Flex_1  ${DIM}# Mount specific VM${NC}\n"
+    printf "    ${DIM}\$${NC} ${GREEN}mount.sh${NC} flex-start           ${DIM}# Wake up OCI Flex${NC}\n"
+    printf "\n"
 
-TROUBLESHOOTING:
-    If mount fails, check the log: mount.sh log
-    To add missing rclone remote: rclone config
-EOF
+    printf "${CYAN}${BOLD}MOUNT STRUCTURE${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${CYAN}~/mnt_mnt/${NC}\n"
+    printf "    ${DIM}├──${NC} ${DIM}.mount.log${NC}        ${DIM}# Debug log (hidden)${NC}\n"
+    printf "    ${DIM}├──${NC} ${YELLOW}OCI_micro_0/${NC}     ${DIM}# Oracle VM 1 (Mail)${NC}\n"
+    printf "    ${DIM}│   ├──${NC} sys/          ${DIM}# Root filesystem${NC}\n"
+    printf "    ${DIM}│   ├──${NC} home/         ${DIM}# Home directories${NC}\n"
+    printf "    ${DIM}│   ├──${NC} docker/       ${DIM}# Docker volumes${NC}\n"
+    printf "    ${DIM}│   └──${NC} mnt/          ${DIM}# Mount points${NC}\n"
+    printf "    ${DIM}├──${NC} ${YELLOW}OCI_micro_1/${NC}     ${DIM}# Oracle VM 2 (Analytics)${NC}\n"
+    printf "    ${DIM}├──${NC} ${MAGENTA}OCI_Flex_1/${NC}      ${DIM}# Oracle Flex (Photos) - wake-on-demand${NC}\n"
+    printf "    ${DIM}├──${NC} ${YELLOW}GCP_micro_1/${NC}     ${DIM}# Google Cloud (Proxy)${NC}\n"
+    printf "    ${DIM}├──${NC} ${GREEN}Gdrive_dnm/${NC}      ${DIM}# Google Drive (dnm account)${NC}\n"
+    printf "    ${DIM}├──${NC} ${GREEN}Gdrive_me/${NC}       ${DIM}# Google Drive (me account)${NC}\n"
+    printf "    ${DIM}├──${NC} ${BLUE}samsung_gS21/${NC}    ${DIM}# Phone (KDE Connect)${NC}\n"
+    printf "    ${DIM}└──${NC} ${CYAN}Containers/${NC}      ${DIM}# Symlinks to all docker volumes${NC}\n"
+    printf "\n"
+
+    printf "${YELLOW}${BOLD}REQUIREMENTS${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${SYM_DOT} ${GREEN}rclone${NC}           ${DIM}configured with remotes (rclone config)${NC}\n"
+    printf "    ${SYM_DOT} ${GREEN}fusermount${NC}       ${DIM}FUSE utilities${NC}\n"
+    printf "    ${SYM_DOT} ${GREEN}oci${NC}              ${DIM}OCI CLI (for flex control)${NC}\n"
+    printf "    ${SYM_DOT} ${GREEN}kdeconnect-cli${NC}   ${DIM}KDE Connect + qdbus (for phone)${NC}\n"
+    printf "\n"
+
+    printf "${RED}${BOLD}TROUBLESHOOTING${NC}\n"
+    printf "${DIM}──────────────────────────────────────────────────────────────────${NC}\n"
+    printf "    ${SYM_WARN} Mount fails?        ${DIM}Check the log:${NC} ${CYAN}mount.sh log${NC}\n"
+    printf "    ${SYM_WARN} Missing remote?     ${DIM}Add it with:${NC}   ${CYAN}rclone config${NC}\n"
+    printf "\n"
 }
 
 # ==============================================================================
@@ -1021,6 +1637,31 @@ case "${1:-}" in
         ;;
     flex-status)
         flex_status
+        ;;
+    config|settings)
+        show_settings
+        ;;
+    config-edit)
+        settings_menu
+        ;;
+    config-set)
+        if [ -z "${2:-}" ] || [ -z "${3:-}" ]; then
+            error "Usage: $0 config-set KEY VALUE"
+            printf "  Keys: mount_dir, rclone_opts, log_file\n"
+            exit 1
+        fi
+        update_setting "$2" "$3"
+        log "Setting $2 changed to: $3"
+        printf "${GREEN}${SYM_CHECK}${NC} %s = %s\n" "$2" "$3"
+        ;;
+    deps-phone)
+        install_phone_deps
+        ;;
+    deps-oci)
+        install_oci_deps
+        ;;
+    deps-all)
+        install_all_deps
         ;;
     help|-h|--help)
         show_help
