@@ -7,20 +7,18 @@
   },
   "workdir": "/home/diego/mnt_git",
   "public_repos": {
-    "front-Github_profile": "git@github.com:diegonmarcos/diegonmarcos.git",
-    "front-Github_io": "git@github.com:diegonmarcos/diegonmarcos.github.io.git",
-    "back-System": "git@github.com:diegonmarcos/back-System.git",
+    "tools": "git@github.com:diegonmarcos/ops-Tooling.git",
     "unix": "git@github.com:diegonmarcos/unix.git",
+    "cloud": "git@github.com:diegonmarcos/cloud.git",
+    "front": "git@github.com:diegonmarcos/diegonmarcos.github.io.git",
+    "front_gh-profile": "git@github.com:diegonmarcos/diegonmarcos.git",
+    "back-System": "git@github.com:diegonmarcos/back-System.git",
     "back-Graphic": "git@github.com:diegonmarcos/back-Graphic.git",
     "cyber-Cyberwarfare": "git@github.com:diegonmarcos/cyber-Cyberwarfare.git",
-    "ops-Tooling": "git@github.com:diegonmarcos/ops-Tooling.git",
-    "tools": "git@github.com:diegonmarcos/ops-Tooling.git",
     "ops-Mylibs": "git@github.com:diegonmarcos/ops-Mylibs.git",
-    "cloud": "git@github.com:diegonmarcos/cloud.git",
-    "unix": "git@github.com:diegonmarcos/unix.git"
   },
   "private_repos": {
-    "front-Notes_md": "git@github.com:diegonmarcos/front-Notes_md.git",
+    "vault": "git@github.com:diegonmarcos/vault.git",
     "notes": "git@github.com:diegonmarcos/front-Notes_md.git",
     "z-lecole42": "git@github.com:diegonmarcos/lecole42.git",
     "z-dev": "git@github.com:diegonmarcos/dev.git"
