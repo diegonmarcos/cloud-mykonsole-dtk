@@ -1,7 +1,7 @@
 {
   "_comment": "gcl - Git Clone/Pull/Push Manager configuration",
   "settings": {
-    "workdir": "~/git",
+    "workdir": ".",
     "merge_strategy": "theirs",
     "auto_fetch": false
   },
