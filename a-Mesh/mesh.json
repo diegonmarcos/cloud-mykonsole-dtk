@@ -1,0 +1,27 @@
+{
+  "interface": {
+    "address": "10.0.0.5/24",
+    "config_dir": "~/.config/wireguard",
+    "config_file": "wg0.conf",
+    "tunnel_name": "wg0"
+  },
+  "hub": {
+    "name": "gcp-proxy",
+    "wg_ip": "10.0.0.1",
+    "public_ip": "35.226.147.64",
+    "port": 51820,
+    "public_key": "vV/phXUwnCjxACQ5Df11Uw47BzJaK4r85jPYMu2HmDc="
+  },
+  "peers": [
+    { "name": "gcp-proxy",     "wg_ip": "10.0.0.1", "public_ip": "35.226.147.64",   "role": "hub (24/7)" },
+    { "name": "oci-apps-1",    "wg_ip": "10.0.0.2", "public_ip": "144.24.196.72",   "role": "apps (wake-on-demand)" },
+    { "name": "oci-mail",      "wg_ip": "10.0.0.3", "public_ip": "130.110.251.193", "role": "mail (24/7)" },
+    { "name": "oci-analytics", "wg_ip": "10.0.0.4", "public_ip": "129.151.228.66",  "role": "analytics (24/7)" },
+    { "name": "local",         "wg_ip": "10.0.0.5", "public_ip": "N/A",             "role": "client (you)" },
+    { "name": "oci-apps",      "wg_ip": "10.0.0.6", "public_ip": "82.70.229.129",   "role": "general (wake-on-demand)" }
+  ],
+  "dependencies": {
+    "required": ["jq", "ip"],
+    "optional": ["wg", "nc", "systemctl"]
+  }
+}
