@@ -315,22 +315,23 @@ cmd_peers() {
 cmd_dashboard() {
     detect_backend
 
-    printf "\n${C_BOLD}=== WireGuard Mesh VPN ===${C_RESET}\n\n"
+    printf "\n${C_BOLD}=== WireGuard Mesh VPN ===${C_RESET}\n"
 
-    # Tunnel info
-    printf "  Tunnel:  %b" "$(tunnel_state)"
+    # ── Status ──
+    printf "\n  ${C_BOLD}── Status ──${C_RESET}\n\n"
+    printf "    Tunnel:  %b" "$(tunnel_state)"
     if [ "$BACKEND" = "systemd" ]; then
         printf "  ${C_DIM}(systemd: ${BACKEND_UNIT})${C_RESET}"
     else
         printf "  ${C_DIM}(wg-quick)${C_RESET}"
     fi
     printf "\n"
-    printf "  Local:   ${C_CYAN}%s${C_RESET}\n" "$WG_ADDRESS"
-    printf "\n"
+    printf "    Local:   ${C_CYAN}%s${C_RESET}\n" "$WG_ADDRESS"
 
-    # Peer table with status
-    printf "  ${C_BOLD}%-18s %-14s %-22s %-28s %s${C_RESET}\n" "NAME" "WG IP" "PUBLIC IP" "ROLE" "STATUS"
-    printf "  ${C_DIM}────────────────────────────────────────────────────────────────────────────────────${C_RESET}\n"
+    # ── Peers ──
+    printf "\n  ${C_BOLD}── Peers ──${C_RESET}\n\n"
+    printf "    ${C_BOLD}%-18s %-14s %-22s %-28s %s${C_RESET}\n" "NAME" "WG IP" "PUBLIC IP" "ROLE" "STATUS"
+    printf "    ${C_DIM}──────────────────────────────────────────────────────────────────────────────────${C_RESET}\n"
 
     i=0
     while [ "$i" -lt "$PEER_COUNT" ]; do
@@ -342,20 +343,21 @@ cmd_dashboard() {
         status=$(check_peer "$wg_ip" "$name")
 
         if [ "$name" = "local" ]; then
-            printf "  ${C_CYAN}%-18s${C_RESET} %-14s %-22s %-28s %b\n" "$name (you)" "$wg_ip" "$pub_ip" "$role" "$status"
+            printf "    ${C_CYAN}%-18s${C_RESET} %-14s %-22s %-28s %b\n" "$name (you)" "$wg_ip" "$pub_ip" "$role" "$status"
         else
-            printf "  %-18s %-14s %-22s %-28s %b\n" "$name" "$wg_ip" "$pub_ip" "$role" "$status"
+            printf "    %-18s %-14s %-22s %-28s %b\n" "$name" "$wg_ip" "$pub_ip" "$role" "$status"
         fi
         i=$((i + 1))
     done
 
-    printf "\n"
-    printf "  Config:   ${C_DIM}%s${C_RESET}\n" "$WG_CONF"
-    printf "  Backend:  ${C_DIM}%s${C_RESET}\n" "$BACKEND"
-    printf "\n"
+    # ── Config ──
+    printf "\n  ${C_BOLD}── Config ──${C_RESET}\n\n"
+    printf "    File:     ${C_DIM}%s${C_RESET}\n" "$WG_CONF"
+    printf "    Backend:  ${C_DIM}%s (%s)${C_RESET}\n" "$BACKEND" \
+        "$([ "$BACKEND" = "systemd" ] && echo "$BACKEND_UNIT" || echo "$WG_CONF")"
 
-    # Command help
-    printf "  ${C_BOLD}Commands:${C_RESET}\n"
+    # ── Commands ──
+    printf "\n  ${C_BOLD}── Commands ──${C_RESET}\n\n"
     printf "    ${C_GREEN}mesh up${C_RESET}         Start VPN tunnel\n"
     printf "    ${C_RED}mesh down${C_RESET}       Stop VPN tunnel\n"
     printf "    ${C_CYAN}mesh status${C_RESET}     Ping all peers (quick)\n"
