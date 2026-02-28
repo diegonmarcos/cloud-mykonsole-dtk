@@ -199,10 +199,10 @@ rclone_remote_exists() {
 # A) MESH - Data Collection
 # =============================================================================
 
-# Get VM SSH reachability (quick tcp check on port 22)
+# Get VM SSH reachability (fast ssh check)
 vm_is_reachable() {
-    local ip=$1
-    timeout 2 bash -c "echo >/dev/tcp/$ip/22" 2>/dev/null
+    local alias=$1
+    timeout 3 ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes "$alias" exit 2>/dev/null
 }
 
 # Get phone status via KDE Connect
@@ -294,7 +294,7 @@ render_mesh() {
 
         # Check reachability via SSH alias — single SSH call for all metrics
         local state state_sym state_color up_str cpu_str ram_str svc_run
-        if vm_is_reachable "$pub_ip" 2>/dev/null; then
+        if vm_is_reachable "$alias_name" 2>/dev/null; then
             state="RUN"
             state_sym="$S_RUN"
             state_color="$C_OK"
