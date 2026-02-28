@@ -1,0 +1,144 @@
+{
+  "_comment": "Control Center - Unified dashboard configuration",
+  "settings": {
+    "git_workdir": "/home/diego/Mounts/Git",
+    "mount_dir": "/home/diego/Mounts/Storage",
+    "sync_dir": "/home/diego/mnt_syncs",
+    "sync_config_dir": "$HOME/.config/rclone_manager",
+    "rclone_opts": "--vfs-cache-mode writes",
+    "rclone_sync_opts": "--tpslimit 10 --drive-skip-gdocs",
+    "merge_strategy": "theirs",
+    "log_file": ".cc.log",
+    "width": 102
+  },
+  "dependencies": {
+    "required": ["git", "jq", "rclone", "fusermount"],
+    "optional": ["gh", "oci", "kdeconnect-cli", "qdbus"]
+  },
+  "git": {
+    "public_repos": {
+      "Tools": "git@github.com:diegonmarcos/ops-Tooling.git",
+      "unix": "git@github.com:diegonmarcos/unix.git",
+      "cloud": "git@github.com:diegonmarcos/cloud.git",
+      "front": "git@github.com:diegonmarcos/diegonmarcos.github.io.git",
+      "front_gh-profile": "git@github.com:diegonmarcos/diegonmarcos.git",
+      "back-System": "git@github.com:diegonmarcos/back-System.git",
+      "back-Graphic": "git@github.com:diegonmarcos/back-Graphic.git",
+      "cyber-Cyberwarfare": "git@github.com:diegonmarcos/cyber-Cyberwarfare.git",
+      "ops-Mylibs": "git@github.com:diegonmarcos/ops-Mylibs.git"
+    },
+    "private_repos": {
+      "Vault": "git@github.com:diegonmarcos/vault.git",
+      "notes": "git@github.com:diegonmarcos/front-Notes_md.git",
+      "z-lecole42": "git@github.com:diegonmarcos/lecole42.git",
+      "z-dev": "git@github.com:diegonmarcos/dev.git"
+    }
+  },
+  "mesh": {
+    "vms": [
+      {
+        "name": "OCI_micro_0",
+        "alias": "oci-mail",
+        "remote": "OCI_micro_0",
+        "type": "vm",
+        "enabled": true,
+        "wg_ip": "10.0.0.3",
+        "public_ip": "130.110.251.193",
+        "services": ["mailu", "syncthing", "radicale"],
+        "vm_subdirs": ["sys", "home", "docker", "mnt"]
+      },
+      {
+        "name": "OCI_micro_1",
+        "alias": "oci-analytics",
+        "remote": "OCI_micro_1",
+        "type": "vm",
+        "enabled": true,
+        "wg_ip": "10.0.0.4",
+        "public_ip": "129.151.228.66",
+        "services": ["matomo", "windmill"],
+        "vm_subdirs": ["sys", "home", "docker", "mnt"]
+      },
+      {
+        "name": "OCI_Flex_0",
+        "alias": "oci-apps",
+        "remote": "OCI_Flex_0",
+        "type": "vm",
+        "enabled": true,
+        "wg_ip": "10.0.0.6",
+        "public_ip": "82.70.229.129",
+        "services": ["crawlee"],
+        "vm_subdirs": ["sys", "home", "docker", "mnt"],
+        "oci_flex": {
+          "instance_id": "ocid1.instance.oc1.eu-marseille-1.anwxeljruadvczacj7dfxl7uifar574je7fzlvtdjp4ghljdwuwdemsdbiva",
+          "region": "eu-marseille-1"
+        }
+      },
+      {
+        "name": "OCI_Flex_1",
+        "alias": "oci-apps-1",
+        "remote": "OCI_Flex_1",
+        "type": "vm",
+        "enabled": true,
+        "wg_ip": "10.0.0.2",
+        "public_ip": "144.24.196.72",
+        "services": ["photoprism", "nocodb", "code-server", "affine"],
+        "vm_subdirs": ["sys", "home", "docker", "mnt"],
+        "oci_flex": {
+          "instance_id": "ocid1.instance.oc1.eu-marseille-1.anwxeljruadvczachwpa3qrh7n25vfez3smidz4o7gpmtj4ga4d7zqlja5yq",
+          "region": "eu-marseille-1"
+        }
+      },
+      {
+        "name": "GCP_micro_1",
+        "alias": "gcp-proxy",
+        "remote": "GCP_micro_1",
+        "type": "vm",
+        "enabled": true,
+        "wg_ip": "10.0.0.1",
+        "public_ip": "35.226.147.64",
+        "services": ["caddy", "authelia", "vaultwarden", "ntfy", "hickory-dns", "introspect-proxy"],
+        "vm_subdirs": ["sys", "home", "docker", "mnt"]
+      }
+    ],
+    "phone": {
+      "device_id": "28b75fc5_4661_422f_9b7f_38252da1579d",
+      "name": "samsung_gS21",
+      "sftp_base": "/run/user/1000/28b75fc5_4661_422f_9b7f_38252da1579d/storage/emulated/0"
+    }
+  },
+  "drives": [
+    {
+      "name": "Gdrive_dnm",
+      "remote": "Gdrive_dnm",
+      "type": "drive",
+      "enabled": true,
+      "account": "diegonmarcos1@gmail.com"
+    },
+    {
+      "name": "Gdrive_me",
+      "remote": "Gdrive_me",
+      "type": "drive",
+      "enabled": true,
+      "account": "me@diegonmarcos.com"
+    }
+  ],
+  "servers": [
+    {
+      "name": "vault-share",
+      "type": "webdav",
+      "port": 8480,
+      "root": "~/Mounts/Git/vault",
+      "auth": "basic",
+      "enabled": false
+    },
+    {
+      "name": "photos-share",
+      "type": "webdav",
+      "port": 8481,
+      "root": "~/Mounts/Storage/Gdrive_me",
+      "auth": "none",
+      "enabled": false
+    }
+  ],
+  "webservers": []
+}
