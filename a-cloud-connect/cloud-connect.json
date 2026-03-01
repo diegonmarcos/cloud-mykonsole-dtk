@@ -1,5 +1,5 @@
 {
-  "_comment": "Control Center - Unified dashboard configuration",
+  "_comment": "Cloud Connect - Unified dashboard configuration",
   "settings": {
     "git_workdir": "/home/diego/Mounts/Git",
     "mount_dir": "/home/diego/Mounts/Storage",
@@ -8,7 +8,7 @@
     "rclone_opts": "--vfs-cache-mode writes",
     "rclone_sync_opts": "--tpslimit 10 --drive-skip-gdocs",
     "merge_strategy": "theirs",
-    "log_file": ".cc.log",
+    "log_file": ".cloud-connect.log",
     "width": 102
   },
   "dependencies": {
