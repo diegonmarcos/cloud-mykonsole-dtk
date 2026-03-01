@@ -484,9 +484,10 @@ git_activity_sparkline() {
 }
 
 render_git() {
-    # Header
-    printf "  ${BLD}%-17s %-9s %5s %5s %4s %4s %4s %5s %5s %-10s Last Commit${RST}\n" \
-        "Repo" "Branch" "Dirty" "Stash" "Pull" "Push" "CI" "Age" "Size" "Activity"
+    # Header — dual local/remote status columns (like gcl.sh)
+    # Column widths: Repo=20 Branch=10 Local=14 Remote=14 CI=4 Stsh=5 Age=5 Size=6 Spark=9 Commit=rest
+    printf "  ${BLD}%-20s %-10s %-14s %-14s %-4s %-5s %-5s %-6s %-9s %s${RST}\n" \
+        "Repo" "Branch" "Local" "Remote" "CI" "Stsh" "Age" "Size" "Activity" "Last Commit"
     printf "  ${C_DIM}"
     local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
@@ -523,56 +524,78 @@ render_git() {
         [ "$pull" -gt 0 ] 2>/dev/null && pull_total=$((pull_total + pull))
         [ "$push" -gt 0 ] 2>/dev/null && push_total=$((push_total + push))
 
-        # Format dirty
-        local dirty_f stash_f pull_f push_f ci_f
+        # LOCAL STATUS — pad plain text first, then wrap with color
+        local local_plain local_color
         if [ "$dirty" -gt 0 ] 2>/dev/null; then
-            dirty_f="${C_WARN}[${dirty}]${RST}"
-        else
-            dirty_f="${C_DIM}·${RST}"
-        fi
-
-        if [ "$stash" -gt 0 ] 2>/dev/null; then
-            stash_f="${C_WARN}${stash}${RST}"
-        else
-            stash_f="${C_DIM}·${RST}"
-        fi
-
-        if [ "$pull" = "?" ]; then
-            pull_f="${C_DIM}?${RST}"
-        elif [ "$pull" -gt 0 ] 2>/dev/null; then
-            pull_f="${C_INFO}${pull}${RST}"
-        else
-            pull_f="${C_DIM}·${RST}"
-        fi
-
-        if [ "$push" = "?" ]; then
-            push_f="${C_DIM}?${RST}"
+            local_plain="Dirty [$dirty]"; local_color="$C_WARN"
+        elif [ "$push" = "?" ]; then
+            local_plain="No Remote"; local_color="$C_ERR"
         elif [ "$push" -gt 0 ] 2>/dev/null; then
-            push_f="${C_WARN}${push}${RST}"
+            local_plain="$push Unpushed"; local_color="$C_WARN"
         else
-            push_f="${C_DIM}·${RST}"
+            local_plain="OK"; local_color="$C_OK"
         fi
+        local local_padded; local_padded=$(printf "%-14s" "$local_plain")
+        local local_f="${local_color}${local_padded}${RST}"
 
+        # REMOTE STATUS — pad plain text first, then wrap with color
+        local remote_plain remote_color
+        if [ "$pull" = "?" ]; then
+            remote_plain="Not Checked"; remote_color="$C_DIM"
+        elif [ "$pull" -gt 0 ] 2>/dev/null; then
+            remote_plain="$pull To Pull"; remote_color="$C_INFO"
+        else
+            remote_plain="Up to Date"; remote_color="$C_OK"
+        fi
+        local remote_padded; remote_padded=$(printf "%-14s" "$remote_plain")
+        local remote_f="${remote_color}${remote_padded}${RST}"
+
+        # Stash — pad then color
+        local stash_plain stash_color
+        if [ "$stash" -gt 0 ] 2>/dev/null; then
+            stash_plain="$stash"; stash_color="$C_WARN"
+        else
+            stash_plain="·"; stash_color="$C_DIM"
+        fi
+        local stash_padded; stash_padded=$(printf "%-5s" "$stash_plain")
+        local stash_f="${stash_color}${stash_padded}${RST}"
+
+        # CI — pad then color
+        local ci_plain ci_color
         case "$ci" in
-            "$S_OK")   ci_f="${C_OK}${S_DOT} ${S_OK}${RST}" ;;
-            "$S_FAIL") ci_f="${C_ERR}${S_DOT} ${S_FAIL}${RST}" ;;
-            "-")       ci_f="${C_DIM}—${RST}" ;;
-            *)         ci_f="${C_DIM}?${RST}" ;;
+            "$S_OK")   ci_plain="${S_OK}"; ci_color="$C_OK" ;;
+            "$S_FAIL") ci_plain="${S_FAIL}"; ci_color="$C_ERR" ;;
+            "-")       ci_plain="—"; ci_color="$C_DIM" ;;
+            *)         ci_plain="?"; ci_color="$C_DIM" ;;
         esac
+        local ci_padded; ci_padded=$(printf "%-4s" "$ci_plain")
+        local ci_f="${ci_color}${ci_padded}${RST}"
 
         # Activity sparkline
         local spark
         spark=$(git_activity_sparkline "$dir")
 
-        printf "  %-17s %-9s %b%4s %b%4s %b%3s %b%3s  %b %5s %5s %b  %s\n" \
+        # Print row — all fields pre-padded, use %b to emit colors
+        printf "  %-20s %-10s %b%b%b%b%-5s %-6s %b  %s\n" \
             "$repo_name" "$branch" \
-            "$dirty_f" "" "$stash_f" "" "$pull_f" "" "$push_f" "" \
-            "$ci_f" "$age" "$size" "$spark" "$commit_msg"
+            "$local_f" "$remote_f" "$ci_f" "$stash_f" \
+            "$age" "$size" "$spark" "$commit_msg"
     done <<< "$repos"
+
+    # Summary totals
+    local total_repos; total_repos=$(echo "$repos" | grep -c '.' || echo 0)
+    local cloned; cloned=$((total_repos - $(echo "$not_cloned" | wc -w)))
+    printf "\n  ${C_DIM}Total: %s repos | %s cloned | " "$total_repos" "$cloned"
+    [ "$dirty_total" -gt 0 ] && printf "${C_WARN}%s dirty${RST}${C_DIM}" "$dirty_total" || printf "0 dirty"
+    printf " | "
+    [ "$pull_total" -gt 0 ] && printf "${C_INFO}%s to pull${RST}${C_DIM}" "$pull_total" || printf "0 to pull"
+    printf " | "
+    [ "$push_total" -gt 0 ] && printf "${C_WARN}%s to push${RST}" "$push_total" || printf "0 to push"
+    printf "${RST}\n"
 
     # Not cloned line
     if [ -n "$not_cloned" ]; then
-        printf "\n  ${C_DIM}NOT CLONED %s${RST}\n" "$(echo "$not_cloned" | sed 's/ / · /g')"
+        printf "  ${C_DIM}NOT CLONED %s${RST}\n" "$(echo "$not_cloned" | sed 's/ / · /g')"
     fi
 }
 
@@ -976,6 +999,27 @@ render_drives() {
             "$vname" "$vremote" "$subdir_str" "$bar_str" "$mount_base"
         v=$((v+1))
     done
+
+    # Container symlinks
+    if [ -d "$MOUNT_DIR" ]; then
+        local symlink_count=0
+        local symlink_list=""
+        while IFS= read -r link; do
+            [ -z "$link" ] && continue
+            symlink_count=$((symlink_count + 1))
+            local lname; lname=$(basename "$link")
+            local ltarget; ltarget=$(readlink -f "$link" 2>/dev/null || echo "?")
+            symlink_list="${symlink_list}${lname}:${ltarget}\n"
+        done < <(find "$MOUNT_DIR" -maxdepth 1 -type l 2>/dev/null)
+        if [ "$symlink_count" -gt 0 ]; then
+            printf "\n  ${C_DIM}Container symlinks: %d${RST}" "$symlink_count"
+            printf '%b' "$symlink_list" | while IFS=: read -r sn st; do
+                [ -z "$sn" ] && continue
+                printf " ${C_DIM}[%s]${RST}" "$sn"
+            done
+            printf "\n"
+        fi
+    fi
 }
 
 # Drive mount/unmount actions
@@ -1605,15 +1649,39 @@ sync_list_cli() {
 }
 
 render_sync() {
-    # Rules table
-    printf "  ${BLD}%-17s %-4s %-7s %-30s %-26s %-9s Last Run${RST}\n" \
-        "RULES" "Type" "Enabled" "Remote Path" "Local Path" "Conflicts"
+    # Configured Remotes
+    printf "  ${BLD}%-17s %-30s State${RST}\n" "REMOTES" "Name"
     printf "  ${C_DIM}"
     local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
+    if command -v rclone >/dev/null 2>&1; then
+        local remotes; remotes=$(rclone listremotes 2>/dev/null | sed 's/:$//')
+        if [ -n "$remotes" ]; then
+            echo "$remotes" | while read -r remote; do
+                printf "  ${C_OK}${S_DOT}${RST}  %-30s ${C_OK}configured${RST}\n" "$remote"
+            done
+        else
+            printf "  ${C_DIM}No remotes configured${RST}\n"
+        fi
+    else
+        printf "  ${C_DIM}rclone not installed${RST}\n"
+    fi
+    printf "\n"
+
+    # Rules table with count summary
     local rules; rules=$(sync_list_rules)
     local rule_count; rule_count=$(echo "$rules" | jq 'length')
+    local enabled_cnt; enabled_cnt=$(echo "$rules" | jq '[.[] | select(.enabled == true)] | length')
+    local disabled_cnt=$((rule_count - enabled_cnt))
+
+    printf "  ${BLD}%-17s %-4s %-7s %-30s %-26s %-9s Last Run${RST}" \
+        "RULES" "Type" "Enabled" "Remote Path" "Local Path" "Conflicts"
+    printf "  ${C_DIM}(%s total, ${RST}${C_OK}%s on${RST}${C_DIM}, %s off)${RST}\n" \
+        "$rule_count" "$enabled_cnt" "$disabled_cnt"
+    printf "  ${C_DIM}"
+    local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
 
     if [ "$rule_count" -gt 0 ]; then
         echo "$rules" | jq -c '.[]' | while IFS= read -r rule; do
@@ -2084,6 +2152,206 @@ sync_quick_menu() {
 }
 
 # =============================================================================
+# D) SYNC - Ad-hoc CLI & Extra Commands
+# =============================================================================
+
+# Ad-hoc one-way sync from CLI: cloud-connect.sh sync-to SRC DEST [--dry-run] [--background]
+sync_adhoc() {
+    local source="$1" dest="$2"
+    [ -z "$source" ] || [ -z "$dest" ] && {
+        printf "${C_ERR}Usage: cloud-connect.sh sync-to SOURCE DEST [--dry-run] [--background]${RST}\n"
+        return 1
+    }
+    shift 2
+    local dry_run="false" background="false"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dry-run) dry_run="true" ;;
+            --background|-bg) background="true" ;;
+        esac
+        shift
+    done
+
+    if [ "$background" = "true" ]; then
+        local job_id; job_id=$(generate_job_id)
+        local job_log="$SYNC_LOG_DIR/${job_id}.log"
+        local cmd="rclone sync '$source' '$dest' $RCLONE_SYNC_OPTS -v --stats 3s --stats-log-level NOTICE"
+        [ "$dry_run" = "true" ] && cmd="$cmd --dry-run"
+        log_msg "Running adhoc sync: $cmd"
+        eval "$cmd" > "$job_log" 2>&1 &
+        local pid=$!
+        sync_add_job "$job_id" "adhoc-sync" "$source" "$dest" "sync" "$pid" "$job_log"
+        printf "${C_OK}${S_OK}${RST} Started adhoc sync (PID: %s, Job: %s)\n" "$pid" "$job_id"
+        printf "  Log: %s\n" "$job_log"
+    else
+        sync_one_way "$source" "$dest" "$dry_run" "true"
+    fi
+}
+
+# Ad-hoc bisync from CLI: cloud-connect.sh bisync-to P1 P2 [--dry-run] [--resync] [--background]
+bisync_adhoc() {
+    local p1="$1" p2="$2"
+    [ -z "$p1" ] || [ -z "$p2" ] && {
+        printf "${C_ERR}Usage: cloud-connect.sh bisync-to PATH1 PATH2 [--dry-run] [--resync] [--background]${RST}\n"
+        return 1
+    }
+    shift 2
+    local dry_run="false" resync="false" background="false"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dry-run) dry_run="true" ;;
+            --resync) resync="true" ;;
+            --background|-bg) background="true" ;;
+        esac
+        shift
+    done
+
+    if [ "$background" = "true" ]; then
+        local job_id; job_id=$(generate_job_id)
+        local job_log="$SYNC_LOG_DIR/${job_id}.log"
+        local cmd="rclone bisync '$p1' '$p2' $RCLONE_SYNC_OPTS -v --stats 3s --stats-log-level NOTICE"
+        [ "$resync" = "true" ] && cmd="$cmd --resync"
+        [ "$dry_run" = "true" ] && cmd="$cmd --dry-run"
+        log_msg "Running adhoc bisync: $cmd"
+        eval "$cmd" > "$job_log" 2>&1 &
+        local pid=$!
+        sync_add_job "$job_id" "adhoc-bisync" "$p1" "$p2" "bisync" "$pid" "$job_log"
+        printf "${C_OK}${S_OK}${RST} Started adhoc bisync (PID: %s, Job: %s)\n" "$pid" "$job_id"
+        printf "  Log: %s\n" "$job_log"
+    else
+        sync_bisync "$p1" "$p2" "$dry_run" "$resync"
+    fi
+}
+
+# Run all enabled in background (non-interactive, no prompt)
+sync_run_all_bg() {
+    local rules; rules=$(sync_list_rules)
+    local enabled; enabled=$(echo "$rules" | jq -c '.[] | select(.enabled == true)')
+
+    if [ -z "$enabled" ]; then
+        printf "${C_DIM}No enabled sync rules${RST}\n"
+        return
+    fi
+
+    printf "\n${BLD}=== Running All Enabled Rules (Background) ===${RST}\n\n"
+    local success=0 failed=0
+    echo "$enabled" | while IFS= read -r rule; do
+        local name; name=$(echo "$rule" | jq -r '.name')
+        sync_run_rule_background "$name" && success=$((success+1)) || failed=$((failed+1))
+    done
+    printf "\n${C_OK}${S_OK}${RST} All rules launched in background\n"
+}
+
+# Cancel by job ID (non-interactive CLI)
+sync_cancel_by_id() {
+    local job_id="$1"
+    [ -z "$job_id" ] && { printf "${C_ERR}Usage: cloud-connect.sh sync-cancel-id JOB_ID${RST}\n"; return 1; }
+    local jobs; jobs=$(cat "$SYNC_JOBS_FILE" 2>/dev/null || echo "[]")
+    local pid; pid=$(echo "$jobs" | jq -r ".[] | select(.job_id == \"$job_id\") | .pid")
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null
+        sync_update_job "$job_id" "cancelled"
+        printf "${C_OK}${S_OK}${RST} Cancelled job %s (PID: %s)\n" "$job_id" "$pid"
+    else
+        printf "${C_ERR}Job not found or not running: %s${RST}\n" "$job_id"
+    fi
+}
+
+# Full sync status display (remotes + rules + jobs + log)
+sync_full_status() {
+    printf "\n${BLD}━━━ Sync Status ━━━${RST}\n\n"
+
+    # Configured Remotes
+    printf "  ${C_INFO}${BLD}Configured Remotes${RST}\n"
+    printf "  ${C_DIM}────────────────────────────────────────────────${RST}\n"
+    if command -v rclone >/dev/null 2>&1; then
+        local remotes; remotes=$(rclone listremotes 2>/dev/null | sed 's/:$//')
+        if [ -n "$remotes" ]; then
+            echo "$remotes" | while read -r r; do
+                printf "  ${C_OK}${S_DOT}${RST} %s\n" "$r"
+            done
+        else
+            printf "  ${C_DIM}No remotes configured${RST}\n"
+        fi
+    else
+        printf "  ${C_DIM}rclone not installed${RST}\n"
+    fi
+
+    # Rules summary
+    local rules; rules=$(sync_list_rules)
+    local total; total=$(echo "$rules" | jq 'length')
+    local enabled; enabled=$(echo "$rules" | jq '[.[] | select(.enabled == true)] | length')
+    local disabled; disabled=$((total - enabled))
+    printf "\n  ${C_SYNC}${BLD}Sync Rules${RST}\n"
+    printf "  ${C_DIM}────────────────────────────────────────────────${RST}\n"
+    printf "  Total: %s | ${C_OK}Enabled: %s${RST} | ${C_DIM}Disabled: %s${RST}\n\n" "$total" "$enabled" "$disabled"
+
+    # Render full sync table
+    render_sync
+
+    # Jobs summary
+    local running; running=$(sync_get_running_jobs)
+    local run_count; run_count=$(echo "$running" | jq 'length')
+    printf "\n  ${C_SYNC}${BLD}Background Jobs${RST}: "
+    if [ "$run_count" -gt 0 ]; then
+        printf "${C_OK}%s running${RST}\n" "$run_count"
+    else
+        printf "${C_DIM}none${RST}\n"
+    fi
+
+    printf "\n"
+    view_log
+}
+
+# Restore symlinks (from gcl.sh)
+restore_symlinks() {
+    local script="$SCRIPT_DIR/restore-spec-symlinks.sh"
+    if [ ! -f "$script" ]; then
+        printf "${C_WARN}No restore-spec-symlinks.sh found in %s${RST}\n" "$SCRIPT_DIR"
+        printf "${C_DIM}This script restores 0.spec symlinks in the git workdir${RST}\n"
+        return 1
+    fi
+    printf "${BLD}=== Restoring Spec Symlinks ===${RST}\n\n"
+    bash "$script" "$GIT_WORKDIR"
+}
+
+# Config-set CLI: cloud-connect.sh config-set KEY VALUE
+config_set() {
+    local key="$1" value="$2"
+    if [ -z "$key" ] || [ -z "$value" ]; then
+        printf "${C_ERR}Usage: cloud-connect.sh config-set KEY VALUE${RST}\n\n"
+        printf "${BLD}Available keys:${RST}\n"
+        printf "  git_workdir       Git working directory\n"
+        printf "  mount_dir         Mount base directory\n"
+        printf "  sync_dir          Sync rules directory\n"
+        printf "  rclone_opts       Rclone mount options\n"
+        printf "  rclone_sync_opts  Rclone sync options\n"
+        printf "  log_file          Log file name\n"
+        printf "  merge_strategy    Git merge strategy (ours/theirs)\n\n"
+        printf "${BLD}Current values:${RST}\n"
+        printf "  git_workdir       = %s\n" "$GIT_WORKDIR"
+        printf "  mount_dir         = %s\n" "$MOUNT_DIR"
+        printf "  sync_dir          = %s\n" "$SYNC_DIR"
+        printf "  rclone_opts       = %s\n" "$RCLONE_OPTS"
+        printf "  rclone_sync_opts  = %s\n" "$RCLONE_SYNC_OPTS"
+        printf "  log_file          = %s\n" "$LOG_FILE_NAME"
+        printf "  merge_strategy    = %s\n" "$MERGE_STRATEGY"
+        return 1
+    fi
+    case "$key" in
+        git_workdir|mount_dir|sync_dir|rclone_opts|rclone_sync_opts|log_file|merge_strategy)
+            update_setting "$key" "$value"
+            printf "${C_OK}${S_OK}${RST} %s = %s\n" "$key" "$value"
+            ;;
+        *)
+            printf "${C_ERR}Unknown setting: %s${RST}\n" "$key"
+            printf "${C_DIM}Valid keys: git_workdir, mount_dir, sync_dir, rclone_opts, rclone_sync_opts, log_file, merge_strategy${RST}\n"
+            return 1
+            ;;
+    esac
+}
+
+# =============================================================================
 # CONFIG & SYSTEM MANAGEMENT (Group 4)
 # =============================================================================
 
@@ -2424,15 +2692,16 @@ deps_menu() {
     [ "$missing_required" -gt 0 ] && printf " ${C_WARN}(%d missing)${RST}" "$missing_required"
     printf "\n"
     printf "  ${C_INFO}2${RST}) Install all missing deps"
-    [ "$missing_optional" -gt 0 ] && printf " ${C_WARN}(%d optional missing)${RST}" "$missing_optional"
+    local total_missing=$((missing_required + missing_optional))
+    [ "$total_missing" -gt 0 ] && printf " ${C_WARN}(%d missing)${RST}" "$total_missing"
     printf "\n"
     printf "  ${C_DIM}0${RST}) Back\n"
     printf "${BLD}Choice:${RST} "
     read -r ch
 
     case "$ch" in
-        1) install_all_deps "required" ;;
-        2) install_all_deps "all" ;;
+        1) install_deps_category "core" ;;
+        2) install_deps_category "core"; install_deps_category "phone"; install_deps_category "cloud" ;;
         0) return ;;
         *) printf "${C_ERR}Invalid choice${RST}\n" ;;
     esac
@@ -2517,6 +2786,62 @@ install_deps_category() {
         *)     printf "${C_ERR}Unknown category: %s${RST}\n" "$category"; return 1 ;;
     esac
 
+    local distro; distro=$(_detect_distro)
+
+    # NixOS batch mode: collect all missing and present as batch
+    if [ "$distro" = "nixos" ]; then
+        local missing_pkgs=""
+        for dep in $deps_list; do
+            if ! command -v "$dep" >/dev/null 2>&1; then
+                local pkg; pkg=$(_dep_pkg_name "$dep" "$distro")
+                missing_pkgs="${missing_pkgs}${missing_pkgs:+ }${pkg}"
+            fi
+        done
+        if [ -z "$missing_pkgs" ]; then
+            printf "${C_OK}${S_OK}${RST} All %s deps installed\n" "$category"
+            return 0
+        fi
+        printf "\n${C_WARN}NixOS — Missing %s packages:${RST} %s\n\n" "$category" "$missing_pkgs"
+        printf "${BLD}How to install:${RST}\n"
+        printf "  ${C_INFO}1${RST}) Open nix-shell with packages ${C_DIM}(temporary)${RST}\n"
+        printf "  ${C_INFO}2${RST}) Copy configuration.nix snippet ${C_DIM}(persistent, recommended)${RST}\n"
+        printf "  ${C_INFO}3${RST}) Install to user profile ${C_DIM}(nix-env, not recommended)${RST}\n"
+        printf "  ${C_DIM}0${RST}) Skip\n"
+        printf "${BLD}Choice [0]:${RST} "
+        read -r ch
+        case "$ch" in
+            1)
+                printf "\n${C_INFO}Run:${RST} nix-shell -p %s\n" "$missing_pkgs"
+                printf "${C_DIM}Or:${RST}  nix-shell -p %s --run '%s'\n" "$missing_pkgs" "$0"
+                printf "\nOpen nix-shell now? [y/N] "
+                read -r yn
+                case "$yn" in
+                    [Yy]*) nix-shell -p $missing_pkgs ;;
+                    *) printf "${C_DIM}Skipped${RST}\n" ;;
+                esac ;;
+            2)
+                local snippet="environment.systemPackages = with pkgs; ["
+                for pkg in $missing_pkgs; do snippet="$snippet $pkg"; done
+                snippet="$snippet ];"
+                printf "\n${C_INFO}Add to configuration.nix:${RST}\n  %s\n" "$snippet"
+                if command -v wl-copy >/dev/null 2>&1; then
+                    printf '%s' "$snippet" | wl-copy 2>/dev/null
+                    printf "${C_OK}${S_OK}${RST} Copied to clipboard (wl-copy)\n"
+                elif command -v xclip >/dev/null 2>&1; then
+                    printf '%s' "$snippet" | xclip -selection clipboard 2>/dev/null
+                    printf "${C_OK}${S_OK}${RST} Copied to clipboard (xclip)\n"
+                fi ;;
+            3)
+                for pkg in $missing_pkgs; do
+                    printf "${C_INFO}Installing %s...${RST}\n" "$pkg"
+                    nix-env -iA "nixpkgs.$pkg" || true
+                done ;;
+            *) printf "${C_DIM}Skipped${RST}\n" ;;
+        esac
+        return 0
+    fi
+
+    # Non-NixOS: install one by one
     local missing=0
     for dep in $deps_list; do
         if ! command -v "$dep" >/dev/null 2>&1; then
@@ -2956,19 +3281,32 @@ render_dashboard() {
     local w=0; while [ "$w" -lt 100 ]; do printf "━"; w=$((w+1)); done
     printf "┓\n"
     printf "┃  ◆ CLOUD CONNECT%65s%18s  ┃\n" "diego@${hostname_str}" "$date_str"
+    local wd_short; wd_short=$(echo "$GIT_WORKDIR" | sed "s|$HOME|~|")
+    local md_short; md_short=$(echo "$MOUNT_DIR" | sed "s|$HOME|~|")
+    local merge_label="SERVER"
+    [ "$MERGE_STRATEGY" = "ours" ] && merge_label="LOCAL"
+    printf "┃  Git: %-28s  Mounts: %-26s  Merge: %-18s  ┃\n" "$wd_short" "$md_short" "$merge_label ($MERGE_STRATEGY)"
     printf "┗"
     w=0; while [ "$w" -lt 100 ]; do printf "━"; w=$((w+1)); done
     printf "┛%b\n" "$RST"
 
     # ── Gauge Strip ──
-    printf "  MESH "
-    gauge_bar "$GAUGE_MESH_CUR" "$GAUGE_MESH_MAX" 14
-    printf "  GIT "
-    gauge_bar "$GAUGE_GIT_CUR" "$GAUGE_GIT_MAX" 14
-    printf "  DRIVES "
-    gauge_bar "$GAUGE_DRIVE_CUR" "$GAUGE_DRIVE_MAX" 12
-    printf "  SYNC "
-    gauge_bar "$GAUGE_SYNC_CUR" "$GAUGE_SYNC_MAX" 8
+    printf "  ${C_MESH}MESH${RST} "
+    gauge_bar "$GAUGE_MESH_CUR" "$GAUGE_MESH_MAX" 12
+    printf " ${C_DIM}%s/%s${RST}" "$GAUGE_MESH_CUR" "$GAUGE_MESH_MAX"
+    printf "  ${C_GIT}GIT${RST} "
+    gauge_bar "$GAUGE_GIT_CUR" "$GAUGE_GIT_MAX" 12
+    printf " ${C_DIM}%s/%s${RST}" "$GAUGE_GIT_CUR" "$GAUGE_GIT_MAX"
+    printf "  ${C_DRIVE}DRIVES${RST} "
+    gauge_bar "$GAUGE_DRIVE_CUR" "$GAUGE_DRIVE_MAX" 10
+    printf " ${C_DIM}%s/%s${RST}" "$GAUGE_DRIVE_CUR" "$GAUGE_DRIVE_MAX"
+    printf "  ${C_SYNC}SYNC${RST} "
+    gauge_bar "$GAUGE_SYNC_CUR" "$GAUGE_SYNC_MAX" 6
+    printf " ${C_DIM}%s/%s${RST}" "$GAUGE_SYNC_CUR" "$GAUGE_SYNC_MAX"
+
+    # Running jobs count
+    local rj; rj=$(sync_get_running_jobs 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+    [ "$rj" -gt 0 ] && printf "  ${C_OK}${S_PLAY} %s jobs${RST}" "$rj"
     printf "\n"
 
     # ── Alert Strip ──
@@ -2999,17 +3337,31 @@ render_dashboard() {
     printf "\n%b━━ F) WEBSERVER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_WEB" "$RST"
     render_webservers
 
+    # ── Log ──
+    if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
+        local log_size log_lines log_errs log_warns
+        log_size=$(du -h "$LOG_FILE" 2>/dev/null | cut -f1)
+        log_lines=$(wc -l < "$LOG_FILE" 2>/dev/null)
+        log_errs=$(grep -c "ERROR" "$LOG_FILE" 2>/dev/null || echo 0)
+        log_warns=$(grep -c "WARN" "$LOG_FILE" 2>/dev/null || echo 0)
+        printf "\n  ${C_DIM}Log: %s | %s lines | " "$log_size" "$log_lines"
+        [ "$log_errs" -gt 0 ] && printf "${C_ERR}%s errors${RST}${C_DIM}" "$log_errs" || printf "0 errors"
+        printf " | "
+        [ "$log_warns" -gt 0 ] && printf "${C_WARN}%s warnings${RST}" "$log_warns" || printf "0 warnings"
+        printf "${RST}\n"
+    fi
+
     # ── Commands ──
     printf "\n%b━━ COMMANDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$BLD" "$RST"
-    printf "  ${C_GIT}GIT${RST}    sync  pull  push  commit  fetch  fetch-status  clone  dirty  untracked  unstaged  ignored  merge\n"
+    printf "  ${C_GIT}GIT${RST}    sync  pull  push  commit  fetch  fetch-status  clone  dirty  git-notok  git-refresh  untracked  unstaged  ignored  merge  restore-symlinks\n"
     printf "  ${C_MESH}MESH${RST}   mount-vm  unmount-vm  mount-all-vm  unmount-all  mount-phone  unmount-phone\n"
     printf "  ${C_MESH}OCI${RST}    flex-start  flex-stop  flex-reset  flex-status\n"
     printf "  ${C_DRIVE}DRIVE${RST}  mount-drive  unmount-drive  mount-all-drives  unmount-all-drives  toggle-drives\n"
-    printf "  ${C_SYNC}SYNC${RST}   sync-run  sync-add  sync-delete  sync-toggle  sync-quick  sync-edit  sync-run-rule  sync-list\n"
-    printf "  ${C_SYNC}    ${RST}   sync-jobs  sync-cancel  sync-kill  sync-clear-jobs\n"
+    printf "  ${C_SYNC}SYNC${RST}   sync-run  sync-run-bg  sync-run-rule  sync-to  bisync-to  sync-quick  sync-status  sync-list\n"
+    printf "  ${C_SYNC}    ${RST}   sync-add  sync-delete  sync-toggle  sync-edit  sync-jobs  sync-cancel  sync-cancel-id  sync-kill  sync-clear-jobs\n"
     printf "  ${C_SRVR}SRVR${RST}   server-start  server-stop\n"
-    printf "  ${C_DIM}SETUP${RST}  settings  deps  deps-core  deps-phone  deps-cloud  remotes  view-log  edit-workdir  edit-config\n"
-    printf "  ${C_DIM}────${RST}   refresh  detail  help  quit\n"
+    printf "  ${C_DIM}SETUP${RST}  settings  config-set  deps  deps-core  deps-phone  deps-cloud  remotes  view-log  clear-log  edit-workdir  edit-config\n"
+    printf "  ${C_DIM}────${RST}   refresh  detail  compact  help  quit\n"
     printf "%b" "$BLD"
     w=0; while [ "$w" -lt 102 ]; do printf "━"; w=$((w+1)); done
     printf "%b\n" "$RST"
@@ -3078,7 +3430,20 @@ _dispatch_cmd() {
         # ── Sync (extra) ──
         sync-run-rule)       sync_run_rule_interactive ;;
         sync-list)           sync_list_cli ;;
+        sync-run-bg)         sync_run_all_bg ;;
+        sync-to)             printf "Source: "; read -r _src; printf "Dest: "; read -r _dst; sync_adhoc "$_src" "$_dst" ;;
+        bisync-to)           printf "Path 1: "; read -r _p1; printf "Path 2: "; read -r _p2; bisync_adhoc "$_p1" "$_p2" ;;
+        sync-cancel-id)      printf "Job ID: "; read -r _jid; sync_cancel_by_id "$_jid" ;;
+        sync-status)         sync_full_status ;;
         dirty)               git_cmd_dirty ;;
+
+        # ── Git (extra) ──
+        restore-symlinks)    restore_symlinks ;;
+        git-refresh)         render_git ;;
+        git-notok)           git_cmd_dirty ;;
+
+        # ── View modes ──
+        compact)             _compact_view ;;
 
         # ── Setup ──
         settings)            settings_menu ;;
@@ -3091,6 +3456,7 @@ _dispatch_cmd() {
         clear-log)           clear_log ;;
         view-log|log)        view_log ;;
         edit-config)         edit_config ;;
+        config-set)          printf "Key: "; read -r _ck; printf "Value: "; read -r _cv; config_set "$_ck" "$_cv" ;;
 
         # ── Global ──
         refresh|r)           return 0 ;;
@@ -3128,7 +3494,8 @@ show_help() {
     printf "${BLD}Dashboard:${RST}\n"
     printf "  (no args)          Print full dashboard\n"
     printf "  tui                Interactive TUI\n"
-    printf "  detail             Full verbose status (all sections + log)\n\n"
+    printf "  detail             Full verbose status (all sections + log)\n"
+    printf "  compact            Compact one-liner-per-section status\n\n"
     printf "${BLD}Git:${RST}\n"
     printf "  git-status         Show git repo table\n"
     printf "  git-sync           Commit+pull+push all\n"
@@ -3142,8 +3509,11 @@ show_help() {
     printf "  git-unstaged       List unstaged changes\n"
     printf "  git-ignored        List ignored files\n"
     printf "  git-dirty          Show only repos with issues (dirty/behind/ahead)\n"
+    printf "  git-notok          Same as git-dirty (select-not-OK filter)\n"
+    printf "  git-refresh        Fast local-only git status table\n"
     printf "  git-workdir        Show git working directory\n"
-    printf "  git-merge          Toggle merge strategy (ours/theirs)\n\n"
+    printf "  git-merge          Toggle merge strategy (ours/theirs)\n"
+    printf "  restore-symlinks   Restore 0.spec symlinks in git workdir\n\n"
     printf "${BLD}Mesh (VM Mounts):${RST}\n"
     printf "  mount-vm [NAME]    Mount single VM (interactive if no NAME)\n"
     printf "  unmount-vm [NAME]  Unmount single VM (interactive if no NAME)\n"
@@ -3174,7 +3544,12 @@ show_help() {
     printf "  sync-kill          Kill all sync jobs\n"
     printf "  sync-clear-jobs    Clear completed/failed jobs\n"
     printf "  sync-run-rule NAME Run a specific rule [--dry-run] [--background]\n"
-    printf "  sync-list          List all rules with details\n\n"
+    printf "  sync-run-bg        Run all enabled rules in background (non-interactive)\n"
+    printf "  sync-list          List all rules with details\n"
+    printf "  sync-to SRC DEST   Ad-hoc one-way sync [--dry-run] [--background]\n"
+    printf "  bisync-to P1 P2    Ad-hoc bidirectional sync [--dry-run] [--resync] [--background]\n"
+    printf "  sync-cancel-id ID  Cancel a sync job by job ID\n"
+    printf "  sync-status        Full sync status (remotes + rules + jobs + log)\n\n"
     printf "${BLD}Servers:${RST}\n"
     printf "  server-start [NAME]  Start rclone serve instance\n"
     printf "  server-stop [NAME]   Stop rclone serve instance\n\n"
@@ -3188,7 +3563,9 @@ show_help() {
     printf "  edit-workdir       Change git working directory\n"
     printf "  clear-log          Truncate log file\n"
     printf "  view-log           Show last 30 log lines (colored)\n"
-    printf "  edit-config        Open config JSON in editor\n\n"
+    printf "  edit-config        Open config JSON in editor\n"
+    printf "  config-set K V     Set a config value (e.g. config-set mount_dir /mnt)\n"
+    printf "  restore-symlinks   Restore 0.spec symlinks in git workdir\n\n"
     printf "${BLD}Config:${RST} ${C_DIM}%s${RST}\n" "$CONFIG_FILE"
 }
 
@@ -3244,6 +3621,92 @@ _toggle_all_drives() {
     done
 }
 
+_compact_view() {
+    printf "\n${BLD}━━━ Compact Status ━━━${RST}\n\n"
+
+    # MESH: one liner per VM
+    local vm_count; vm_count=$(_jq '.mesh.vms | length')
+    local vm_up=0 v=0
+    while [ "$v" -lt "$vm_count" ]; do
+        local name; name=$(_jq -r ".mesh.vms[$v].name")
+        local mounted=false
+        for sub in sys home docker mnt; do
+            is_mounted "$MOUNT_DIR/$name/$sub" && mounted=true && break
+        done
+        [ "$mounted" = "true" ] && vm_up=$((vm_up+1))
+        v=$((v+1))
+    done
+    printf "  ${C_MESH}MESH${RST}   %s/%s VMs " "$vm_up" "$vm_count"
+    v=0; while [ "$v" -lt "$vm_count" ]; do
+        local name; name=$(_jq -r ".mesh.vms[$v].name")
+        local mounted=false
+        for sub in sys home docker mnt; do is_mounted "$MOUNT_DIR/$name/$sub" && mounted=true && break; done
+        [ "$mounted" = "true" ] && printf "${C_OK}${S_DOT}%s${RST} " "$name" || printf "${C_DIM}${S_STOP}%s${RST} " "$name"
+        v=$((v+1))
+    done
+    local phone_mounted=false; is_mounted "$MOUNT_DIR/phone" && phone_mounted=true
+    [ "$phone_mounted" = "true" ] && printf "${C_OK}${S_DOT}phone${RST}" || printf "${C_DIM}${S_STOP}phone${RST}"
+    printf "\n"
+
+    # GIT: one liner summary
+    local repos; repos=$(git_get_repos)
+    local cloned=0 clean=0 dirty=0 ahead=0 behind=0
+    while IFS= read -r rname; do
+        [ -z "$rname" ] && continue
+        local dir="$GIT_WORKDIR/$rname"
+        [ ! -d "$dir/.git" ] && continue
+        cloned=$((cloned+1))
+        local d; d=$(git -C "$dir" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+        [ "$d" -gt 0 ] && dirty=$((dirty+1)) || clean=$((clean+1))
+        local pu; pu=$(git_unpushed "$dir"); [ "$pu" != "?" ] && [ "$pu" -gt 0 ] 2>/dev/null && ahead=$((ahead+1))
+        local pl; pl=$(git_unpulled "$dir"); [ "$pl" != "?" ] && [ "$pl" -gt 0 ] 2>/dev/null && behind=$((behind+1))
+    done <<< "$repos"
+    printf "  ${C_GIT}GIT${RST}    %s/%s cloned" "$cloned" "$(echo "$repos" | grep -c '.' || echo 0)"
+    [ "$clean" -gt 0 ] && printf "  ${C_OK}%s clean${RST}" "$clean"
+    [ "$dirty" -gt 0 ] && printf "  ${C_WARN}%s dirty${RST}" "$dirty"
+    [ "$ahead" -gt 0 ] && printf "  ${C_WARN}%s ahead${RST}" "$ahead"
+    [ "$behind" -gt 0 ] && printf "  ${C_INFO}%s behind${RST}" "$behind"
+    printf "\n"
+
+    # DRIVES: one liner
+    local drive_count; drive_count=$(_jq '.drives | length')
+    local drive_up=0 d=0
+    while [ "$d" -lt "$drive_count" ]; do
+        local dname; dname=$(_jq -r ".drives[$d].name")
+        is_mounted "$MOUNT_DIR/$dname" && drive_up=$((drive_up+1))
+        d=$((d+1))
+    done
+    printf "  ${C_DRIVE}DRIVE${RST}  %s/%s mounted " "$drive_up" "$drive_count"
+    d=0; while [ "$d" -lt "$drive_count" ]; do
+        local dname; dname=$(_jq -r ".drives[$d].name")
+        is_mounted "$MOUNT_DIR/$dname" && printf "${C_OK}${S_DOT}%s${RST} " "$dname" || printf "${C_DIM}${S_STOP}%s${RST} " "$dname"
+        d=$((d+1))
+    done
+    printf "\n"
+
+    # SYNC: one liner
+    local rules; rules=$(sync_list_rules)
+    local rule_count; rule_count=$(echo "$rules" | jq 'length')
+    local enabled_cnt; enabled_cnt=$(echo "$rules" | jq '[.[] | select(.enabled == true)] | length')
+    local running; running=$(sync_get_running_jobs)
+    local run_count; run_count=$(echo "$running" | jq 'length')
+    printf "  ${C_SYNC}SYNC${RST}   %s rules (%s enabled)" "$rule_count" "$enabled_cnt"
+    [ "$run_count" -gt 0 ] && printf "  ${C_OK}${S_PLAY} %s running${RST}" "$run_count"
+    printf "\n"
+
+    # SERVERS: one liner
+    local srv_count; srv_count=$(_jq '.servers | length')
+    local srv_up=0 s=0
+    while [ "$s" -lt "$srv_count" ]; do
+        local sport; sport=$(_jq -r ".servers[$s].port")
+        pgrep -f "rclone serve.*$sport" >/dev/null 2>&1 && srv_up=$((srv_up+1))
+        s=$((s+1))
+    done
+    printf "  ${C_SRVR}SRVR${RST}   %s/%s servers running\n" "$srv_up" "$srv_count"
+
+    printf "\n"
+}
+
 _detail_view() {
     printf "${BLD}=== DETAILED STATUS ===${RST}\n\n"
     printf "${C_MESH}── MESH ──${RST}\n"
@@ -3283,6 +3746,26 @@ _detail_view() {
 # =============================================================================
 
 main() {
+    # Handle deps/help commands BEFORE requiring jq (like mount.sh)
+    case "${1:-}" in
+        deps)            deps_menu; return ;;
+        deps-core)       install_deps_category "core"; return ;;
+        deps-phone)      install_deps_category "phone"; return ;;
+        deps-cloud)      install_deps_category "cloud"; return ;;
+        --help|-h|help)
+            if ! command -v jq >/dev/null 2>&1; then
+                printf "${C_ERR}${S_FAIL}${RST} jq not installed — showing minimal help\n\n"
+                printf "${BLD}Dependency commands (work without jq):${RST}\n"
+                printf "  deps           Show dependency status\n"
+                printf "  deps-core      Install core deps (git, jq, rclone, fusermount)\n"
+                printf "  deps-phone     Install phone deps (kdeconnect, qdbus)\n"
+                printf "  deps-cloud     Install cloud deps (oci, gh, gcloud)\n"
+                printf "\nRun ${C_INFO}deps-core${RST} first, then ${C_INFO}--help${RST} for full help.\n"
+                return
+            fi
+            ;;
+    esac
+
     load_config
 
     case "${1:-}" in
@@ -3290,6 +3773,7 @@ main() {
         "")              run_tui ;;
         tui)             run_tui ;;
         detail)          _detail_view ;;
+        compact)         _compact_view ;;
         --help|-h|help)  show_help ;;
 
         # ── Git ──
@@ -3307,6 +3791,8 @@ main() {
         git-workdir)     edit_workdir ;;
         git-merge)       git_toggle_merge ;;
         git-dirty)       git_cmd_dirty ;;
+        git-notok)       git_cmd_dirty ;;
+        git-refresh)     render_git ;;
 
         # ── Mesh (VM mounts) ──
         mount-vm)
@@ -3366,6 +3852,11 @@ main() {
         sync-clear-jobs) sync_clear_completed ;;
         sync-run-rule)   shift; sync_run_rule_cli "$@" ;;
         sync-list)       sync_list_cli ;;
+        sync-run-bg)     sync_run_all_bg ;;
+        sync-to)         shift; sync_adhoc "$@" ;;
+        bisync-to)       shift; bisync_adhoc "$@" ;;
+        sync-cancel-id)  shift; sync_cancel_by_id "$@" ;;
+        sync-status)     sync_full_status ;;
 
         # ── Servers ──
         server-start)    server_start ;;
@@ -3382,6 +3873,8 @@ main() {
         clear-log)       clear_log ;;
         view-log)        view_log ;;
         edit-config)     edit_config ;;
+        config-set)      shift; config_set "$@" ;;
+        restore-symlinks) restore_symlinks ;;
 
         # ── Legacy aliases ──
         status)          render_git ;;
