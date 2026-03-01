@@ -216,7 +216,7 @@ phone_status() {
         return
     fi
 
-    if kdeconnect-cli -d "$dev_id" --ping >/dev/null 2>&1; then
+    if kdeconnect-cli -a --id-only 2>/dev/null | grep -q "$dev_id"; then
         if command -v qdbus >/dev/null 2>&1; then
             local mounted
             mounted=$(qdbus org.kde.kdeconnect "/modules/kdeconnect/devices/$dev_id/sftp" \

@@ -804,7 +804,7 @@ unmount_drive() {
 phone_is_reachable() {
     device_id=$(get_phone_config "device_id")
     [ -z "$device_id" ] && return 1
-    kdeconnect-cli -d "$device_id" --ping >/dev/null 2>&1
+    kdeconnect-cli -a --id-only 2>/dev/null | grep -q "$device_id"
 }
 
 phone_is_mounted() {
