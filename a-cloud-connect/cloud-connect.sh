@@ -425,6 +425,34 @@ git_stash_count()      { git -C "$1" stash list 2>/dev/null | wc -l | tr -d ' ';
 git_unpulled()         { git -C "$1" rev-parse @{u} >/dev/null 2>&1 && git -C "$1" log ..@{u} --oneline 2>/dev/null | wc -l | tr -d ' ' || echo "?"; }
 git_unpushed()         { git -C "$1" rev-parse @{u} >/dev/null 2>&1 && git -C "$1" log @{u}.. --oneline 2>/dev/null | wc -l | tr -d ' ' || echo "?"; }
 git_branch()           { git -C "$1" branch --show-current 2>/dev/null || echo "?"; }
+git_branch_count()     { git -C "$1" branch --list 2>/dev/null | wc -l | tr -d ' '; }
+git_tag_count()        { git -C "$1" tag -l 2>/dev/null | wc -l | tr -d ' '; }
+git_remote_url()       { git -C "$1" remote get-url origin 2>/dev/null || echo "none"; }
+git_auth_type()        {
+    local url; url=$(git -C "$1" remote get-url origin 2>/dev/null || echo "")
+    case "$url" in
+        git@*|ssh://*)   echo "SSH" ;;
+        https://*|http://*) echo "HTTP" ;;
+        "")              echo "—" ;;
+        *)               echo "?" ;;
+    esac
+}
+git_remote_name()      { git -C "$1" remote 2>/dev/null | head -1 || echo "none"; }
+git_tracking_branch()  { git -C "$1" rev-parse --abbrev-ref '@{u}' 2>/dev/null || echo "none"; }
+git_has_submodules()   { [ -f "$1/.gitmodules" ] && echo "yes" || echo "no"; }
+git_hook_count()       { ls "$1/.git/hooks/"* 2>/dev/null | grep -cv '\.sample$' || echo 0; }
+git_last_fetch_age()   {
+    local fetch_head="$1/.git/FETCH_HEAD"
+    [ ! -f "$fetch_head" ] && echo "never" && return
+    local ts; ts=$(stat -c %Y "$fetch_head" 2>/dev/null || stat -f %m "$fetch_head" 2>/dev/null || echo 0)
+    local now; now=$(date +%s)
+    local diff=$(( now - ts ))
+    if [ "$diff" -lt 60 ]; then echo "${diff}s"
+    elif [ "$diff" -lt 3600 ]; then echo "$(( diff / 60 ))m"
+    elif [ "$diff" -lt 86400 ]; then echo "$(( diff / 3600 ))h"
+    else echo "$(( diff / 86400 ))d"
+    fi
+}
 git_last_commit_msg()  { git -C "$1" log -1 --pretty=format:'%s' 2>/dev/null | head -c20; }
 
 git_last_commit_age() {
@@ -484,20 +512,19 @@ git_activity_sparkline() {
 }
 
 render_git() {
-    # Header — dual local/remote status columns (like gcl.sh)
-    # Column widths: Repo=20 Branch=10 Local=14 Remote=14 CI=4 Stsh=5 Age=5 Size=6 Spark=9 Commit=rest
-    printf "  ${BLD}%-20s %-10s %-14s %-14s %-4s %-5s %-5s %-6s %-9s %s${RST}\n" \
-        "Repo" "Branch" "Local" "Remote" "CI" "Stsh" "Age" "Size" "Activity" "Last Commit"
+    # Row 1: main info — Row 2: remote URL + extra details (indented)
+    # Cols: Repo=20 Branch=10 Auth=5 Local=13 Remote=13 CI=3 Stsh=3 Br=3 Age=4 Size=5 Spark=9 Commit=rest
+    printf "  ${BLD}%-20s %-10s %-5s %-13s %-13s %-3s %-3s %-3s %-4s %-5s %-9s %s${RST}\n" \
+        "Repo" "Branch" "Auth" "Local" "Remote" "CI" "Sth" "Br" "Age" "Size" "Activity" "Last Commit"
     printf "  ${C_DIM}"
     local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    # Get all repo names
     local repos
     repos=$(_jq -r '(.git.public_repos // {} | keys[]) , (.git.private_repos // {} | keys[])')
 
     local not_cloned=""
-    local dirty_total=0 pull_total=0 push_total=0
+    local dirty_total=0 pull_total=0 push_total=0 ssh_total=0 http_total=0
 
     while IFS= read -r repo_name; do
         [ -z "$repo_name" ] && continue
@@ -509,6 +536,7 @@ render_git() {
         fi
 
         local branch dirty stash pull push ci age size commit_msg
+        local auth branches remote_url tracking last_fetch tags submods
         branch=$(git_branch "$dir")
         dirty=$(git_dirty_count "$dir")
         stash=$(git_stash_count "$dir")
@@ -518,13 +546,32 @@ render_git() {
         age=$(git_last_commit_age "$dir")
         size=$(git_repo_size "$dir")
         commit_msg=$(git_last_commit_msg "$dir")
+        auth=$(git_auth_type "$dir")
+        branches=$(git_branch_count "$dir")
+        remote_url=$(git_remote_url "$dir")
+        tracking=$(git_tracking_branch "$dir")
+        last_fetch=$(git_last_fetch_age "$dir")
+        tags=$(git_tag_count "$dir")
+        submods=$(git_has_submodules "$dir")
 
         # Accumulate totals
         [ "$dirty" -gt 0 ] 2>/dev/null && dirty_total=$((dirty_total + 1))
         [ "$pull" -gt 0 ] 2>/dev/null && pull_total=$((pull_total + pull))
         [ "$push" -gt 0 ] 2>/dev/null && push_total=$((push_total + push))
+        [ "$auth" = "SSH" ] && ssh_total=$((ssh_total + 1))
+        [ "$auth" = "HTTP" ] && http_total=$((http_total + 1))
 
-        # LOCAL STATUS — pad plain text first, then wrap with color
+        # AUTH — pad then color
+        local auth_color
+        case "$auth" in
+            SSH)  auth_color="$C_OK" ;;
+            HTTP) auth_color="$C_WARN" ;;
+            *)    auth_color="$C_DIM" ;;
+        esac
+        local auth_padded; auth_padded=$(printf "%-5s" "$auth")
+        local auth_f="${auth_color}${auth_padded}${RST}"
+
+        # LOCAL STATUS — pad then color
         local local_plain local_color
         if [ "$dirty" -gt 0 ] 2>/dev/null; then
             local_plain="Dirty [$dirty]"; local_color="$C_WARN"
@@ -535,10 +582,10 @@ render_git() {
         else
             local_plain="OK"; local_color="$C_OK"
         fi
-        local local_padded; local_padded=$(printf "%-14s" "$local_plain")
+        local local_padded; local_padded=$(printf "%-13s" "$local_plain")
         local local_f="${local_color}${local_padded}${RST}"
 
-        # REMOTE STATUS — pad plain text first, then wrap with color
+        # REMOTE STATUS — pad then color
         local remote_plain remote_color
         if [ "$pull" = "?" ]; then
             remote_plain="Not Checked"; remote_color="$C_DIM"
@@ -547,7 +594,7 @@ render_git() {
         else
             remote_plain="Up to Date"; remote_color="$C_OK"
         fi
-        local remote_padded; remote_padded=$(printf "%-14s" "$remote_plain")
+        local remote_padded; remote_padded=$(printf "%-13s" "$remote_plain")
         local remote_f="${remote_color}${remote_padded}${RST}"
 
         # Stash — pad then color
@@ -557,8 +604,13 @@ render_git() {
         else
             stash_plain="·"; stash_color="$C_DIM"
         fi
-        local stash_padded; stash_padded=$(printf "%-5s" "$stash_plain")
+        local stash_padded; stash_padded=$(printf "%-3s" "$stash_plain")
         local stash_f="${stash_color}${stash_padded}${RST}"
+
+        # Branches — pad then color
+        local br_padded; br_padded=$(printf "%-3s" "$branches")
+        local br_f
+        [ "$branches" -gt 1 ] 2>/dev/null && br_f="${C_INFO}${br_padded}${RST}" || br_f="${C_DIM}${br_padded}${RST}"
 
         # CI — pad then color
         local ci_plain ci_color
@@ -568,24 +620,33 @@ render_git() {
             "-")       ci_plain="—"; ci_color="$C_DIM" ;;
             *)         ci_plain="?"; ci_color="$C_DIM" ;;
         esac
-        local ci_padded; ci_padded=$(printf "%-4s" "$ci_plain")
+        local ci_padded; ci_padded=$(printf "%-3s" "$ci_plain")
         local ci_f="${ci_color}${ci_padded}${RST}"
 
         # Activity sparkline
         local spark
         spark=$(git_activity_sparkline "$dir")
 
-        # Print row — all fields pre-padded, use %b to emit colors
-        printf "  %-20s %-10s %b%b%b%b%-5s %-6s %b  %s\n" \
+        # Row 1: main info
+        printf "  %-20s %-10s %b%b%b%b%b%b%-4s %-5s %b  %s\n" \
             "$repo_name" "$branch" \
-            "$local_f" "$remote_f" "$ci_f" "$stash_f" \
+            "$auth_f" "$local_f" "$remote_f" "$ci_f" "$stash_f" "$br_f" \
             "$age" "$size" "$spark" "$commit_msg"
+
+        # Row 2: remote URL + tracking + last fetch + tags + submodules
+        local url_short; url_short=$(echo "$remote_url" | sed 's|git@github.com:|gh:|;s|https://github.com/|gh:|;s|\.git$||')
+        local extra=""
+        [ "$tags" -gt 0 ] 2>/dev/null && extra="${extra} ${C_DIM}tags:${RST}${C_INFO}${tags}${RST}"
+        [ "$submods" = "yes" ] && extra="${extra} ${C_WARN}submodules${RST}"
+        printf "  ${C_DIM}%-20s %s  track:%-20s fetch:%s%b${RST}\n" \
+            "" "$url_short" "$tracking" "$last_fetch" "$extra"
     done <<< "$repos"
 
     # Summary totals
     local total_repos; total_repos=$(echo "$repos" | grep -c '.' || echo 0)
     local cloned; cloned=$((total_repos - $(echo "$not_cloned" | wc -w)))
     printf "\n  ${C_DIM}Total: %s repos | %s cloned | " "$total_repos" "$cloned"
+    printf "auth: ${RST}${C_OK}%s SSH${RST}${C_DIM} / ${RST}${C_WARN}%s HTTP${RST}${C_DIM} | " "$ssh_total" "$http_total"
     [ "$dirty_total" -gt 0 ] && printf "${C_WARN}%s dirty${RST}${C_DIM}" "$dirty_total" || printf "0 dirty"
     printf " | "
     [ "$pull_total" -gt 0 ] && printf "${C_INFO}%s to pull${RST}${C_DIM}" "$pull_total" || printf "0 to pull"
@@ -906,6 +967,141 @@ git_toggle_merge() {
     fi
     local tmp; tmp=$(mktemp)
     jq --arg v "$MERGE_STRATEGY" '.settings.merge_strategy = $v' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+}
+
+git_cmd_remotes() {
+    printf "\n${BLD}=== Git Remotes (all repos) ===${RST}\n\n"
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        local dir="$GIT_WORKDIR/$name"
+        [ ! -d "$dir/.git" ] && continue
+        printf "${C_INFO}%s:${RST}\n" "$name"
+        git -C "$dir" remote -v 2>/dev/null | while read -r line; do
+            printf "  ${C_DIM}%s${RST}\n" "$line"
+        done
+        echo ""
+    done <<< "$(git_get_repos)"
+}
+
+git_cmd_branches() {
+    printf "\n${BLD}=== Git Branches (all repos) ===${RST}\n\n"
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        local dir="$GIT_WORKDIR/$name"
+        [ ! -d "$dir/.git" ] && continue
+        local current; current=$(git_branch "$dir")
+        local count; count=$(git_branch_count "$dir")
+        printf "${C_INFO}%s${RST} (${C_DIM}%s branches, current: ${RST}${C_OK}%s${RST}${C_DIM})${RST}\n" "$name" "$count" "$current"
+        git -C "$dir" branch -a 2>/dev/null | while read -r line; do
+            if echo "$line" | grep -q '^\*'; then
+                printf "  ${C_OK}%s${RST}\n" "$line"
+            else
+                printf "  ${C_DIM}%s${RST}\n" "$line"
+            fi
+        done
+        echo ""
+    done <<< "$(git_get_repos)"
+}
+
+git_cmd_tags() {
+    printf "\n${BLD}=== Git Tags (all repos) ===${RST}\n\n"
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        local dir="$GIT_WORKDIR/$name"
+        [ ! -d "$dir/.git" ] && continue
+        local count; count=$(git_tag_count "$dir")
+        [ "$count" -eq 0 ] && continue
+        printf "${C_INFO}%s${RST} (${C_DIM}%s tags${RST})\n" "$name" "$count"
+        git -C "$dir" tag -l 2>/dev/null | while read -r tag; do
+            printf "  ${C_WARN}%s${RST}\n" "$tag"
+        done
+        echo ""
+    done <<< "$(git_get_repos)"
+}
+
+git_cmd_log() {
+    printf "\n${BLD}=== Git Log (last 10 commits per repo) ===${RST}\n\n"
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        local dir="$GIT_WORKDIR/$name"
+        [ ! -d "$dir/.git" ] && continue
+        printf "${C_INFO}%s:${RST}\n" "$name"
+        git -C "$dir" log --oneline --graph --decorate -10 2>/dev/null | while read -r line; do
+            printf "  ${C_DIM}%s${RST}\n" "$line"
+        done
+        echo ""
+    done <<< "$(git_get_repos)"
+}
+
+git_cmd_stash_list() {
+    printf "\n${BLD}=== Git Stashes (all repos) ===${RST}\n\n"
+    local found=0
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        local dir="$GIT_WORKDIR/$name"
+        [ ! -d "$dir/.git" ] && continue
+        local count; count=$(git_stash_count "$dir")
+        [ "$count" -eq 0 ] && continue
+        found=1
+        printf "${C_INFO}%s${RST} (${C_WARN}%s stashes${RST})\n" "$name" "$count"
+        git -C "$dir" stash list 2>/dev/null | while read -r line; do
+            printf "  ${C_DIM}%s${RST}\n" "$line"
+        done
+        echo ""
+    done <<< "$(git_get_repos)"
+    [ "$found" -eq 0 ] && printf "  ${C_OK}${S_OK} No stashes${RST}\n"
+}
+
+git_cmd_diff() {
+    printf "\n${BLD}=== Git Diff (unstaged changes) ===${RST}\n\n"
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        local dir="$GIT_WORKDIR/$name"
+        [ ! -d "$dir/.git" ] && continue
+        local dirty; dirty=$(git_dirty_count "$dir")
+        [ "$dirty" -eq 0 ] && continue
+        printf "${C_INFO}%s:${RST}\n" "$name"
+        git -C "$dir" diff --stat 2>/dev/null
+        echo ""
+    done <<< "$(git_get_repos)"
+}
+
+git_cmd_gc() {
+    printf "\n${BLD}=== Git Garbage Collection (all repos) ===${RST}\n\n"
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        local dir="$GIT_WORKDIR/$name"
+        [ ! -d "$dir/.git" ] && continue
+        printf "${C_INFO}${S_ARR}${RST} Running gc on %s...\n" "$name"
+        git -C "$dir" gc --auto 2>&1 | while read -r line; do
+            printf "  ${C_DIM}%s${RST}\n" "$line"
+        done
+    done <<< "$(git_get_repos)"
+    printf "\n${C_OK}${S_OK}${RST} Done\n"
+}
+
+git_cmd_prune() {
+    printf "\n${BLD}=== Git Prune (remove unreachable objects) ===${RST}\n\n"
+    printf "${C_WARN}This will run 'git remote prune origin' + 'git prune' on all repos.${RST}\n"
+    printf "Continue? [y/N] "
+    read -r confirm
+    case "$confirm" in
+        [Yy]*) ;;
+        *) printf "${C_DIM}Cancelled${RST}\n"; return ;;
+    esac
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        local dir="$GIT_WORKDIR/$name"
+        [ ! -d "$dir/.git" ] && continue
+        printf "${C_INFO}${S_ARR}${RST} Pruning %s...\n" "$name"
+        git -C "$dir" remote prune origin 2>&1 | while read -r line; do
+            printf "  ${C_DIM}%s${RST}\n" "$line"
+        done
+        git -C "$dir" prune 2>&1 | while read -r line; do
+            printf "  ${C_DIM}%s${RST}\n" "$line"
+        done
+    done <<< "$(git_get_repos)"
+    printf "\n${C_OK}${S_OK}${RST} Done\n"
 }
 
 # =============================================================================
@@ -3353,15 +3549,17 @@ render_dashboard() {
 
     # ── Commands ──
     printf "\n%b━━ COMMANDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$BLD" "$RST"
-    printf "  ${C_GIT}GIT${RST}    sync  pull  push  commit  fetch  fetch-status  clone  dirty  git-notok  git-refresh  untracked  unstaged  ignored  merge  restore-symlinks\n"
-    printf "  ${C_MESH}MESH${RST}   mount-vm  unmount-vm  mount-all-vm  unmount-all  mount-phone  unmount-phone\n"
-    printf "  ${C_MESH}OCI${RST}    flex-start  flex-stop  flex-reset  flex-status\n"
-    printf "  ${C_DRIVE}DRIVE${RST}  mount-drive  unmount-drive  mount-all-drives  unmount-all-drives  toggle-drives\n"
-    printf "  ${C_SYNC}SYNC${RST}   sync-run  sync-run-bg  sync-run-rule  sync-to  bisync-to  sync-quick  sync-status  sync-list\n"
-    printf "  ${C_SYNC}    ${RST}   sync-add  sync-delete  sync-toggle  sync-edit  sync-jobs  sync-cancel  sync-cancel-id  sync-kill  sync-clear-jobs\n"
-    printf "  ${C_SRVR}SRVR${RST}   server-start  server-stop\n"
-    printf "  ${C_DIM}SETUP${RST}  settings  config-set  deps  deps-core  deps-phone  deps-cloud  remotes  view-log  clear-log  edit-workdir  edit-config\n"
-    printf "  ${C_DIM}────${RST}   refresh  detail  compact  help  quit\n"
+    printf "  ${C_GIT}GIT${RST}    ${C_DIM}sync  pull  push  commit  fetch  fetch-status  clone  dirty  git-notok  git-refresh${RST}\n"
+    printf "  ${C_GIT}   ${RST}    ${C_DIM}untracked  unstaged  ignored  merge  restore-symlinks  git-remotes  git-branches  git-tags${RST}\n"
+    printf "  ${C_GIT}   ${RST}    ${C_DIM}git-log  git-stash-list  git-diff  git-gc  git-prune${RST}\n"
+    printf "  ${C_MESH}MESH${RST}   ${C_DIM}mount-vm  unmount-vm  mount-all-vm  unmount-all  mount-phone  unmount-phone${RST}\n"
+    printf "  ${C_MESH}OCI${RST}    ${C_DIM}flex-start  flex-stop  flex-reset  flex-status${RST}\n"
+    printf "  ${C_DRIVE}DRIVE${RST}  ${C_DIM}mount-drive  unmount-drive  mount-all-drives  unmount-all-drives  toggle-drives${RST}\n"
+    printf "  ${C_SYNC}SYNC${RST}   ${C_DIM}sync-run  sync-run-bg  sync-run-rule  sync-to  bisync-to  sync-quick  sync-status  sync-list${RST}\n"
+    printf "  ${C_SYNC}    ${RST}   ${C_DIM}sync-add  sync-delete  sync-toggle  sync-edit  sync-jobs  sync-cancel  sync-cancel-id  sync-kill  sync-clear-jobs${RST}\n"
+    printf "  ${C_SRVR}SRVR${RST}   ${C_DIM}server-start  server-stop${RST}\n"
+    printf "  ${C_DIM}SETUP${RST}  ${C_DIM}settings  config-set  deps  deps-core  deps-phone  deps-cloud  remotes  view-log  clear-log  edit-workdir  edit-config${RST}\n"
+    printf "  ${C_DIM}────${RST}   ${C_DIM}refresh  detail  compact  help  quit${RST}\n"
     printf "%b" "$BLD"
     w=0; while [ "$w" -lt 102 ]; do printf "━"; w=$((w+1)); done
     printf "%b\n" "$RST"
@@ -3441,6 +3639,14 @@ _dispatch_cmd() {
         restore-symlinks)    restore_symlinks ;;
         git-refresh)         render_git ;;
         git-notok)           git_cmd_dirty ;;
+        git-remotes)         git_cmd_remotes ;;
+        git-branches)        git_cmd_branches ;;
+        git-tags)            git_cmd_tags ;;
+        git-log)             git_cmd_log ;;
+        git-stash-list)      git_cmd_stash_list ;;
+        git-diff)            git_cmd_diff ;;
+        git-gc)              git_cmd_gc ;;
+        git-prune)           git_cmd_prune ;;
 
         # ── View modes ──
         compact)             _compact_view ;;
@@ -3511,6 +3717,14 @@ show_help() {
     printf "  git-dirty          Show only repos with issues (dirty/behind/ahead)\n"
     printf "  git-notok          Same as git-dirty (select-not-OK filter)\n"
     printf "  git-refresh        Fast local-only git status table\n"
+    printf "  git-remotes        Show all remotes for all repos\n"
+    printf "  git-branches       Show all branches for all repos\n"
+    printf "  git-tags           Show all tags for all repos\n"
+    printf "  git-log            Show last 10 commits per repo\n"
+    printf "  git-stash-list     Show all stashes across repos\n"
+    printf "  git-diff           Show unstaged changes (diff --stat)\n"
+    printf "  git-gc             Run garbage collection on all repos\n"
+    printf "  git-prune          Prune unreachable objects (requires confirmation)\n"
     printf "  git-workdir        Show git working directory\n"
     printf "  git-merge          Toggle merge strategy (ours/theirs)\n"
     printf "  restore-symlinks   Restore 0.spec symlinks in git workdir\n\n"
@@ -3793,6 +4007,14 @@ main() {
         git-dirty)       git_cmd_dirty ;;
         git-notok)       git_cmd_dirty ;;
         git-refresh)     render_git ;;
+        git-remotes)     git_cmd_remotes ;;
+        git-branches)    git_cmd_branches ;;
+        git-tags)        git_cmd_tags ;;
+        git-log)         git_cmd_log ;;
+        git-stash-list)  git_cmd_stash_list ;;
+        git-diff)        git_cmd_diff ;;
+        git-gc)          git_cmd_gc ;;
+        git-prune)       git_cmd_prune ;;
 
         # ── Mesh (VM mounts) ──
         mount-vm)
