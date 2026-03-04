@@ -97,7 +97,28 @@ detect_backend() {
     BACKEND="wg-quick"; BACKEND_UNIT=""
 }
 
-tunnel_is_up() { ip link show "$WG_TUNNEL" >/dev/null 2>&1; }
+is_android() {
+    [ -d "/data/data/com.termux" ] || [ -n "$TERMUX_VERSION" ]
+}
+
+tcp_probe() {
+    # TCP reachability: nc (preferred) with /dev/tcp fallback
+    host="$1"; port="$2"; wait="${3:-2}"
+    if command -v nc >/dev/null 2>&1; then
+        nc -z -w "$wait" "$host" "$port" >/dev/null 2>&1
+    else
+        timeout "$wait" bash -c "echo > /dev/tcp/${host}/${port}" >/dev/null 2>&1
+    fi
+}
+
+tunnel_is_up() {
+    # On Android, ip link is restricted — probe hub via TCP
+    if is_android; then
+        tcp_probe "$HUB_WG_IP" 22 2
+        return $?
+    fi
+    ip link show "$WG_TUNNEL" >/dev/null 2>&1
+}
 
 # =============================================================================
 # TUNNEL MODE DETECTION (full vs split)
@@ -296,39 +317,93 @@ detect_roaming() {
 # DEPENDENCY CHECK
 # =============================================================================
 
+detect_env() {
+    if is_android; then echo "termux"
+    elif [ -f /etc/nixos/configuration.nix ]; then echo "nixos"
+    elif command -v home-manager >/dev/null 2>&1; then echo "home-manager"
+    elif command -v apt-get >/dev/null 2>&1; then echo "debian"
+    elif command -v pacman >/dev/null 2>&1; then echo "arch"
+    else echo "unknown"
+    fi
+}
+
+install_hint() {
+    dep="$1"; env="$2"
+    case "$env" in
+        termux)       printf "${C_DIM}→ rebuild termux flake: ~/git/unix/bb_flakes_termux/build.sh${C_RESET}" ;;
+        nixos)        printf "${C_DIM}→ add to desktop flake + rebuild: ~/git/unix/ba_flakes_desktop/build.sh${C_RESET}" ;;
+        home-manager) printf "${C_DIM}→ home-manager switch${C_RESET}" ;;
+        debian)
+            case "$dep" in
+                nc|netcat) printf "${C_DIM}→ sudo apt-get install netcat-openbsd${C_RESET}" ;;
+                jq)        printf "${C_DIM}→ sudo apt-get install jq${C_RESET}" ;;
+                wg)        printf "${C_DIM}→ sudo apt-get install wireguard-tools${C_RESET}" ;;
+                ping)      printf "${C_DIM}→ sudo apt-get install iputils-ping${C_RESET}" ;;
+                *)         printf "${C_DIM}→ sudo apt-get install ${dep}${C_RESET}" ;;
+            esac ;;
+        arch)
+            case "$dep" in
+                nc|netcat) printf "${C_DIM}→ sudo pacman -S openbsd-netcat${C_RESET}" ;;
+                jq)        printf "${C_DIM}→ sudo pacman -S jq${C_RESET}" ;;
+                wg)        printf "${C_DIM}→ sudo pacman -S wireguard-tools${C_RESET}" ;;
+                *)         printf "${C_DIM}→ sudo pacman -S ${dep}${C_RESET}" ;;
+            esac ;;
+        *) printf "${C_DIM}→ install ${dep} via your package manager${C_RESET}" ;;
+    esac
+}
+
 check_deps() {
     printf "${C_BOLD}=== Dependency Check ===${C_RESET}\n\n"
+    env=$(detect_env)
+    printf "  Environment: ${C_CYAN}${env}${C_RESET}\n\n"
     missing_required=""
 
     printf "${C_BOLD}Required:${C_RESET}\n"
-    for dep in jq ip; do
+    for dep in jq nc; do
         if command -v "$dep" >/dev/null 2>&1; then
             printf "  $OK ${C_GREEN}%-12s${C_RESET} %s\n" "$dep" "$("$dep" --version 2>&1 | head -1)"
         else
-            printf "  $FAIL ${C_RED}%-12s${C_RESET} ${C_DIM}not found${C_RESET}\n" "$dep"
+            printf "  $FAIL ${C_RED}%-12s${C_RESET} not found  " "$dep"
+            install_hint "$dep" "$env"; printf "\n"
             missing_required="${missing_required}${dep} "
         fi
     done
+    # ip only required on non-Android
+    if ! is_android; then
+        if command -v ip >/dev/null 2>&1; then
+            printf "  $OK ${C_GREEN}%-12s${C_RESET} %s\n" "ip" "$(ip --version 2>&1 | head -1)"
+        else
+            printf "  $FAIL ${C_RED}%-12s${C_RESET} not found  " "ip"
+            install_hint "ip" "$env"; printf "\n"
+            missing_required="${missing_required}ip "
+        fi
+    fi
 
     printf "\n${C_BOLD}Optional:${C_RESET}\n"
-    for dep in wg nc ping systemctl sudo journalctl; do
+    for dep in wg ping sudo journalctl systemctl; do
         if command -v "$dep" >/dev/null 2>&1; then
-            printf "  $OK ${C_GREEN}%-12s${C_RESET} %s\n" "$dep" "$("$dep" --version 2>&1 | head -1)"
+            printf "  $OK ${C_GREEN}%-12s${C_RESET}\n" "$dep"
         else
-            printf "  $WARN ${C_YELLOW}%-12s${C_RESET} ${C_DIM}not found${C_RESET}\n" "$dep"
+            printf "  $WARN ${C_YELLOW}%-12s${C_RESET} not found  " "$dep"
+            install_hint "$dep" "$env"; printf "\n"
         fi
     done
 
     printf "\n${C_BOLD}Capabilities:${C_RESET}\n"
     if command -v wg >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
-        printf "  $OK wg show dump      ${C_DIM}handshake, transfer, endpoint, keepalive, AllowedIPs${C_RESET}\n"
+        printf "  $OK wg show dump      ${C_DIM}handshake, transfer, endpoint, keepalive${C_RESET}\n"
     else
         printf "  $WARN wg show dump      ${C_DIM}needs wg + sudo${C_RESET}\n"
     fi
-    if command -v ping >/dev/null 2>&1; then
+    if command -v nc >/dev/null 2>&1; then
+        printf "  $OK peer probing      ${C_DIM}TCP reachability via nc${C_RESET}\n"
+    else
+        printf "  $WARN peer probing     ${C_DIM}/dev/tcp fallback (nc missing)${C_RESET}\n"
+    fi
+    if command -v ping >/dev/null 2>&1 && ! is_android; then
         printf "  $OK ping stats        ${C_DIM}RTT + packet loss${C_RESET}\n"
     else
-        printf "  $WARN ping stats        ${C_DIM}needs ping${C_RESET}\n"
+        printf "  $WARN ping stats        ${C_DIM}unavailable (Android/missing)${C_RESET}\n"
     fi
     if command -v journalctl >/dev/null 2>&1; then
         printf "  $OK journal logs      ${C_DIM}tunnel event history${C_RESET}\n"
@@ -351,6 +426,11 @@ cmd_up() {
     if tunnel_is_up; then
         printf "$WARN ${C_YELLOW}Tunnel ${WG_TUNNEL} is already up${C_RESET}\n"; return 0
     fi
+    if is_android; then
+        printf "$WARN ${C_YELLOW}Android detected — WireGuard is managed by the WireGuard app${C_RESET}\n"
+        printf "$INFO Enable the tunnel in the ${C_BOLD}WireGuard app${C_RESET} (Play Store), then re-run mesh\n"
+        return 0
+    fi
     printf "$INFO Starting tunnel ${C_BOLD}${WG_TUNNEL}${C_RESET}...\n"
     if [ "$BACKEND" = "systemd" ]; then
         if sudo systemctl start "$BACKEND_UNIT" 2>&1; then
@@ -369,6 +449,10 @@ cmd_up() {
 cmd_down() {
     if ! tunnel_is_up; then
         printf "$WARN ${C_YELLOW}Tunnel ${WG_TUNNEL} is already down${C_RESET}\n"; return 0
+    fi
+    if is_android; then
+        printf "$WARN ${C_YELLOW}Android detected — disable the tunnel in the ${C_BOLD}WireGuard app${C_RESET}\n"
+        return 0
     fi
     printf "$INFO Stopping tunnel ${C_BOLD}${WG_TUNNEL}${C_RESET}...\n"
     if [ "$BACKEND" = "systemd" ]; then
@@ -435,7 +519,9 @@ section_status() {
     else
         printf "  Tunnel:   %b" "$BADGE_DOWN"
     fi
-    if [ "$BACKEND" = "systemd" ]; then
+    if is_android; then
+        printf "  ${C_DIM}managed by WireGuard app${C_RESET}"
+    elif [ "$BACKEND" = "systemd" ]; then
         unit_state=$(systemctl is-active "$BACKEND_UNIT" 2>/dev/null || echo "unknown")
         printf "  ${C_DIM}systemd: ${BACKEND_UNIT} [${unit_state}]${C_RESET}"
     else
@@ -486,7 +572,9 @@ section_status() {
     # ── Hub health alert ──
     hub_alive=0
     if tunnel_is_up; then
-        if ping -c 1 -W 2 "$HUB_WG_IP" >/dev/null 2>&1; then
+        if is_android || ! command -v ping >/dev/null 2>&1; then
+            tcp_probe "$HUB_WG_IP" 22 2 && hub_alive=1
+        elif ping -c 1 -W 2 "$HUB_WG_IP" >/dev/null 2>&1; then
             hub_alive=1
         fi
     fi
@@ -577,10 +665,7 @@ section_status() {
             transfer_plain="—"
 
             if tunnel_is_up; then
-                if command -v nc >/dev/null 2>&1; then
-                    if nc -z -w 2 "$wg_ip" 22 >/dev/null 2>&1; then dot="$DOT_UP"; else dot="$DOT_DOWN"; fi
-                elif ping -c 1 -W 2 "$wg_ip" >/dev/null 2>&1; then dot="$DOT_UP"
-                else dot="$DOT_DOWN"; fi
+                if tcp_probe "$wg_ip" 22 2; then dot="$DOT_UP"; else dot="$DOT_DOWN"; fi
             else
                 dot="$DOT_UNKNOWN"
             fi
