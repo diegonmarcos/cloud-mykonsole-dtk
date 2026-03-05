@@ -16,7 +16,18 @@ set -euo pipefail
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/cloud-connect.json"
+# Module files (in merge order — later modules override earlier on conflict)
+CC_MODULES=(
+    "$SCRIPT_DIR/cloud-connect-settings.json"
+    "$SCRIPT_DIR/cloud-connect-mesh.json"
+    "$SCRIPT_DIR/cloud-connect-git.json"
+    "$SCRIPT_DIR/cloud-connect-fuse-drives.json"
+    "$SCRIPT_DIR/cloud-connect-sync.json"
+    "$SCRIPT_DIR/cloud-connect-data-servers.json"
+    "$SCRIPT_DIR/cloud-connect-web-servers.json"
+    "$SCRIPT_DIR/cloud-connect-hm-flakes.json"
+)
+CONFIG_JSON=""  # populated by load_config()
 
 # Sync state files
 SYNC_JOBS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/rclone_manager/sync_jobs.json"
@@ -82,15 +93,64 @@ S_ARRL="←"
 # LOAD CONFIG
 # =============================================================================
 
-_jq() { jq "$@" "$CONFIG_FILE" 2>/dev/null; }
+# Query the merged in-memory config
+_jq() { jq "$@" <<< "$CONFIG_JSON" 2>/dev/null; }
+
+# Re-merge all modules into CONFIG_JSON (call after any write-back)
+_reload_config_json() {
+    local existing=()
+    local mfile
+    for mfile in "${CC_MODULES[@]}"; do
+        [ -f "$mfile" ] && existing+=("$mfile")
+    done
+    CONFIG_JSON=$(jq -s 'reduce .[] as $m ({}; . * $m)' "${existing[@]}" 2>/dev/null)
+}
+
+# Write a jq filter to the module that owns .settings.$key, then reload
+_module_for_settings_key() {
+    local key="$1"
+    local mfile
+    for mfile in "${CC_MODULES[@]}"; do
+        [ -f "$mfile" ] || continue
+        if jq -e --arg k "$key" 'has("settings") and (.settings | has($k))' "$mfile" >/dev/null 2>&1; then
+            echo "$mfile"; return
+        fi
+    done
+    echo "$SCRIPT_DIR/cloud-connect-settings.json"
+}
+
+# Write a jq mutation to a specific module file, then reload CONFIG_JSON
+_jq_write() {
+    local mfile="$1"; shift
+    local tmp; tmp=$(mktemp)
+    jq "$@" "$mfile" > "$tmp" && mv "$tmp" "$mfile"
+    _reload_config_json
+}
 
 load_config() {
-    if [ ! -f "$CONFIG_FILE" ]; then
-        printf "${C_ERR}Config not found: %s${RST}\n" "$CONFIG_FILE" >&2
-        exit 1
-    fi
     if ! command -v jq >/dev/null 2>&1; then
         printf "${C_ERR}jq is required${RST}\n" >&2
+        exit 1
+    fi
+
+    local existing=()
+    local mfile
+    for mfile in "${CC_MODULES[@]}"; do
+        if [ ! -f "$mfile" ]; then
+            printf "${C_WARN}Module not found: %s${RST}\n" "$(basename "$mfile")" >&2
+        else
+            existing+=("$mfile")
+        fi
+    done
+
+    if [ "${#existing[@]}" -eq 0 ]; then
+        printf "${C_ERR}No config modules found in: %s${RST}\n" "$SCRIPT_DIR" >&2
+        exit 1
+    fi
+
+    CONFIG_JSON=$(jq -s 'reduce .[] as $m ({}; . * $m)' "${existing[@]}" 2>/dev/null)
+    if [ -z "$CONFIG_JSON" ] || [ "$CONFIG_JSON" = "null" ]; then
+        printf "${C_ERR}Failed to merge config modules${RST}\n" >&2
         exit 1
     fi
 
@@ -976,8 +1036,8 @@ git_toggle_merge() {
         MERGE_STRATEGY="theirs"
         printf "${C_OK}${S_OK}${RST} Merge strategy: ${C_INFO}Server wins${RST}\n"
     fi
-    local tmp; tmp=$(mktemp)
-    jq --arg v "$MERGE_STRATEGY" '.settings.merge_strategy = $v' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+    _jq_write "$SCRIPT_DIR/cloud-connect-sync.json" \
+        --arg v "$MERGE_STRATEGY" '.settings.merge_strategy = $v'
 }
 
 git_cmd_remotes() {
@@ -2571,9 +2631,9 @@ config_set() {
 
 update_setting() {
     local key="$1" value="$2"
-    local tmp; tmp=$(mktemp)
-    jq --arg k "$key" --arg v "$value" '.settings[$k] = $v' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
-    log_msg "Setting updated: $key = $value"
+    local mfile; mfile=$(_module_for_settings_key "$key")
+    _jq_write "$mfile" --arg k "$key" --arg v "$value" '.settings[$k] = $v'
+    log_msg "Setting updated: $key = $value (module: $(basename "$mfile"))"
 }
 
 settings_menu() {
@@ -2586,7 +2646,7 @@ settings_menu() {
     printf "  ${C_INFO}6${RST}  Log file:         ${C_OK}%s${RST}\n" "$LOG_FILE_NAME"
     printf "  ${C_INFO}7${RST}  Merge strategy:   ${C_OK}%s${RST}\n" "$MERGE_STRATEGY"
     printf "\n"
-    printf "  ${C_DIM}e${RST}  Edit config JSON  ${C_DIM}(%s)${RST}\n" "$CONFIG_FILE"
+    printf "  ${C_DIM}e${RST}  Edit config module\n"
     printf "  ${C_DIM}0${RST}  Back\n"
     printf "\n${BLD}Choice:${RST} "
     read -r choice
@@ -2630,7 +2690,7 @@ settings_menu() {
             [ -n "$new_log" ] && { update_setting "log_file" "$new_log"; printf "${C_OK}${S_OK}${RST} Updated. Restart to apply.\n"; }
             ;;
         7) git_toggle_merge ;;
-        e|E) "${EDITOR:-vim}" "$CONFIG_FILE" ;;
+        e|E) edit_config ;;
         0) return ;;
         *) printf "${C_ERR}Invalid choice${RST}\n" ;;
     esac
@@ -3172,8 +3232,21 @@ edit_workdir() {
 }
 
 edit_config() {
-    "${EDITOR:-vim}" "$CONFIG_FILE"
-    printf "${C_WARN}Restart to apply changes${RST}\n"
+    printf "\n${BLD}Select config module to edit:${RST}\n"
+    local i=1 mfile
+    for mfile in "${CC_MODULES[@]}"; do
+        printf "  ${C_INFO}%d${RST}) %s\n" "$i" "$(basename "$mfile")"
+        i=$((i+1))
+    done
+    printf "  ${C_DIM}0${RST}) Cancel\n${BLD}Choice:${RST} "
+    read -r ch
+    [ "$ch" = "0" ] || [ -z "$ch" ] && return
+    local idx=$((ch-1))
+    local target="${CC_MODULES[$idx]}"
+    [ -z "$target" ] && { printf "${C_ERR}Invalid choice${RST}\n"; return; }
+    "${EDITOR:-vim}" "$target"
+    _reload_config_json
+    printf "${C_OK}${S_OK}${RST} Reloaded.\n"
 }
 
 # =============================================================================
@@ -3940,7 +4013,7 @@ show_help() {
     printf "  ${C_DIM}# Install missing dependencies${RST}\n"
     printf "  ./cloud-connect.sh deps\n\n"
 
-    printf "${BLD}Config File:${RST} ${C_DIM}%s${RST}\n" "$CONFIG_FILE"
+    printf "${BLD}Config Modules:${RST} ${C_DIM}%s${RST}\n" "$SCRIPT_DIR/cloud-connect-*.json"
     printf "${BLD}Total Commands:${RST} ${C_INFO}68${RST} (Git:23 Mesh:6 OCI:4 Drives:5 Sync:17 Servers:2 Setup:11)\n"
 }
 

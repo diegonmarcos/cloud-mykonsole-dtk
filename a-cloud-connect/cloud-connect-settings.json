@@ -1,0 +1,23 @@
+{
+  "_comment": "Cloud Connect - Settings & Dependencies",
+  "settings": {
+    "git_workdir": "/home/diego/Mounts/Git",
+    "mount_dir": "/home/diego/Mounts/Storage",
+    "log_file": ".cloud-connect.log",
+    "width": 102
+  },
+  "dependencies": {
+    "required": [
+      "git",
+      "jq",
+      "rclone",
+      "fusermount"
+    ],
+    "optional": [
+      "gh",
+      "oci",
+      "kdeconnect-cli",
+      "qdbus"
+    ]
+  }
+}

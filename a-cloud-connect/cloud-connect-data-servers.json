@@ -1,0 +1,20 @@
+{
+  "data_servers": [
+    {
+      "name": "vault-share",
+      "type": "webdav",
+      "port": 8480,
+      "root": "~/Mounts/Git/vault",
+      "auth": "basic",
+      "enabled": false
+    },
+    {
+      "name": "photos-share",
+      "type": "webdav",
+      "port": 8481,
+      "root": "~/Mounts/Storage/Gdrive_me",
+      "auth": "none",
+      "enabled": false
+    }
+  ]
+}
