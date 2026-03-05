@@ -39,6 +39,7 @@ if [ -t 1 ]; then
     C_SYNC="\033[38;5;177m"     # D) SYNC: magenta
     C_SRVR="\033[38;5;69m"      # E) DATA SERVERS: blue
     C_WEB="\033[38;5;208m"      # F) WEBSERVER: orange
+    C_HM="\033[38;5;183m"       # G) HOME-MANAGER: lavender
     # Status colors
     C_OK="\033[38;5;77m"        # green
     C_WARN="\033[38;5;220m"     # yellow
@@ -57,7 +58,7 @@ if [ -t 1 ]; then
     BG_HEAD="\033[48;5;235m"
 else
     RST='' BLD='' DIM=''
-    C_HEAD='' C_MESH='' C_GIT='' C_DRIVE='' C_SYNC='' C_SRVR='' C_WEB=''
+    C_HEAD='' C_MESH='' C_GIT='' C_DRIVE='' C_SYNC='' C_SRVR='' C_WEB='' C_HM=''
     C_OK='' C_WARN='' C_ERR='' C_INFO='' C_DIM='' C_ALERT=''
     C_G1='' C_G2='' C_G3='' C_G4='' C_SP='' BG_HEAD=''
 fi
@@ -1117,13 +1118,13 @@ render_drives() {
     printf "${RST}\n"
 
     local drive_count
-    drive_count=$(_jq '.drives | length')
+    drive_count=$(_jq '.fuse_drives | length')
     local d=0
     while [ "$d" -lt "$drive_count" ]; do
         local dname dacct dremote
-        dname=$(_jq -r ".drives[$d].name")
-        dacct=$(_jq -r ".drives[$d].account // \"\"")
-        dremote=$(_jq -r ".drives[$d].remote")
+        dname=$(_jq -r ".fuse_drives[$d].name")
+        dacct=$(_jq -r ".fuse_drives[$d].account // \"\"")
+        dremote=$(_jq -r ".fuse_drives[$d].remote")
 
         local dstate mount_path
         mount_path="$MOUNT_DIR/$dname"
@@ -1339,10 +1340,10 @@ select_and_unmount_vm() {
 
 select_and_mount_drive() {
     printf "\n${BLD}Select Drive to mount:${RST}\n"
-    local d_count; d_count=$(_jq '.drives | length')
+    local d_count; d_count=$(_jq '.fuse_drives | length')
     local i=0
     while [ "$i" -lt "$d_count" ]; do
-        local name; name=$(_jq -r ".drives[$i].name")
+        local name; name=$(_jq -r ".fuse_drives[$i].name")
         printf "  ${C_INFO}%d${RST}) %s\n" "$((i+1))" "$name"
         i=$((i+1))
     done
@@ -1350,17 +1351,17 @@ select_and_mount_drive() {
     read -r ch
     [ "$ch" = "0" ] || [ -z "$ch" ] && return
     local idx=$((ch-1))
-    local name; name=$(_jq -r ".drives[$idx].name // empty")
-    local remote; remote=$(_jq -r ".drives[$idx].remote // empty")
+    local name; name=$(_jq -r ".fuse_drives[$idx].name // empty")
+    local remote; remote=$(_jq -r ".fuse_drives[$idx].remote // empty")
     [ -n "$name" ] && mount_drive "$name" "$remote"
 }
 
 select_and_unmount_drive() {
     printf "\n${BLD}Select Drive to unmount:${RST}\n"
-    local d_count; d_count=$(_jq '.drives | length')
+    local d_count; d_count=$(_jq '.fuse_drives | length')
     local i=0
     while [ "$i" -lt "$d_count" ]; do
-        local name; name=$(_jq -r ".drives[$i].name")
+        local name; name=$(_jq -r ".fuse_drives[$i].name")
         printf "  ${C_INFO}%d${RST}) %s\n" "$((i+1))" "$name"
         i=$((i+1))
     done
@@ -1368,7 +1369,7 @@ select_and_unmount_drive() {
     read -r ch
     [ "$ch" = "0" ] || [ -z "$ch" ] && return
     local idx=$((ch-1))
-    local name; name=$(_jq -r ".drives[$idx].name // empty")
+    local name; name=$(_jq -r ".fuse_drives[$idx].name // empty")
     [ -n "$name" ] && unmount_drive "$name"
 }
 
@@ -2687,10 +2688,10 @@ configure_remote_menu() {
 
     # Show drives status
     printf "  ${C_DRIVE}Drives:${RST}\n"
-    local drive_count; drive_count=$(_jq '.drives | length')
+    local drive_count; drive_count=$(_jq '.fuse_drives | length')
     local d=0
     while [ "$d" -lt "$drive_count" ]; do
-        local dremote; dremote=$(_jq -r ".drives[$d].remote")
+        local dremote; dremote=$(_jq -r ".fuse_drives[$d].remote")
         if rclone_remote_exists "$dremote"; then
             printf "    ${C_OK}${S_OK}${RST} %s (configured)\n" "$dremote"
         else
@@ -2720,7 +2721,7 @@ configure_remote_menu() {
 
     d=0
     while [ "$d" -lt "$drive_count" ]; do
-        local dn; dn=$(_jq -r ".drives[$d].remote")
+        local dn; dn=$(_jq -r ".fuse_drives[$d].remote")
         printf "  ${C_INFO}%d${RST}) %s ${C_DIM}(drive)${RST}\n" "$idx" "$dn"
         menu_items="${menu_items}${idx}:drive:${dn}\n"
         idx=$((idx+1))
@@ -3169,15 +3170,15 @@ render_servers() {
     local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    local srv_count; srv_count=$(_jq '.servers | length')
+    local srv_count; srv_count=$(_jq '.data_servers | length')
     local s=0
     while [ "$s" -lt "$srv_count" ]; do
         local sname stype sport sroot sauth
-        sname=$(_jq -r ".servers[$s].name")
-        stype=$(_jq -r ".servers[$s].type")
-        sport=$(_jq -r ".servers[$s].port")
-        sroot=$(_jq -r ".servers[$s].root" | sed "s|\$HOME|$HOME|;s|~|$HOME|")
-        sauth=$(_jq -r ".servers[$s].auth // \"none\"")
+        sname=$(_jq -r ".data_servers[$s].name")
+        stype=$(_jq -r ".data_servers[$s].type")
+        sport=$(_jq -r ".data_servers[$s].port")
+        sroot=$(_jq -r ".data_servers[$s].root" | sed "s|\$HOME|$HOME|;s|~|$HOME|")
+        sauth=$(_jq -r ".data_servers[$s].auth // \"none\"")
 
         # Check if actually running
         local is_running="false"
@@ -3199,13 +3200,13 @@ render_servers() {
 }
 
 server_start() {
-    local srv_count; srv_count=$(_jq '.servers | length')
+    local srv_count; srv_count=$(_jq '.data_servers | length')
     [ "$srv_count" -eq 0 ] && { printf "${C_WARN}No servers configured${RST}\n"; return; }
 
     printf "\n${BLD}Select server to start:${RST}\n"
     local s=0
     while [ "$s" -lt "$srv_count" ]; do
-        local sname sport; sname=$(_jq -r ".servers[$s].name"); sport=$(_jq -r ".servers[$s].port")
+        local sname sport; sname=$(_jq -r ".data_servers[$s].name"); sport=$(_jq -r ".data_servers[$s].port")
         printf "  ${C_INFO}%d${RST}) %s (:%s)\n" "$((s+1))" "$sname" "$sport"
         s=$((s+1))
     done
@@ -3215,10 +3216,10 @@ server_start() {
 
     local idx=$((ch-1))
     local stype sport sroot sauth
-    stype=$(_jq -r ".servers[$idx].type")
-    sport=$(_jq -r ".servers[$idx].port")
-    sroot=$(_jq -r ".servers[$idx].root" | sed "s|\$HOME|$HOME|;s|~|$HOME|")
-    sauth=$(_jq -r ".servers[$idx].auth // \"none\"")
+    stype=$(_jq -r ".data_servers[$idx].type")
+    sport=$(_jq -r ".data_servers[$idx].port")
+    sroot=$(_jq -r ".data_servers[$idx].root" | sed "s|\$HOME|$HOME|;s|~|$HOME|")
+    sauth=$(_jq -r ".data_servers[$idx].auth // \"none\"")
 
     local cmd="rclone serve $stype '$sroot' --addr :$sport"
     [ "$sauth" = "basic" ] && cmd="$cmd --user admin --pass admin"
@@ -3229,11 +3230,11 @@ server_start() {
 }
 
 server_stop() {
-    local srv_count; srv_count=$(_jq '.servers | length')
+    local srv_count; srv_count=$(_jq '.data_servers | length')
     printf "\n${BLD}Select server to stop:${RST}\n"
     local s=0
     while [ "$s" -lt "$srv_count" ]; do
-        local sname sport; sname=$(_jq -r ".servers[$s].name"); sport=$(_jq -r ".servers[$s].port")
+        local sname sport; sname=$(_jq -r ".data_servers[$s].name"); sport=$(_jq -r ".data_servers[$s].port")
         printf "  ${C_INFO}%d${RST}) %s (:%s)\n" "$((s+1))" "$sname" "$sport"
         s=$((s+1))
     done
@@ -3242,7 +3243,7 @@ server_stop() {
     [ "$ch" = "0" ] || [ -z "$ch" ] && return
 
     local idx=$((ch-1))
-    local sport; sport=$(_jq -r ".servers[$idx].port")
+    local sport; sport=$(_jq -r ".data_servers[$idx].port")
     pkill -f "rclone serve.*$sport" 2>/dev/null && \
         printf "${C_OK}${S_OK}${RST} Stopped\n" || \
         printf "${C_WARN}Not running${RST}\n"
@@ -3375,11 +3376,11 @@ compute_gauges() {
     GAUGE_GIT_MAX=$cloned
 
     # DRIVES: % of drives + VM mounts active
-    local drive_count; drive_count=$(_jq '.drives | length')
+    local drive_count; drive_count=$(_jq '.fuse_drives | length')
     local drive_up=0
     local d=0
     while [ "$d" -lt "$drive_count" ]; do
-        local dname; dname=$(_jq -r ".drives[$d].name")
+        local dname; dname=$(_jq -r ".fuse_drives[$d].name")
         is_mounted "$MOUNT_DIR/$dname" && drive_up=$((drive_up+1))
         d=$((d+1))
     done
@@ -3402,6 +3403,123 @@ compute_gauges() {
     fi
     GAUGE_SYNC_CUR=$recent
     GAUGE_SYNC_MAX=$enabled_count
+}
+
+# =============================================================================
+# G) HOME-MANAGER FLAKES - Status & Deploy
+# =============================================================================
+
+render_home_manager() {
+    printf "  ${BLD}%-20s %-14s %-34s %-16s Generation${RST}\n" \
+        "HOME-MANAGER" "Type" "Path" "Git"
+    printf "  ${C_DIM}"
+    local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    local hm_count; hm_count=$(_jq '.home_manager_flakes | length')
+    local i=0
+    while [ "$i" -lt "$hm_count" ]; do
+        local hname htype hpath henabled
+        hname=$(_jq -r ".home_manager_flakes[$i].name")
+        htype=$(_jq -r ".home_manager_flakes[$i].type")
+        hpath=$(_jq -r ".home_manager_flakes[$i].path" | sed "s|~|$HOME|")
+        henabled=$(_jq -r ".home_manager_flakes[$i].enabled")
+
+        if [ "$henabled" = "false" ]; then
+            printf "  ${C_DIM}%-20s %-14s %-34s DISABLED${RST}\n" \
+                "$hname" "$htype" "${hpath/$HOME/~}"
+            i=$((i+1)); continue
+        fi
+
+        if [ ! -d "$hpath" ]; then
+            printf "  %-20s %-14s ${C_ERR}NOT FOUND: %s${RST}\n" "$hname" "$htype" "${hpath/$HOME/~}"
+            i=$((i+1)); continue
+        fi
+
+        # Git status
+        local git_label="?"
+        if git -C "$hpath" rev-parse --git-dir >/dev/null 2>&1; then
+            local changed; changed=$(git -C "$hpath" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$changed" -gt 0 ]; then
+                git_label="${C_WARN}dirty (${changed} files)${RST}"
+            else
+                local unpushed; unpushed=$(git -C "$hpath" rev-list --count @{u}..HEAD 2>/dev/null || echo 0)
+                if [ "$unpushed" -gt 0 ] 2>/dev/null; then
+                    git_label="${C_INFO}ahead (+${unpushed})${RST}"
+                else
+                    git_label="${C_OK}clean${RST}"
+                fi
+            fi
+        fi
+
+        # Generation info
+        local gen_str="─"
+        if [ "$htype" = "home-manager" ] && command -v home-manager >/dev/null 2>&1; then
+            local gen; gen=$(home-manager generations 2>/dev/null | head -1 | grep -oP 'id \K\d+' || echo "")
+            [ -n "$gen" ] && gen_str="gen $gen"
+        fi
+
+        printf "  %-20s %-14s %-34s %b  %s\n" \
+            "$hname" "$htype" "${hpath/$HOME/~}" "$git_label" "$gen_str"
+        i=$((i+1))
+    done
+
+    if [ "$hm_count" -eq 0 ]; then printf "  ${C_DIM}No flakes configured${RST}\n"; fi
+}
+
+hm_build() {
+    local hm_count; hm_count=$(_jq '.home_manager_flakes | length')
+    [ "$hm_count" -eq 0 ] && { printf "${C_WARN}No flakes configured${RST}\n"; return; }
+
+    printf "\n${BLD}Select flake to build:${RST}\n"
+    local i=0
+    while [ "$i" -lt "$hm_count" ]; do
+        local hname hdesc; hname=$(_jq -r ".home_manager_flakes[$i].name"); hdesc=$(_jq -r ".home_manager_flakes[$i].description")
+        printf "  ${C_INFO}%d${RST}) %-16s %s\n" "$((i+1))" "$hname" "$hdesc"
+        i=$((i+1))
+    done
+    printf "  ${C_DIM}0${RST}) Cancel\n${BLD}Choice:${RST} "
+    read -r ch
+    [ "$ch" = "0" ] || [ -z "$ch" ] && return
+
+    local idx=$((ch-1))
+    local hname hpath
+    hname=$(_jq -r ".home_manager_flakes[$idx].name")
+    hpath=$(_jq -r ".home_manager_flakes[$idx].path" | sed "s|~|$HOME|")
+    local bscript="$hpath/build.sh"
+    [ ! -f "$bscript" ] && { printf "${C_ERR}build.sh not found: %s${RST}\n" "$bscript"; return; }
+
+    printf "${C_INFO}[+]${RST} Building %s...\n" "$hname"
+    bash "$bscript" build
+}
+
+hm_switch() {
+    local hm_count; hm_count=$(_jq '.home_manager_flakes | length')
+    [ "$hm_count" -eq 0 ] && { printf "${C_WARN}No flakes configured${RST}\n"; return; }
+
+    printf "\n${BLD}Select flake to switch (apply):${RST}\n"
+    local i=0
+    while [ "$i" -lt "$hm_count" ]; do
+        local hname hdesc; hname=$(_jq -r ".home_manager_flakes[$i].name"); hdesc=$(_jq -r ".home_manager_flakes[$i].description")
+        printf "  ${C_INFO}%d${RST}) %-16s %s\n" "$((i+1))" "$hname" "$hdesc"
+        i=$((i+1))
+    done
+    printf "  ${C_DIM}0${RST}) Cancel\n${BLD}Choice:${RST} "
+    read -r ch
+    [ "$ch" = "0" ] || [ -z "$ch" ] && return
+
+    local idx=$((ch-1))
+    local hname hpath htype
+    hname=$(_jq -r ".home_manager_flakes[$idx].name")
+    hpath=$(_jq -r ".home_manager_flakes[$idx].path" | sed "s|~|$HOME|")
+    htype=$(_jq -r ".home_manager_flakes[$idx].type")
+    local bscript="$hpath/build.sh"
+    [ ! -f "$bscript" ] && { printf "${C_ERR}build.sh not found: %s${RST}\n" "$bscript"; return; }
+
+    local subcmd="switch"
+    [ "$htype" = "nixos" ] && subcmd="switch"
+    printf "${C_INFO}[+]${RST} Switching %s (%s)...\n" "$hname" "$htype"
+    bash "$bscript" "$subcmd"
 }
 
 # =============================================================================
@@ -3439,11 +3557,11 @@ render_alerts() {
     [ "$dirty_count" -gt 0 ] && alerts="${alerts}  ${C_WARN}${S_WARN} ${dirty_count} repos dirty${RST}"
 
     # Drive alerts
-    local drive_count; drive_count=$(_jq '.drives | length')
+    local drive_count; drive_count=$(_jq '.fuse_drives | length')
     local drive_down=0
     local d=0
     while [ "$d" -lt "$drive_count" ]; do
-        local dname; dname=$(_jq -r ".drives[$d].name")
+        local dname; dname=$(_jq -r ".fuse_drives[$d].name")
         is_mounted "$MOUNT_DIR/$dname" || drive_down=$((drive_down+1))
         d=$((d+1))
     done
@@ -3533,6 +3651,10 @@ render_dashboard() {
     printf "\n%b━━ F) WEBSERVER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_WEB" "$RST"
     render_webservers
 
+    # ── G) HOME-MANAGER FLAKES ──
+    printf "\n%b━━ G) HOME-MANAGER FLAKES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_HM" "$RST"
+    render_home_manager
+
     # ── Log ──
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         local log_size log_lines log_errs log_warns
@@ -3558,6 +3680,7 @@ render_dashboard() {
     printf "  ${C_SYNC}SYNC${RST}   ${C_DIM}sync-run  sync-run-bg  sync-run-rule  sync-to  bisync-to  sync-quick  sync-status  sync-list${RST}\n"
     printf "  ${C_SYNC}    ${RST}   ${C_DIM}sync-add  sync-delete  sync-toggle  sync-edit  sync-jobs  sync-cancel  sync-cancel-id  sync-kill  sync-clear-jobs${RST}\n"
     printf "  ${C_SRVR}DATA SRVR${RST}   ${C_DIM}server-start  server-stop${RST}\n"
+    printf "  ${C_HM}HM${RST}     ${C_DIM}hm-build  hm-switch${RST}\n"
     printf "  ${C_DIM}SETUP${RST}  ${C_DIM}settings  config-set  deps  deps-core  deps-phone  deps-cloud  remotes  view-log  clear-log  edit-workdir  edit-config${RST}\n"
     printf "  ${C_DIM}────${RST}   ${C_DIM}refresh  detail  compact  help  quit${RST}\n"
     printf "%b" "$BLD"
@@ -3624,6 +3747,10 @@ _dispatch_cmd() {
         # ── Servers ──
         server-start)        server_start ;;
         server-stop)         server_stop ;;
+
+        # ── Home-Manager ──
+        hm-build)            hm_build ;;
+        hm-switch)           hm_switch ;;
 
         # ── Sync (extra) ──
         sync-run-rule)       sync_run_rule_interactive ;;
@@ -3823,26 +3950,26 @@ _unmount_all_vms() {
 
 _mount_all_drives() {
     local dc di dn dr
-    dc=$(_jq '.drives | length'); di=0
+    dc=$(_jq '.fuse_drives | length'); di=0
     while [ "$di" -lt "$dc" ]; do
-        dn=$(_jq -r ".drives[$di].name"); dr=$(_jq -r ".drives[$di].remote")
+        dn=$(_jq -r ".fuse_drives[$di].name"); dr=$(_jq -r ".fuse_drives[$di].remote")
         mount_drive "$dn" "$dr"; di=$((di+1))
     done
 }
 
 _unmount_all_drives() {
     local dc di dn
-    dc=$(_jq '.drives | length'); di=0
+    dc=$(_jq '.fuse_drives | length'); di=0
     while [ "$di" -lt "$dc" ]; do
-        dn=$(_jq -r ".drives[$di].name"); unmount_drive "$dn"; di=$((di+1))
+        dn=$(_jq -r ".fuse_drives[$di].name"); unmount_drive "$dn"; di=$((di+1))
     done
 }
 
 _toggle_all_drives() {
     local dc di dn dr
-    dc=$(_jq '.drives | length'); di=0
+    dc=$(_jq '.fuse_drives | length'); di=0
     while [ "$di" -lt "$dc" ]; do
-        dn=$(_jq -r ".drives[$di].name"); dr=$(_jq -r ".drives[$di].remote")
+        dn=$(_jq -r ".fuse_drives[$di].name"); dr=$(_jq -r ".fuse_drives[$di].remote")
         if is_mounted "$MOUNT_DIR/$dn"; then
             unmount_drive "$dn"
         else
@@ -3900,16 +4027,16 @@ _compact_view() {
     printf "\n"
 
     # DRIVES: one liner
-    local drive_count; drive_count=$(_jq '.drives | length')
+    local drive_count; drive_count=$(_jq '.fuse_drives | length')
     local drive_up=0 d=0
     while [ "$d" -lt "$drive_count" ]; do
-        local dname; dname=$(_jq -r ".drives[$d].name")
+        local dname; dname=$(_jq -r ".fuse_drives[$d].name")
         is_mounted "$MOUNT_DIR/$dname" && drive_up=$((drive_up+1))
         d=$((d+1))
     done
     printf "  ${C_DRIVE}DRIVE${RST}  %s/%s mounted " "$drive_up" "$drive_count"
     d=0; while [ "$d" -lt "$drive_count" ]; do
-        local dname; dname=$(_jq -r ".drives[$d].name")
+        local dname; dname=$(_jq -r ".fuse_drives[$d].name")
         is_mounted "$MOUNT_DIR/$dname" && printf "${C_OK}${S_DOT}%s${RST} " "$dname" || printf "${C_DIM}${S_STOP}%s${RST} " "$dname"
         d=$((d+1))
     done
@@ -3926,14 +4053,30 @@ _compact_view() {
     printf "\n"
 
     # SERVERS: one liner
-    local srv_count; srv_count=$(_jq '.servers | length')
+    local srv_count; srv_count=$(_jq '.data_servers | length')
     local srv_up=0 s=0
     while [ "$s" -lt "$srv_count" ]; do
-        local sport; sport=$(_jq -r ".servers[$s].port")
+        local sport; sport=$(_jq -r ".data_servers[$s].port")
         pgrep -f "rclone serve.*$sport" >/dev/null 2>&1 && srv_up=$((srv_up+1))
         s=$((s+1))
     done
     printf "  ${C_SRVR}DATA SRVR${RST}   %s/%s servers running\n" "$srv_up" "$srv_count"
+
+    # HOME-MANAGER: one liner — git status per flake
+    local hm_count; hm_count=$(_jq '.home_manager_flakes | length')
+    local hm_clean=0 hm_dirty=0 i=0
+    while [ "$i" -lt "$hm_count" ]; do
+        local hpath; hpath=$(_jq -r ".home_manager_flakes[$i].path" | sed "s|~|$HOME|")
+        if [ -d "$hpath" ] && git -C "$hpath" rev-parse --git-dir >/dev/null 2>&1; then
+            local changed; changed=$(git -C "$hpath" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+            [ "$changed" -gt 0 ] && hm_dirty=$((hm_dirty+1)) || hm_clean=$((hm_clean+1))
+        fi
+        i=$((i+1))
+    done
+    printf "  ${C_HM}HM FLAKES${RST}  %s flakes" "$hm_count"
+    [ "$hm_clean" -gt 0 ] && printf "  ${C_OK}%s clean${RST}" "$hm_clean"
+    [ "$hm_dirty" -gt 0 ] && printf "  ${C_WARN}%s dirty${RST}" "$hm_dirty"
+    printf "\n"
 
     printf "\n"
 }
@@ -3952,6 +4095,8 @@ _detail_view() {
     render_servers
     printf "\n${C_WEB}── WEBSERVER ──${RST}\n"
     render_webservers
+    printf "\n${C_HM}── HOME-MANAGER FLAKES ──${RST}\n"
+    render_home_manager
     printf "\n${C_DIM}── LOG ──${RST}\n"
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         local fsize line_count err_count
@@ -4063,7 +4208,7 @@ main() {
         # ── Drives ──
         mount-drive)
             if [ -n "${2:-}" ]; then
-                local dr; dr=$(_jq -r ".drives[] | select(.name==\"$2\") | .remote")
+                local dr; dr=$(_jq -r ".fuse_drives[] | select(.name==\"$2\") | .remote")
                 [ -n "$dr" ] && mount_drive "$2" "$dr" || printf "${C_ERR}Drive not found: %s${RST}\n" "$2"
             else
                 select_and_mount_drive
@@ -4100,6 +4245,10 @@ main() {
         # ── Servers ──
         server-start)    server_start ;;
         server-stop)     server_stop ;;
+
+        # ── Home-Manager ──
+        hm-build)        hm_build ;;
+        hm-switch)       hm_switch ;;
 
         # ── Setup ──
         settings)        settings_menu ;;

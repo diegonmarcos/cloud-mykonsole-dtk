@@ -12,8 +12,18 @@
     "width": 102
   },
   "dependencies": {
-    "required": ["git", "jq", "rclone", "fusermount"],
-    "optional": ["gh", "oci", "kdeconnect-cli", "qdbus"]
+    "required": [
+      "git",
+      "jq",
+      "rclone",
+      "fusermount"
+    ],
+    "optional": [
+      "gh",
+      "oci",
+      "kdeconnect-cli",
+      "qdbus"
+    ]
   },
   "git": {
     "public_repos": {
@@ -44,8 +54,17 @@
         "enabled": true,
         "wg_ip": "10.0.0.3",
         "public_ip": "130.110.251.193",
-        "services": ["mailu", "syncthing", "radicale"],
-        "vm_subdirs": ["sys", "home", "docker", "mnt"]
+        "services": [
+          "mailu",
+          "syncthing",
+          "radicale"
+        ],
+        "vm_subdirs": [
+          "sys",
+          "home",
+          "docker",
+          "mnt"
+        ]
       },
       {
         "name": "OCI_micro_1",
@@ -55,8 +74,16 @@
         "enabled": true,
         "wg_ip": "10.0.0.4",
         "public_ip": "129.151.228.66",
-        "services": ["matomo", "windmill"],
-        "vm_subdirs": ["sys", "home", "docker", "mnt"]
+        "services": [
+          "matomo",
+          "windmill"
+        ],
+        "vm_subdirs": [
+          "sys",
+          "home",
+          "docker",
+          "mnt"
+        ]
       },
       {
         "name": "OCI_Flex_0",
@@ -66,8 +93,15 @@
         "enabled": true,
         "wg_ip": "10.0.0.6",
         "public_ip": "82.70.229.129",
-        "services": ["crawlee"],
-        "vm_subdirs": ["sys", "home", "docker", "mnt"],
+        "services": [
+          "crawlee"
+        ],
+        "vm_subdirs": [
+          "sys",
+          "home",
+          "docker",
+          "mnt"
+        ],
         "oci_flex": {
           "instance_id": "ocid1.instance.oc1.eu-marseille-1.anwxeljruadvczacj7dfxl7uifar574je7fzlvtdjp4ghljdwuwdemsdbiva",
           "region": "eu-marseille-1"
@@ -81,8 +115,18 @@
         "enabled": true,
         "wg_ip": "10.0.0.2",
         "public_ip": "144.24.196.72",
-        "services": ["photoprism", "nocodb", "code-server", "affine"],
-        "vm_subdirs": ["sys", "home", "docker", "mnt"],
+        "services": [
+          "photoprism",
+          "nocodb",
+          "code-server",
+          "affine"
+        ],
+        "vm_subdirs": [
+          "sys",
+          "home",
+          "docker",
+          "mnt"
+        ],
         "oci_flex": {
           "instance_id": "ocid1.instance.oc1.eu-marseille-1.anwxeljruadvczachwpa3qrh7n25vfez3smidz4o7gpmtj4ga4d7zqlja5yq",
           "region": "eu-marseille-1"
@@ -96,8 +140,20 @@
         "enabled": true,
         "wg_ip": "10.0.0.1",
         "public_ip": "35.226.147.64",
-        "services": ["caddy", "authelia", "vaultwarden", "ntfy", "hickory-dns", "introspect-proxy"],
-        "vm_subdirs": ["sys", "home", "docker", "mnt"]
+        "services": [
+          "caddy",
+          "authelia",
+          "vaultwarden",
+          "ntfy",
+          "hickory-dns",
+          "introspect-proxy"
+        ],
+        "vm_subdirs": [
+          "sys",
+          "home",
+          "docker",
+          "mnt"
+        ]
       }
     ],
     "phone": {
@@ -106,7 +162,8 @@
       "sftp_base": "/run/user/1000/28b75fc5_4661_422f_9b7f_38252da1579d/storage/emulated/0"
     }
   },
-  "drives": [
+  "webservers": [],
+  "fuse_drives": [
     {
       "name": "Gdrive_dnm",
       "remote": "Gdrive_dnm",
@@ -122,7 +179,7 @@
       "account": "me@diegonmarcos.com"
     }
   ],
-  "servers": [
+  "data_servers": [
     {
       "name": "vault-share",
       "type": "webdav",
@@ -140,5 +197,27 @@
       "enabled": false
     }
   ],
-  "webservers": []
+  "home_manager_flakes": [
+    {
+      "name": "termux",
+      "description": "Termux Home Manager",
+      "path": "~/git/unix/bb_flakes_termux",
+      "type": "home-manager",
+      "enabled": true
+    },
+    {
+      "name": "desktop",
+      "description": "Desktop Home Manager",
+      "path": "~/git/unix/ba_flakes_desktop",
+      "type": "home-manager",
+      "enabled": true
+    },
+    {
+      "name": "nixos-surface",
+      "description": "NixOS Surface Host",
+      "path": "~/git/unix/aa_nixos-surface_host",
+      "type": "nixos",
+      "enabled": true
+    }
+  ]
 }
