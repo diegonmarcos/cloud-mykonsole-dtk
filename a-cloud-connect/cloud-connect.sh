@@ -35,9 +35,9 @@ if [ -t 1 ]; then
     C_HEAD="\033[38;5;255m"     # header: bright white
     C_MESH="\033[38;5;44m"      # A) MESH: teal
     C_GIT="\033[38;5;77m"       # B) GIT: green
-    C_DRIVE="\033[38;5;220m"    # C) DRIVES: gold
+    C_DRIVE="\033[38;5;220m"    # C) FUSE DRIVES: gold
     C_SYNC="\033[38;5;177m"     # D) SYNC: magenta
-    C_SRVR="\033[38;5;69m"      # E) SERVERS: blue
+    C_SRVR="\033[38;5;69m"      # E) DATA SERVERS: blue
     C_WEB="\033[38;5;208m"      # F) WEBSERVER: orange
     # Status colors
     C_OK="\033[38;5;77m"        # green
@@ -1105,13 +1105,13 @@ git_cmd_prune() {
 }
 
 # =============================================================================
-# C) DRIVES - Rendering & Actions
+# C) FUSE DRIVES - Rendering & Actions
 # =============================================================================
 
 render_drives() {
     # Cloud Drives
     printf "  ${BLD}%-17s %-27s %-7s %-16s %-8s Mount${RST}\n" \
-        "CLOUD DRIVES" "Account" "State" "Usage" "Quota"
+        "FUSE DRIVES" "Account" "State" "Usage" "Quota"
     printf "  ${C_DIM}"
     local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
@@ -1373,7 +1373,7 @@ select_and_unmount_drive() {
 }
 
 # =============================================================================
-# C) DRIVES - OCI Flex Control
+# C) FUSE DRIVES - OCI Flex Control
 # =============================================================================
 
 flex_action() {
@@ -3159,12 +3159,12 @@ edit_config() {
 }
 
 # =============================================================================
-# E) SERVERS - Rclone serve
+# E) DATA SERVERS - Rclone serve
 # =============================================================================
 
 render_servers() {
     printf "  ${BLD}%-17s %-8s %-6s %-30s %-8s %-7s Clients  Up${RST}\n" \
-        "RCLONE SERVE" "Type" "Port" "Root Path" "Auth" "State"
+        "DATA SERVERS" "Type" "Port" "Root Path" "Auth" "State"
     printf "  ${C_DIM}"
     local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
@@ -3493,7 +3493,7 @@ render_dashboard() {
     printf "  ${C_GIT}GIT${RST} "
     gauge_bar "$GAUGE_GIT_CUR" "$GAUGE_GIT_MAX" 12
     printf " ${C_DIM}%s/%s${RST}" "$GAUGE_GIT_CUR" "$GAUGE_GIT_MAX"
-    printf "  ${C_DRIVE}DRIVES${RST} "
+    printf "  ${C_DRIVE}FUSE DRIVES${RST} "
     gauge_bar "$GAUGE_DRIVE_CUR" "$GAUGE_DRIVE_MAX" 10
     printf " ${C_DIM}%s/%s${RST}" "$GAUGE_DRIVE_CUR" "$GAUGE_DRIVE_MAX"
     printf "  ${C_SYNC}SYNC${RST} "
@@ -3517,16 +3517,16 @@ render_dashboard() {
     printf "\n%b━━ B) GIT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_GIT" "$RST"
     render_git
 
-    # ── C) DRIVES ──
-    printf "\n%b━━ C) DRIVES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_DRIVE" "$RST"
+    # ── C) FUSE DRIVES ──
+    printf "\n%b━━ C) FUSE DRIVES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_DRIVE" "$RST"
     render_drives
 
     # ── D) SYNC ──
     printf "\n%b━━ D) SYNC ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SYNC" "$RST"
     render_sync
 
-    # ── E) SERVERS ──
-    printf "\n%b━━ E) SERVERS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SRVR" "$RST"
+    # ── E) DATA SERVERS ──
+    printf "\n%b━━ E) DATA SERVERS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SRVR" "$RST"
     render_servers
 
     # ── F) WEBSERVER ──
@@ -3557,7 +3557,7 @@ render_dashboard() {
     printf "  ${C_DRIVE}DRIVE${RST}  ${C_DIM}mount-drive  unmount-drive  mount-all-drives  unmount-all-drives  toggle-drives${RST}\n"
     printf "  ${C_SYNC}SYNC${RST}   ${C_DIM}sync-run  sync-run-bg  sync-run-rule  sync-to  bisync-to  sync-quick  sync-status  sync-list${RST}\n"
     printf "  ${C_SYNC}    ${RST}   ${C_DIM}sync-add  sync-delete  sync-toggle  sync-edit  sync-jobs  sync-cancel  sync-cancel-id  sync-kill  sync-clear-jobs${RST}\n"
-    printf "  ${C_SRVR}SRVR${RST}   ${C_DIM}server-start  server-stop${RST}\n"
+    printf "  ${C_SRVR}DATA SRVR${RST}   ${C_DIM}server-start  server-stop${RST}\n"
     printf "  ${C_DIM}SETUP${RST}  ${C_DIM}settings  config-set  deps  deps-core  deps-phone  deps-cloud  remotes  view-log  clear-log  edit-workdir  edit-config${RST}\n"
     printf "  ${C_DIM}────${RST}   ${C_DIM}refresh  detail  compact  help  quit${RST}\n"
     printf "%b" "$BLD"
@@ -3933,7 +3933,7 @@ _compact_view() {
         pgrep -f "rclone serve.*$sport" >/dev/null 2>&1 && srv_up=$((srv_up+1))
         s=$((s+1))
     done
-    printf "  ${C_SRVR}SRVR${RST}   %s/%s servers running\n" "$srv_up" "$srv_count"
+    printf "  ${C_SRVR}DATA SRVR${RST}   %s/%s servers running\n" "$srv_up" "$srv_count"
 
     printf "\n"
 }
@@ -3944,11 +3944,11 @@ _detail_view() {
     render_mesh
     printf "\n${C_GIT}── GIT ──${RST}\n"
     render_git
-    printf "\n${C_DRIVE}── DRIVES ──${RST}\n"
+    printf "\n${C_DRIVE}── FUSE DRIVES ──${RST}\n"
     render_drives
     printf "\n${C_SYNC}── SYNC ──${RST}\n"
     render_sync
-    printf "\n${C_SRVR}── SERVERS ──${RST}\n"
+    printf "\n${C_SRVR}── DATA SERVERS ──${RST}\n"
     render_servers
     printf "\n${C_WEB}── WEBSERVER ──${RST}\n"
     render_webservers
