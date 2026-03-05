@@ -29,6 +29,12 @@ CC_MODULES=(
 )
 CONFIG_JSON=""  # populated by load_config()
 
+# Environment detection — set by cc_probe_env(), used by load_config() for path overrides
+CC_ENV_PROFILE=""   # android-arm | desktop-x86 | desktop-arm
+CC_ENV_SYSTEM=""    # Android ARM | Desktop x86 | Desktop ARM
+CC_ENV_OS=""        # Nix-on-Android | NixOS | Linux
+CC_ENV_ARCH=""      # aarch64 | x86_64 | armv7l
+
 # Sync state files
 SYNC_JOBS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/rclone_manager/sync_jobs.json"
 SYNC_RULES_FILE=""  # set from config
@@ -88,6 +94,48 @@ S_PLAY="▶"
 S_ARR="→"
 S_ARBI="↔"
 S_ARRL="←"
+
+# =============================================================================
+# ENVIRONMENT DETECTION
+# =============================================================================
+
+cc_probe_env() {
+    local arch os_id is_termux=false
+
+    # Architecture
+    arch=$(uname -m 2>/dev/null || echo "unknown")
+    CC_ENV_ARCH="$arch"
+
+    # Termux detection
+    if [ -n "${TERMUX_VERSION:-}" ] || [ -d "/data/data/com.termux" ]; then
+        is_termux=true
+    fi
+
+    # OS detection
+    if $is_termux; then
+        CC_ENV_OS="Nix-on-Android"
+    elif [ -f "/etc/os-release" ]; then
+        os_id=$(. /etc/os-release 2>/dev/null && echo "${ID:-linux}")
+        case "$os_id" in
+            nixos) CC_ENV_OS="NixOS" ;;
+            *)     CC_ENV_OS="Linux" ;;
+        esac
+    else
+        CC_ENV_OS="Linux"
+    fi
+
+    # Map to profile
+    if $is_termux; then
+        CC_ENV_PROFILE="android-arm"
+        CC_ENV_SYSTEM="Android ARM"
+    elif [ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ]; then
+        CC_ENV_PROFILE="desktop-arm"
+        CC_ENV_SYSTEM="Desktop ARM"
+    else
+        CC_ENV_PROFILE="desktop-x86"
+        CC_ENV_SYSTEM="Desktop x86"
+    fi
+}
 
 # =============================================================================
 # LOAD CONFIG
@@ -162,6 +210,21 @@ load_config() {
     MERGE_STRATEGY=$(_jq -r '.settings.merge_strategy')
     LOG_FILE_NAME=$(_jq -r '.settings.log_file')
     LOG_FILE="$MOUNT_DIR/$LOG_FILE_NAME"
+
+    # Profile-based path overrides (applied after base settings)
+    if [ -n "$CC_ENV_PROFILE" ]; then
+        local p_git p_mount p_sync p_log
+        p_git=$(_jq -r --arg p "$CC_ENV_PROFILE" '.profiles[$p].git_workdir // empty')
+        p_mount=$(_jq -r --arg p "$CC_ENV_PROFILE" '.profiles[$p].mount_dir // empty')
+        p_sync=$(_jq -r --arg p "$CC_ENV_PROFILE" '.profiles[$p].sync_dir // empty')
+        p_log=$(_jq -r --arg p "$CC_ENV_PROFILE" '.profiles[$p].log_file // empty')
+        # Expand tilde
+        [ -n "$p_git" ]   && GIT_WORKDIR="${p_git/#\~/$HOME}"
+        [ -n "$p_mount" ] && MOUNT_DIR="${p_mount/#\~/$HOME}"
+        [ -n "$p_sync" ]  && SYNC_DIR="${p_sync/#\~/$HOME}"
+        [ -n "$p_log" ]   && LOG_FILE_NAME="$p_log"
+        LOG_FILE="$MOUNT_DIR/$LOG_FILE_NAME"
+    fi
 
     SYNC_RULES_FILE="$SYNC_DIR/sync.json"
 
@@ -3882,7 +3945,7 @@ _dispatch_cmd() {
         config-set)          printf "Key: "; read -r _ck; printf "Value: "; read -r _cv; config_set "$_ck" "$_cv" ;;
 
         # ── Global ──
-        refresh|r)           return 0 ;;
+        refresh|r)           cc_probe_env; load_config ;;
         detail)              _detail_view ;;
         help|h|\?)           show_help ;;
         quit|q|exit)         printf "\n"; exit 0 ;;
@@ -4232,6 +4295,7 @@ main() {
             ;;
     esac
 
+    cc_probe_env
     load_config
 
     case "${1:-}" in
