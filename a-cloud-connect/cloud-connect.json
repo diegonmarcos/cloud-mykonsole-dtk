@@ -60,10 +60,10 @@
           "radicale"
         ],
         "vm_subdirs": [
-          "sys",
-          "home",
-          "docker",
-          "mnt"
+          {"name": "sys",    "remote_path": "/"},
+          {"name": "home",   "remote_path": "/home"},
+          {"name": "docker", "remote_path": "/var/lib/docker/volumes"},
+          {"name": "mnt",    "remote_path": "/mnt"}
         ]
       },
       {
@@ -79,10 +79,10 @@
           "windmill"
         ],
         "vm_subdirs": [
-          "sys",
-          "home",
-          "docker",
-          "mnt"
+          {"name": "sys",    "remote_path": "/"},
+          {"name": "home",   "remote_path": "/home"},
+          {"name": "docker", "remote_path": "/var/lib/docker/volumes"},
+          {"name": "mnt",    "remote_path": "/mnt"}
         ]
       },
       {
@@ -97,10 +97,10 @@
           "crawlee"
         ],
         "vm_subdirs": [
-          "sys",
-          "home",
-          "docker",
-          "mnt"
+          {"name": "sys",    "remote_path": "/"},
+          {"name": "home",   "remote_path": "/home"},
+          {"name": "docker", "remote_path": "/var/lib/docker/volumes"},
+          {"name": "mnt",    "remote_path": "/mnt"}
         ],
         "oci_flex": {
           "instance_id": "ocid1.instance.oc1.eu-marseille-1.anwxeljruadvczacj7dfxl7uifar574je7fzlvtdjp4ghljdwuwdemsdbiva",
@@ -122,10 +122,10 @@
           "affine"
         ],
         "vm_subdirs": [
-          "sys",
-          "home",
-          "docker",
-          "mnt"
+          {"name": "sys",    "remote_path": "/"},
+          {"name": "home",   "remote_path": "/home"},
+          {"name": "docker", "remote_path": "/var/lib/docker/volumes"},
+          {"name": "mnt",    "remote_path": "/mnt"}
         ],
         "oci_flex": {
           "instance_id": "ocid1.instance.oc1.eu-marseille-1.anwxeljruadvczachwpa3qrh7n25vfez3smidz4o7gpmtj4ga4d7zqlja5yq",
@@ -149,16 +149,18 @@
           "introspect-proxy"
         ],
         "vm_subdirs": [
-          "sys",
-          "home",
-          "docker",
-          "mnt"
+          {"name": "sys",    "remote_path": "/"},
+          {"name": "home",   "remote_path": "/home"},
+          {"name": "docker", "remote_path": "/var/lib/docker/volumes"},
+          {"name": "mnt",    "remote_path": "/mnt"}
         ]
       }
     ],
     "phone": {
       "device_id": "28b75fc5_4661_422f_9b7f_38252da1579d",
       "name": "samsung_gS21",
+      "model": "Galaxy S21",
+      "storage_gb": 128,
       "sftp_base": "/run/user/1000/28b75fc5_4661_422f_9b7f_38252da1579d/storage/emulated/0"
     }
   },

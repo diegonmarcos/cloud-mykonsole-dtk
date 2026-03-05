@@ -200,6 +200,13 @@ rclone_remote_exists() {
 # A) MESH - Data Collection
 # =============================================================================
 
+# Get vm_subdir names for a VM by JSON index (newline-separated)
+_vm_subdirs() { _jq -r ".mesh.vms[$1].vm_subdirs[].name"; }
+# Get vm_subdir names for a VM by VM name
+_vm_subdirs_by_name() { _jq -r --arg n "$1" '.mesh.vms[] | select(.name==$n) | .vm_subdirs[].name'; }
+# Get remote_path for a named subdir of a VM (by index)
+_vm_subdir_remote_path() { _jq -r --arg s "$2" ".mesh.vms[$1].vm_subdirs[] | select(.name==\$s) | .remote_path"; }
+
 # Get VM SSH reachability (fast ssh check)
 vm_is_reachable() {
     local alias=$1
@@ -411,8 +418,11 @@ render_mesh() {
             *)          conn_str="${C_DIM}${S_STOP} $phone_stat${RST}" ;;
         esac
 
+        local phone_model phone_storage_gb
+        phone_model=$(_jq -r '.mesh.phone.model // "Unknown"')
+        phone_storage_gb=$(_jq -r '.mesh.phone.storage_gb // "?"')
         printf "  %-17s %-16s %-10b %-14s %b\n" \
-            "$phone_name" "Galaxy S21" "$bat_str" "?/128 GB" "$conn_str"
+            "$phone_name" "$phone_model" "$bat_str" "?/${phone_storage_gb} GB" "$conn_str"
     fi
 }
 
@@ -1167,7 +1177,7 @@ render_drives() {
         vremote="sftp://$valias"
 
         local mounted_count=0 total_subs=0 subdir_str=""
-        for sub in sys home docker mnt; do
+        for sub in $(_vm_subdirs "$v"); do
             total_subs=$((total_subs + 1))
             if is_mounted "$MOUNT_DIR/$vname/$sub"; then
                 mounted_count=$((mounted_count + 1))
@@ -1244,20 +1254,27 @@ mount_rclone_path() {
 mount_vm() {
     local name=$1 remote=$2
     printf "${C_INFO}[+]${RST} Mounting %s...\n" "$name"
-    mount_rclone_path "$remote" "/" "$MOUNT_DIR/$name/sys" || true
-    mount_rclone_path "$remote" "/home" "$MOUNT_DIR/$name/home" || true
-    mount_rclone_path "$remote" "/var/lib/docker/volumes" "$MOUNT_DIR/$name/docker" || true
-    mount_rclone_path "$remote" "/mnt" "$MOUNT_DIR/$name/mnt" || true
+    local vidx; vidx=$(_jq --arg n "$name" '.mesh.vms | to_entries[] | select(.value.name == $n) | .key')
+    local scount; scount=$(_jq ".mesh.vms[$vidx].vm_subdirs | length")
+    local si=0
+    while [ "$si" -lt "$scount" ]; do
+        local sname srpath
+        sname=$(_jq -r ".mesh.vms[$vidx].vm_subdirs[$si].name")
+        srpath=$(_jq -r ".mesh.vms[$vidx].vm_subdirs[$si].remote_path")
+        mount_rclone_path "$remote" "$srpath" "$MOUNT_DIR/$name/$sname" || true
+        si=$((si+1))
+    done
 }
 
 unmount_vm() {
     local name=$1
-    for sub in sys home docker mnt; do
+    while IFS= read -r sub; do
+        [ -z "$sub" ] && continue
         if is_mounted "$MOUNT_DIR/$name/$sub"; then
             fusermount -uz "$MOUNT_DIR/$name/$sub" 2>/dev/null
             printf "${C_OK}[+]${RST} Unmounted %s/%s\n" "$name" "$sub"
         fi
-    done
+    done < <(_vm_subdirs_by_name "$name")
 }
 
 mount_drive() {
@@ -3349,7 +3366,7 @@ compute_gauges() {
     local v=0
     while [ "$v" -lt "$vm_count" ]; do
         local name; name=$(_jq -r ".mesh.vms[$v].name")
-        for sub in sys home docker mnt; do
+        for sub in $(_vm_subdirs "$v"); do
             if is_mounted "$MOUNT_DIR/$name/$sub"; then
                 vm_up=$((vm_up + 1))
                 break
@@ -3536,7 +3553,7 @@ render_alerts() {
     while [ "$v" -lt "$vm_count" ]; do
         local name; name=$(_jq -r ".mesh.vms[$v].name")
         local any_mounted=false
-        for sub in sys home docker mnt; do
+        for sub in $(_vm_subdirs "$v"); do
             is_mounted "$MOUNT_DIR/$name/$sub" && any_mounted=true && break
         done
         [ "$any_mounted" = "false" ] && vm_down=$((vm_down+1))
@@ -3988,7 +4005,7 @@ _compact_view() {
     while [ "$v" -lt "$vm_count" ]; do
         local name; name=$(_jq -r ".mesh.vms[$v].name")
         local mounted=false
-        for sub in sys home docker mnt; do
+        for sub in $(_vm_subdirs "$v"); do
             is_mounted "$MOUNT_DIR/$name/$sub" && mounted=true && break
         done
         [ "$mounted" = "true" ] && vm_up=$((vm_up+1))
@@ -3998,7 +4015,7 @@ _compact_view() {
     v=0; while [ "$v" -lt "$vm_count" ]; do
         local name; name=$(_jq -r ".mesh.vms[$v].name")
         local mounted=false
-        for sub in sys home docker mnt; do is_mounted "$MOUNT_DIR/$name/$sub" && mounted=true && break; done
+        for sub in $(_vm_subdirs "$v"); do is_mounted "$MOUNT_DIR/$name/$sub" && mounted=true && break; done
         [ "$mounted" = "true" ] && printf "${C_OK}${S_DOT}%s${RST} " "$name" || printf "${C_DIM}${S_STOP}%s${RST} " "$name"
         v=$((v+1))
     done
