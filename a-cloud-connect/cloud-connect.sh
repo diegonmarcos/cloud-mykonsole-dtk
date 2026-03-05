@@ -16,8 +16,10 @@ set -euo pipefail
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
-# Module files (in merge order — later modules override earlier on conflict)
-CC_MODULES=(
+CC_CACHE_DIR="$SCRIPT_DIR/.cache/cloud-connect"
+
+# Static modules (hand-maintained, committed to git)
+CC_MODULES_STATIC=(
     "$SCRIPT_DIR/cloud-connect-settings.json"
     "$SCRIPT_DIR/cloud-connect-mesh.json"
     "$SCRIPT_DIR/cloud-connect-git.json"
@@ -27,6 +29,14 @@ CC_MODULES=(
     "$SCRIPT_DIR/cloud-connect-web-servers.json"
     "$SCRIPT_DIR/cloud-connect-hm-flakes.json"
 )
+# Dynamic modules (auto-generated at startup into .cache/, override statics)
+CC_MODULES_DYNAMIC=(
+    "$CC_CACHE_DIR/env.json"
+    "$CC_CACHE_DIR/mesh.json"
+    "$CC_CACHE_DIR/hm-flakes.json"
+)
+# Merged list used by load_config() — statics first, dynamics override
+CC_MODULES=("${CC_MODULES_STATIC[@]}" "${CC_MODULES_DYNAMIC[@]}")
 CONFIG_JSON=""  # populated by load_config()
 
 # Environment detection — set by cc_probe_env(), used by load_config() for path overrides
@@ -135,6 +145,91 @@ cc_probe_env() {
         CC_ENV_PROFILE="desktop-x86"
         CC_ENV_SYSTEM="Desktop x86"
     fi
+
+    # Write to cache
+    mkdir -p "$CC_CACHE_DIR"
+    jq -n \
+        --arg profile "$CC_ENV_PROFILE" \
+        --arg system  "$CC_ENV_SYSTEM" \
+        --arg os      "$CC_ENV_OS" \
+        --arg arch    "$CC_ENV_ARCH" \
+        '{"env": {"profile": $profile, "system": $system, "os": $os, "arch": $arch}}' \
+        > "$CC_CACHE_DIR/env.json"
+}
+
+# Build mesh.json from cloud/config.json — source of truth for VMs
+cc_build_mesh() {
+    local cloud_config static_mesh
+    # Resolve GIT_WORKDIR — may not be loaded yet, read from settings JSON directly
+    local git_root
+    git_root=$(jq -r --arg p "$CC_ENV_PROFILE" '
+        if .profiles[$p].git_workdir then .profiles[$p].git_workdir
+        else .settings.git_workdir end' \
+        "$SCRIPT_DIR/cloud-connect-settings.json" 2>/dev/null)
+    git_root="${git_root/#\~/$HOME}"
+
+    cloud_config="$git_root/cloud/config.json"
+    [ ! -f "$cloud_config" ] && return  # cloud repo not cloned on this machine
+
+    # Read static mesh for phone + vm_subdirs defaults
+    static_mesh=$(jq '.mesh // {}' "$SCRIPT_DIR/cloud-connect-mesh.json" 2>/dev/null || echo '{}')
+    local default_subdirs
+    default_subdirs=$(echo "$static_mesh" | jq '[{"name":"sys","remote_path":"/"},{"name":"home","remote_path":"/home"},{"name":"docker","remote_path":"/var/lib/docker/volumes"},{"name":"mnt","remote_path":"/mnt"}]')
+
+    # Transform config.json vms{} object → mesh.vms[] array
+    jq -n \
+        --argjson cfg "$(jq '.' "$cloud_config")" \
+        --argjson static "$static_mesh" \
+        --argjson subdirs "$default_subdirs" \
+        '{
+            "mesh": {
+                "vms": [
+                    $cfg.vms | to_entries[] |
+                    {
+                        "id":         .key,
+                        "name":       .value.ssh_alias,
+                        "alias":      .value.ssh_alias,
+                        "wg_ip":      .value.wg_ip,
+                        "public_ip":  .value.ip,
+                        "description":.value.description,
+                        "vm_subdirs": $subdirs,
+                        "services":   (.key as $vmid | $cfg.services | to_entries | map(select(.value.vm == $vmid)) | map(.key))
+                    }
+                ],
+                "phone": ($static.phone // {})
+            }
+        }' > "$CC_CACHE_DIR/mesh.json"
+}
+
+# Build hm-flakes.json by scanning ~/git/unix/ flake directories
+cc_build_hm() {
+    local git_root
+    git_root=$(jq -r --arg p "$CC_ENV_PROFILE" '
+        if .profiles[$p].git_workdir then .profiles[$p].git_workdir
+        else .settings.git_workdir end' \
+        "$SCRIPT_DIR/cloud-connect-settings.json" 2>/dev/null)
+    git_root="${git_root/#\~/$HOME}"
+
+    local unix_dir="$git_root/unix"
+    [ ! -d "$unix_dir" ] && return  # unix repo not cloned
+
+    # Read static hm-flakes for descriptions and enabled flags
+    local static_hm
+    static_hm=$(jq '.home_manager_flakes // []' "$SCRIPT_DIR/cloud-connect-hm-flakes.json" 2>/dev/null || echo '[]')
+
+    jq -n \
+        --arg unix_dir "$unix_dir" \
+        --argjson static "$static_hm" \
+        '{
+            "home_manager_flakes": [
+                {"name":"nixos-surface", "type":"nixos",        "path": ($unix_dir + "/aa_nixos-surface_host"), "enabled":true},
+                {"name":"desktop",       "type":"home-manager", "path": ($unix_dir + "/ba_flakes_desktop"),     "enabled":true},
+                {"name":"termux",        "type":"home-manager", "path": ($unix_dir + "/bb_flakes_termux"),      "enabled":true}
+            ] | map(
+                . as $entry |
+                . + (($static[] | select(.name == $entry.name) | {description, enabled}) // {})
+            )
+        }' > "$CC_CACHE_DIR/hm-flakes.json"
 }
 
 # =============================================================================
@@ -3993,7 +4088,7 @@ _dispatch_cmd() {
         config-set)          printf "Key: "; read -r _ck; printf "Value: "; read -r _cv; config_set "$_ck" "$_cv" ;;
 
         # ── Global ──
-        refresh|r)           cc_probe_env; load_config ;;
+        refresh|r)           cc_probe_env; cc_build_mesh; cc_build_hm; load_config ;;
         detail)              _detail_view ;;
         help|h|\?)           show_help ;;
         quit|q|exit)         printf "\n"; exit 0 ;;
@@ -4344,6 +4439,8 @@ main() {
     esac
 
     cc_probe_env
+    cc_build_mesh
+    cc_build_hm
     load_config
 
     case "${1:-}" in
