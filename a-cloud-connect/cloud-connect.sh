@@ -330,10 +330,22 @@ _vm_subdirs_by_name() { _jq -r --arg n "$1" '.mesh.vms[] | select(.name==$n) | .
 # Get remote_path for a named subdir of a VM (by index)
 _vm_subdir_remote_path() { _jq -r --arg s "$2" ".mesh.vms[$1].vm_subdirs[] | select(.name==\$s) | .remote_path"; }
 
-# Get VM SSH reachability (fast ssh check)
+# Get VM reachability via TCP/nc — fast SYN/ACK only, no SSH handshake overhead.
+# Both desktop and android use nc; SSH full handshake is unnecessary for a ping check.
+#
+# Future Implementation RoadMap Backlog:
+#   wireguard-go (netstack/userspace mode) — run WG tunnel natively inside Termux without root.
+#   Would use gVisor netstack (no TUN device needed), expose SOCKS5 on localhost,
+#   removing dependency on Android WG app per-app VPN inclusion.
+#   Ref: https://github.com/WireGuard/wireguard-go (netstack branch)
 vm_is_reachable() {
     local alias=$1
-    timeout 3 ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o BatchMode=yes "$alias" exit 2>/dev/null
+    local host port
+    host=$(ssh -G "$alias" 2>/dev/null | awk '/^hostname /{print $2; exit}')
+    port=$(ssh -G "$alias" 2>/dev/null | awk '/^port /{print $2; exit}')
+    host=${host:-$alias}
+    port=${port:-22}
+    nc -z -w1 "$host" "$port" 2>/dev/null
 }
 
 # Get phone status via KDE Connect
@@ -3406,6 +3418,27 @@ server_stop() {
 # F) WEBSERVER - Dev servers detection
 # =============================================================================
 
+# Resolve listening port for a PID: try ss (desktop), then parse cmd args
+_get_pid_port() {
+    local pid="$1"
+    # Try ss with pid filter (works on full Linux with CAP_NET_ADMIN)
+    local port
+    port=$(ss -tlnp 2>/dev/null | grep "pid=$pid," | grep -oP ':\K\d+' | head -1)
+    [ -n "$port" ] && { echo "$port"; return; }
+    # Fallback: parse --port / -p / PORT= from command args
+    local args; args=$(ps -o args= -p "$pid" 2>/dev/null || echo "")
+    port=$(echo "$args" | grep -oP '(?:--port[= ]|(?<!\w)-p[= ])\K\d+' | head -1)
+    [ -n "$port" ] && { echo "$port"; return; }
+    echo "?"
+}
+
+# Format uptime seconds to human string
+_fmt_uptime() {
+    local s="$1"
+    if [ "$s" -lt 3600 ] 2>/dev/null; then echo "$((s / 60))m"
+    else echo "$((s / 3600))h"; fi
+}
+
 render_webservers() {
     printf "  ${BLD}%-17s %-6s %-10s %-12s %-26s %-8s %-7s State${RST}\n" \
         "DEV SERVER" "Port" "Runtime" "Framework" "Project" "PID" "Up"
@@ -3414,81 +3447,77 @@ render_webservers() {
     printf "${RST}\n"
 
     local found=0
+    local seen_pids=""
 
-    # Detect node dev servers
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
+    # Primary: scan .build.pid files under GIT_WORKDIR (set by build.sh dev)
+    while IFS= read -r pidfile; do
+        [ -z "$pidfile" ] && continue
+        local port server started pid_json proj
+        port=$(jq -r '.port // "?"' "$pidfile" 2>/dev/null)
+        server=$(jq -r '.server // "?"' "$pidfile" 2>/dev/null)
+        started=$(jq -r '.started // ""' "$pidfile" 2>/dev/null)
+        # Each server may have multiple PIDs — grab first alive one
+        local pid=""
+        while IFS= read -r p; do
+            [ -n "$p" ] && kill -0 "$p" 2>/dev/null && pid="$p" && break
+        done < <(jq -r '.pids | to_entries[] | .value | tostring' "$pidfile" 2>/dev/null)
+
+        # If no pid alive, skip
+        [ -z "$pid" ] && continue
+
+        seen_pids="$seen_pids $pid"
+        proj=$(dirname "$pidfile")
+        proj="${proj#$GIT_WORKDIR/}"; proj="${proj#$HOME/}"; proj="${proj%.build.pid}"
+        proj="${proj:0:26}"
+
+        # Detect framework from server field or cmd
+        local fw="$server"
+        case "$server" in
+            vite)        fw="Vite" ;;
+            sveltekit)   fw="SvelteKit" ;;
+            next)        fw="Next.js" ;;
+            node-static) fw="node-static" ;;
+            live-server) fw="live-server" ;;
+        esac
+
+        local up_s; up_s=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ' || echo 0)
+        local runtime="Node"
+        echo "$server" | grep -qi "python\|flask\|uvicorn" && runtime="Python"
+
         found=1
-        local pid port cmd cwd
-        pid=$(echo "$line" | awk '{print $1}')
-        # Get the listening port
-        port=$(ss -tlnp 2>/dev/null | grep "pid=$pid" | grep -oP ':\K\d+' | head -1 || echo "?")
-        # Get command and cwd
-        cmd=$(ps -o args= -p "$pid" 2>/dev/null | head -c40 || echo "?")
-        cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || echo "?")
-        local proj
-        proj=$(echo "$cwd" | sed "s|$HOME/Mounts/Git/||;s|$HOME/||" | head -c26)
+        printf "  %-17s %-6s %-10s %-12s %-26s %-8s %-7s ${C_OK}${S_RUN} RUN${RST}\n" \
+            "$(basename "$(dirname "$pidfile")")" "$port" "$runtime" "$fw" "$proj" "$pid" "$(_fmt_uptime "$up_s")"
+    done < <(find "$GIT_WORKDIR" -maxdepth 4 -name ".build.pid" 2>/dev/null | sort)
 
-        # Detect framework
-        local fw="node"
+    # Secondary: pgrep scan for processes NOT tracked by .build.pid
+    local _detect_proc
+    _detect_proc() {
+        local pid="$1" runtime="$2"
+        echo "$seen_pids" | grep -qw "$pid" && return  # already shown
+        local port cmd cwd proj fw
+        port=$(_get_pid_port "$pid")
+        cmd=$(ps -o args= -p "$pid" 2>/dev/null | head -c60 || echo "")
+        cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || echo "")
+        proj="${cwd#$GIT_WORKDIR/}"; proj="${proj#$HOME/}"; proj="${proj:0:26}"
+        fw="$runtime"
         echo "$cmd" | grep -qi "vite" && fw="Vite"
         echo "$cmd" | grep -qi "svelte" && fw="SvelteKit"
         echo "$cmd" | grep -qi "next" && fw="Next.js"
-        echo "$cmd" | grep -qi "astro" && fw="Astro"
-
-        # Uptime
-        local up_s; up_s=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ' || echo 0)
-        local up_str
-        if [ "$up_s" -lt 3600 ] 2>/dev/null; then
-            up_str="$((up_s / 60))m"
-        else
-            up_str="$((up_s / 3600))h"
-        fi
-
-        printf "  %-17s %-6s %-10s %-12s %-26s %-8s %-7s ${C_OK}${S_RUN} RUN${RST}\n" \
-            "node" "$port" "Node" "$fw" "$proj" "$pid" "$up_str"
-    done < <(pgrep -f "node.*dev\|node.*serve\|vite\|next.*dev" 2>/dev/null || true)
-
-    # Detect python dev servers
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        found=1
-        local pid port cmd cwd
-        pid=$(echo "$line" | awk '{print $1}')
-        port=$(ss -tlnp 2>/dev/null | grep "pid=$pid" | grep -oP ':\K\d+' | head -1 || echo "?")
-        cmd=$(ps -o args= -p "$pid" 2>/dev/null | head -c40 || echo "?")
-        cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || echo "?")
-        local proj
-        proj=$(echo "$cwd" | sed "s|$HOME/Mounts/Git/||;s|$HOME/||" | head -c26)
-
-        local fw="python"
         echo "$cmd" | grep -qi "flask" && fw="Flask"
         echo "$cmd" | grep -qi "uvicorn\|fastapi" && fw="FastAPI"
         echo "$cmd" | grep -qi "django" && fw="Django"
-
         local up_s; up_s=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ' || echo 0)
-        local up_str
-        if [ "$up_s" -lt 3600 ] 2>/dev/null; then
-            up_str="$((up_s / 60))m"
-        else
-            up_str="$((up_s / 3600))h"
-        fi
-
+        found=1
         printf "  %-17s %-6s %-10s %-12s %-26s %-8s %-7s ${C_OK}${S_RUN} RUN${RST}\n" \
-            "python" "$port" "Python" "$fw" "$proj" "$pid" "$up_str"
-    done < <(pgrep -f "python.*-m\|uvicorn\|flask\|gunicorn" 2>/dev/null || true)
+            "$runtime" "$port" "$runtime" "$fw" "$proj" "$pid" "$(_fmt_uptime "$up_s")"
+    }
 
-    # Static entries from config
-    local ws_count; ws_count=$(_jq '.webservers | length')
-    if [ "$ws_count" -gt 0 ]; then
-        local ws=0
-        while [ "$ws" -lt "$ws_count" ]; do
-            # future: static config entries
-            ws=$((ws+1))
-        done
-    fi
+    while IFS= read -r pid; do [ -n "$pid" ] && _detect_proc "$pid" "Node"; done \
+        < <(pgrep -f "node.*dev\|node.*serve\|vite\|next.*dev\|live-server" 2>/dev/null || true)
+    while IFS= read -r pid; do [ -n "$pid" ] && _detect_proc "$pid" "Python"; done \
+        < <(pgrep -f "python.*-m http\|uvicorn\|flask run\|gunicorn" 2>/dev/null || true)
 
-    if [ "$found" -eq 0 ] && [ "$ws_count" -eq 0 ]; then printf "  ${C_DIM}No dev servers running${RST}\n"; fi
+    if [ "$found" -eq 0 ]; then printf "  ${C_DIM}No dev servers running${RST}\n"; fi
 }
 
 # =============================================================================
@@ -3605,11 +3634,30 @@ render_home_manager() {
             fi
         fi
 
-        # Generation info
+        # Generation info — try home-manager cmd, fall back to nix profile symlinks
         local gen_str="─"
-        if [ "$htype" = "home-manager" ] && command -v home-manager >/dev/null 2>&1; then
-            local gen; gen=$(home-manager generations 2>/dev/null | head -1 | grep -oP 'id \K\d+' || echo "")
+        if [ "$htype" = "home-manager" ]; then
+            local gen=""
+            if command -v home-manager >/dev/null 2>&1; then
+                gen=$(home-manager generations 2>/dev/null | head -1 | grep -oP 'id \K\d+' || echo "")
+            fi
+            if [ -z "$gen" ]; then
+                # Read from nix profile symlinks: home-manager-N-link or profile-N-link
+                local prof_dir="/nix/var/nix/profiles/per-user/${USER:-$(id -un)}"
+                # home-manager generations
+                gen=$(ls "$prof_dir" 2>/dev/null | grep -oP '^home-manager-\K\d+(?=-link)' | sort -n | tail -1)
+                # nix-on-droid uses profile-N-link (no home-manager prefix)
+                if [ -z "$gen" ]; then
+                    gen=$(ls "$prof_dir" 2>/dev/null | grep -oP '^profile-\K\d+(?=-link)' | sort -n | tail -1)
+                fi
+            fi
             [ -n "$gen" ] && gen_str="gen $gen"
+        elif [ "$htype" = "nixos" ]; then
+            # NixOS system generations (only readable on the local machine)
+            if command -v nixos-rebuild >/dev/null 2>&1; then
+                local gen; gen=$(nixos-rebuild list-generations 2>/dev/null | grep '\*' | grep -oP '^\s*\K\d+' | head -1)
+                [ -n "$gen" ] && gen_str="gen $gen"
+            fi
         fi
 
         printf "  %-20s %-14s %-34s %b  %s\n" \
