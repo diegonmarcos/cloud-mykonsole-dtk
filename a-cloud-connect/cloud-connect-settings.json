@@ -43,7 +43,12 @@
       "gh",
       "oci",
       "kdeconnect-cli",
-      "qdbus"
+      "qdbus",
+      "sops",
+      "openssl",
+      "node",
+      "unison",
+      "ss"
     ]
   }
 }
