@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/bin/sh
+# NOTE: Uses 'local' and bash arrays in select_and_mount_vm — needs bash/dash/ash.
+# Key reading is POSIX (stty+dd).
 # cloud-connect.sh - Cloud Connect: Unified Dashboard
 # Combines: Git Manager + FUSE Mounts + Rclone Sync + Servers + Webservers
 # Author: Diego Nepomuceno Marcos
@@ -165,28 +167,62 @@ cc_probe_env() {
         > "$CC_CACHE_DIR/env.json"
 }
 
-# Build mesh.json from cloud/config.json — source of truth for VMs
-cc_build_mesh() {
-    local cloud_config static_mesh
-    # Resolve GIT_WORKDIR — may not be loaded yet, read from settings JSON directly
-    local git_root
-    git_root=$(jq -r --arg p "$CC_ENV_PROFILE" '
-        if .profiles[$p].git_workdir then .profiles[$p].git_workdir
-        else .settings.git_workdir end' \
-        "$SCRIPT_DIR/cloud-connect-settings.json" 2>/dev/null)
-    git_root="${git_root/#\~/$HOME}"
+# Fetch cloud-topology.json + cloud-configs.json from GitHub (cached)
+CLOUD_RAW_BASE="https://raw.githubusercontent.com/diegonmarcos/cloud/main"
+CLOUD_TOPOLOGY=""
+CLOUD_CONFIGS=""
 
-    cloud_config="$git_root/cloud/config.json"
-    [ ! -f "$cloud_config" ] && return  # cloud repo not cloned on this machine
+_fetch_cloud_json() {
+    local cache_topo="$CC_CACHE_DIR/cloud-topology.json"
+    local cache_conf="$CC_CACHE_DIR/cloud-configs.json"
+    local max_age=300  # 5 min cache
+
+    # Use cache if fresh
+    if [ -f "$cache_topo" ] && [ -f "$cache_conf" ]; then
+        local age=$(( $(date +%s) - $(date -r "$cache_topo" +%s 2>/dev/null || echo 0) ))
+        if [ "$age" -lt "$max_age" ]; then
+            CLOUD_TOPOLOGY=$(cat "$cache_topo")
+            CLOUD_CONFIGS=$(cat "$cache_conf")
+            return 0
+        fi
+    fi
+
+    # Fetch in parallel
+    curl -sf --max-time 5 "$CLOUD_RAW_BASE/cloud-topology.json" > "$cache_topo.tmp" &
+    local pid1=$!
+    curl -sf --max-time 5 "$CLOUD_RAW_BASE/cloud-configs.json" > "$cache_conf.tmp" &
+    local pid2=$!
+    wait "$pid1" "$pid2"
+
+    # Validate and commit
+    if jq empty "$cache_topo.tmp" 2>/dev/null && jq empty "$cache_conf.tmp" 2>/dev/null; then
+        mv "$cache_topo.tmp" "$cache_topo"
+        mv "$cache_conf.tmp" "$cache_conf"
+        CLOUD_TOPOLOGY=$(cat "$cache_topo")
+        CLOUD_CONFIGS=$(cat "$cache_conf")
+    else
+        rm -f "$cache_topo.tmp" "$cache_conf.tmp"
+        # Fall back to stale cache
+        [ -f "$cache_topo" ] && CLOUD_TOPOLOGY=$(cat "$cache_topo")
+        [ -f "$cache_conf" ] && CLOUD_CONFIGS=$(cat "$cache_conf")
+    fi
+}
+
+# Build mesh.json from cloud-topology.json (fetched from GitHub)
+cc_build_mesh() {
+    _fetch_cloud_json
+
+    [ -z "$CLOUD_TOPOLOGY" ] && return  # no data available
 
     # Read static mesh for phone + vm_subdirs defaults
+    local static_mesh
     static_mesh=$(jq '.mesh // {}' "$SCRIPT_DIR/cloud-connect-mesh.json" 2>/dev/null || echo '{}')
     local default_subdirs
     default_subdirs=$(echo "$static_mesh" | jq '[{"name":"sys","remote_path":"/"},{"name":"home","remote_path":"/home"},{"name":"docker","remote_path":"/var/lib/docker/volumes"},{"name":"mnt","remote_path":"/mnt"}]')
 
-    # Transform config.json vms{} object → mesh.vms[] array
+    # Transform topology vms{} object → mesh.vms[] array
     jq -n \
-        --argjson cfg "$(jq '.' "$cloud_config")" \
+        --argjson cfg "$CLOUD_TOPOLOGY" \
         --argjson static "$static_mesh" \
         --argjson subdirs "$default_subdirs" \
         '{
@@ -205,7 +241,16 @@ cc_build_mesh() {
                     }
                 ],
                 "phone": ($static.phone // {})
-            }
+            },
+            "service_details": ($cfg.services | to_entries | map({
+                key: .key,
+                value: {
+                    "domain": .value.domain,
+                    "port": (.value.ports[0] // "—"),
+                    "availability": (if .value.wake then "wake-on-demand" else "24/7" end),
+                    "category": .value.category
+                }
+            }) | from_entries)
         }' > "$CC_CACHE_DIR/mesh.json"
 }
 
@@ -442,12 +487,7 @@ _vm_subdir_remote_path() { _jq -r --arg s "$2" ".mesh.vms[$1].vm_subdirs[] | sel
 #   removing dependency on Android WG app per-app VPN inclusion.
 #   Ref: https://github.com/WireGuard/wireguard-go (netstack branch)
 vm_is_reachable() {
-    local alias=$1
-    local host port
-    host=$(ssh -G "$alias" 2>/dev/null | awk '/^hostname /{print $2; exit}')
-    port=$(ssh -G "$alias" 2>/dev/null | awk '/^port /{print $2; exit}')
-    host=${host:-$alias}
-    port=${port:-22}
+    local host=${1:?} port=${2:-22}
     nc -z -w2 "$host" "$port" 2>/dev/null
 }
 
@@ -535,8 +575,17 @@ _git_collect_repo() {
     stash=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
     submods=$([ -f .gitmodules ] && echo yes || echo no)
 
-    # ── Size: .git dir only (10× faster than full repo tree) ──
-    local size; size=$(du -sm .git 2>/dev/null | awk '{printf "%dM", $1}' || echo "?")
+    # ── Size: pack file size (instant, no directory walk) ──
+    local size="?"
+    if [ -d .git/objects/pack ]; then
+        local pack_bytes=0
+        for pf in .git/objects/pack/*.pack; do
+            [ -f "$pf" ] || continue
+            local ps; ps=$(stat -c %s "$pf" 2>/dev/null || stat -f %z "$pf" 2>/dev/null || echo 0)
+            pack_bytes=$((pack_bytes + ps))
+        done
+        size="$((pack_bytes / 1048576))M"
+    fi
 
     # ── Auth from URL (pure string, no subprocess) ──
     local auth
@@ -608,48 +657,202 @@ collect_all() {
     local _old_opts; _old_opts=$(set +o); set +e
     local ts; ts=$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')
 
-    # ═══ MESH VMs ═══
-    local vm_count; vm_count=$(_jq '.mesh.vms | length')
-    local mesh_vms="[" i=0
-    local _gauge_mesh_up=0
-    while [ "$i" -lt "$vm_count" ]; do
-        local name alias_name wg_ip pub_ip
-        name=$(_jq -r ".mesh.vms[$i].name")
-        alias_name=$(_jq -r ".mesh.vms[$i].alias")
-        wg_ip=$(_jq -r ".mesh.vms[$i].wg_ip")
-        pub_ip=$(_jq -r ".mesh.vms[$i].public_ip")
+    # Perf timer helper (ms precision)
+    local _perf_t0; _perf_t0=$(date +%s%N 2>/dev/null || echo 0)
+    _perf() {
+        local now; now=$(date +%s%N 2>/dev/null || echo 0)
+        local ms=$(( (now - _perf_t0) / 1000000 ))
+        printf >&2 "  [perf] %-20s %5dms\n" "$1" "$ms"
+        _perf_t0=$now
+    }
 
-        local state="offline" up_secs=0 cpu_pct="?" ram_pct="?"
-        if vm_is_reachable "$alias_name" 2>/dev/null; then
-            state="online"
-            local metrics
-            metrics=$(ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes "$alias_name" \
-                'printf "%s|" "$(awk "{print int(\$1)}" /proc/uptime 2>/dev/null || echo 0)"; \
-                 printf "%s|" "$(top -bn1 2>/dev/null | awk "/Cpu/{printf \"%d\", 100-\$8}" || echo "?")"; \
-                 free 2>/dev/null | awk "/Mem:/{printf \"%d\", \$3/\$2*100}" || echo "?"' 2>/dev/null || echo "0|?|?")
-            up_secs=$(echo "$metrics" | cut -d'|' -f1)
-            cpu_pct=$(echo "$metrics" | cut -d'|' -f2)
-            ram_pct=$(echo "$metrics" | cut -d'|' -f3)
+    # ═══ PARALLEL SECTION — fire all heavy work as background jobs ═══
+    local _par; _par=$(mktemp -d)
+
+    # ── MESH VMs (parallel nc to wg_ip) ──
+    (
+        local _vm_tsv _nc_tmpdir vm_count=0 mesh_vms="[" _gauge_mesh_up=0
+        _vm_tsv=$(jq -r '.mesh.vms[] | [.name, .alias, .wg_ip, .public_ip] | @tsv' <<< "$CONFIG_JSON" 2>/dev/null)
+        _nc_tmpdir=$(mktemp -d)
+        while IFS=$'\t' read -r _n _a _w _p; do
+            [ -z "$_w" ] && continue
+            ( nc -z -w2 "$_w" 22 2>/dev/null && echo "online" || echo "offline" ) > "$_nc_tmpdir/$_a" &
+        done <<< "$_vm_tsv"
+        wait
+        while IFS=$'\t' read -r name alias_name wg_ip pub_ip; do
+            [ -z "$name" ] && continue
+            local state="offline"
+            [ -f "$_nc_tmpdir/$alias_name" ] && state=$(cat "$_nc_tmpdir/$alias_name")
+            local mounted=0 sub_json="[" sfirst=true
+            for sub in $(jq -r ".mesh.vms[$vm_count].vm_subdirs[]?.name" <<< "$CONFIG_JSON" 2>/dev/null); do
+                local sm=false
+                is_mounted "$MOUNT_DIR/$name/$sub" && { sm=true; mounted=$((mounted+1)); }
+                [ "$sfirst" = "true" ] && sfirst=false || sub_json="$sub_json,"
+                sub_json="$sub_json{\"name\":\"$sub\",\"mounted\":$sm}"
+            done
+            sub_json="$sub_json]"
+            [ "$mounted" -gt 0 ] && _gauge_mesh_up=$((_gauge_mesh_up+1))
+            [ "$vm_count" -gt 0 ] && mesh_vms="$mesh_vms,"
+            mesh_vms="$mesh_vms{\"name\":\"$name\",\"alias\":\"$alias_name\",\"wg_ip\":\"$wg_ip\",\"public_ip\":\"$pub_ip\",\"state\":\"$state\",\"uptime_secs\":0,\"cpu_pct\":\"?\",\"ram_pct\":\"?\",\"mounts_up\":$mounted,\"subdirs\":$sub_json}"
+            vm_count=$((vm_count+1))
+        done <<< "$_vm_tsv"
+        mesh_vms="$mesh_vms]"
+        rm -rf "$_nc_tmpdir"
+        printf '%s' "$mesh_vms" > "$_par/mesh_vms.json"
+        printf '%s' "$vm_count" > "$_par/mesh_vm_count"
+        printf '%s' "$_gauge_mesh_up" > "$_par/mesh_gauge_up"
+    ) &
+
+    # ── GIT REPOS ──
+    local _git_tmpdir; _git_tmpdir=$(mktemp -d)
+    (
+        local repos; repos=$(jq -r '(.git.public_repos // {} | keys[]) , (.git.private_repos // {} | keys[])' <<< "$CONFIG_JSON" 2>/dev/null)
+        local _git_pids="" _git_i=0
+        while IFS= read -r repo_name; do
+            [ -z "$repo_name" ] && continue
+            local dir="$GIT_WORKDIR/$repo_name"
+            if [ -d "$dir/.git" ]; then
+                _git_collect_repo "$repo_name" "$dir" > "$_git_tmpdir/$(printf '%03d' $_git_i).json" 2>/dev/null &
+                _git_pids="$_git_pids $!"
+            else
+                printf '{"name":"%s","cloned":false}' "$repo_name" > "$_git_tmpdir/$(printf '%03d' $_git_i).json"
+            fi
+            _git_i=$((_git_i+1))
+        done <<< "$repos"
+        for _pid in $_git_pids; do wait "$_pid" 2>/dev/null; done
+        touch "$_git_tmpdir/.done"
+    ) &
+
+    # ── SYNC ──
+    (
+        local sync_remotes_json="[]"
+        if command -v rclone >/dev/null 2>&1; then
+            local remotes_raw; remotes_raw=$(rclone listremotes 2>/dev/null | sed 's/:$//')
+            [ -n "$remotes_raw" ] && sync_remotes_json=$(echo "$remotes_raw" | jq -Rs 'split("\n") | map(select(length > 0))')
         fi
+        local sync_rules_json; sync_rules_json=$(sync_list_rules 2>/dev/null || echo "[]")
+        local sync_running_json; sync_running_json=$(sync_get_running_jobs 2>/dev/null || echo "[]")
+        printf '%s' "$sync_remotes_json" > "$_par/sync_remotes.json"
+        printf '%s' "$sync_rules_json" > "$_par/sync_rules.json"
+        printf '%s' "$sync_running_json" > "$_par/sync_running.json"
+    ) &
 
-        # Mount status per subdir
-        local mounted=0 sub_json="[" sfirst=true
-        for sub in $(_vm_subdirs "$i"); do
-            local sm=false
-            is_mounted "$MOUNT_DIR/$name/$sub" && { sm=true; mounted=$((mounted+1)); }
-            [ "$sfirst" = "true" ] && sfirst=false || sub_json="$sub_json,"
-            sub_json="$sub_json{\"name\":\"$sub\",\"mounted\":$sm}"
-        done
-        sub_json="$sub_json]"
-        [ "$mounted" -gt 0 ] && _gauge_mesh_up=$((_gauge_mesh_up+1))
+    # ── DATA SERVERS ──
+    (
+        local _srv_tsv; _srv_tsv=$(jq -r '.data_servers[]? | [.name, .type, (.port|tostring), .root, (.auth // "none"), (.tls // false | tostring), (.mode // "local")] | @tsv' <<< "$CONFIG_JSON" 2>/dev/null)
+        local servers_json="[" si=0
+        while IFS=$'\t' read -r sname stype sport sroot sauth stls smode; do
+            [ -z "$sname" ] && continue
+            sroot=$(_srv_expand_path "$sroot")
+            local short_root="${sroot/#$HOME/\~}"
+            [ ${#short_root} -gt 20 ] && short_root="...${short_root: -17}"
+            local pid="" bind_addr="—" clients="—" uptime_str="—" running=false
+            pid=$(_srv_detect_pid "$stype" "$sport")
+            if [ -n "$pid" ]; then
+                running=true; bind_addr=$(_srv_detect_bind "$sport")
+                clients=$(_srv_client_count "$sport"); uptime_str=$(_srv_uptime "$pid")
+            else
+                [ "$smode" = "lan" ] && bind_addr="0.0.0.0:$sport" || bind_addr="127.0.0.1:$sport"
+            fi
+            local pid_val="null"; [ -n "$pid" ] && pid_val="$pid"
+            [ "$si" -gt 0 ] && servers_json="$servers_json,"
+            servers_json="$servers_json{\"name\":\"$sname\",\"type\":\"$stype\",\"port\":$sport,\"root\":\"$short_root\",\"auth\":\"$sauth\",\"tls\":$stls,\"mode\":\"$smode\",\"running\":$running,\"pid\":$pid_val,\"bind\":\"$bind_addr\",\"clients\":\"$clients\",\"uptime\":\"$uptime_str\"}"
+            si=$((si+1))
+        done <<< "$_srv_tsv"
+        servers_json="$servers_json]"
+        local unison_json; unison_json=$(jq '[.unison_profiles[]? | {name, profile, enabled: (.enabled // false)}]' <<< "$CONFIG_JSON" 2>/dev/null)
+        printf '%s' "$servers_json" > "$_par/servers.json"
+        printf '%s' "$unison_json" > "$_par/unison.json"
+    ) &
 
-        [ "$i" -gt 0 ] && mesh_vms="$mesh_vms,"
-        mesh_vms="$mesh_vms{\"name\":\"$name\",\"alias\":\"$alias_name\",\"wg_ip\":\"$wg_ip\",\"public_ip\":\"$pub_ip\",\"state\":\"$state\",\"uptime_secs\":$up_secs,\"cpu_pct\":\"$cpu_pct\",\"ram_pct\":\"$ram_pct\",\"mounts_up\":$mounted,\"subdirs\":$sub_json}"
-        i=$((i+1))
-    done
-    mesh_vms="$mesh_vms]"
+    # ── WEBSERVERS ──
+    (
+        local webservers_json="[" wfirst=true seen_pids=""
+        while IFS= read -r pidfile; do
+            [ -z "$pidfile" ] && continue
+            local wport wserver wpid=""
+            wport=$(jq -r '.port // "?"' "$pidfile" 2>/dev/null)
+            wserver=$(jq -r '.server // "?"' "$pidfile" 2>/dev/null)
+            while IFS= read -r p; do
+                [ -n "$p" ] && kill -0 "$p" 2>/dev/null && wpid="$p" && break
+            done < <(jq -r '.pids | to_entries[] | .value | tostring' "$pidfile" 2>/dev/null)
+            [ -z "$wpid" ] && continue
+            seen_pids="$seen_pids $wpid"
+            local wproj; wproj=$(dirname "$pidfile")
+            wproj="${wproj#$GIT_WORKDIR/}"; wproj="${wproj#$HOME/}"
+            local wfw="$wserver"
+            case "$wserver" in vite) wfw="Vite";; sveltekit) wfw="SvelteKit";; next) wfw="Next.js";; esac
+            local wup; wup=$(ps -o etimes= -p "$wpid" 2>/dev/null | tr -d ' ' || echo 0)
+            local wrt="Node"; echo "$wserver" | grep -qi "python\|flask\|uvicorn" && wrt="Python"
+            local wname; wname=$(basename "$(dirname "$pidfile")")
+            [ "$wfirst" = "true" ] && wfirst=false || webservers_json="$webservers_json,"
+            webservers_json="$webservers_json{\"name\":\"$wname\",\"port\":\"$wport\",\"runtime\":\"$wrt\",\"framework\":\"$wfw\",\"project\":\"${wproj:0:26}\",\"pid\":\"$wpid\",\"uptime_secs\":$wup}"
+        done < <(find "$GIT_WORKDIR" -maxdepth 4 -name ".build.pid" 2>/dev/null | sort)
+        # pgrep scan
+        _ws_detect2() {
+            local wpid="$1" wrt="$2"
+            echo "$seen_pids" | grep -qw "$wpid" && return
+            local wport wcmd wcwd wproj wfw
+            wport=$(_get_pid_port "$wpid")
+            wcmd=$(ps -o args= -p "$wpid" 2>/dev/null | head -c60 || echo "")
+            wcwd=$(readlink -f "/proc/$wpid/cwd" 2>/dev/null || echo "")
+            wproj="${wcwd#$GIT_WORKDIR/}"; wproj="${wproj#$HOME/}"; wproj="${wproj:0:26}"
+            wfw="$wrt"
+            echo "$wcmd" | grep -qi "vite" && wfw="Vite"
+            echo "$wcmd" | grep -qi "svelte" && wfw="SvelteKit"
+            echo "$wcmd" | grep -qi "next" && wfw="Next.js"
+            echo "$wcmd" | grep -qi "flask" && wfw="Flask"
+            echo "$wcmd" | grep -qi "uvicorn\|fastapi" && wfw="FastAPI"
+            local wup; wup=$(ps -o etimes= -p "$wpid" 2>/dev/null | tr -d ' ' || echo 0)
+            [ "$wfirst" = "true" ] && wfirst=false || webservers_json="$webservers_json,"
+            webservers_json="$webservers_json{\"name\":\"$wrt\",\"port\":\"$wport\",\"runtime\":\"$wrt\",\"framework\":\"$wfw\",\"project\":\"$wproj\",\"pid\":\"$wpid\",\"uptime_secs\":$wup}"
+        }
+        while IFS= read -r wpid; do [ -n "$wpid" ] && _ws_detect2 "$wpid" "Node"; done \
+            < <(pgrep -f "node.*dev\|node.*serve\|vite\|next.*dev\|live-server" 2>/dev/null || true)
+        while IFS= read -r wpid; do [ -n "$wpid" ] && _ws_detect2 "$wpid" "Python"; done \
+            < <(pgrep -f "python.*-m http\|uvicorn\|flask run\|gunicorn" 2>/dev/null || true)
+        webservers_json="$webservers_json]"
+        printf '%s' "$webservers_json" > "$_par/webservers.dat"
+    ) &
 
-    # ═══ LOCAL PC ═══
+    # ── HOME-MANAGER ──
+    (
+        local _hm_tsv; _hm_tsv=$(jq -r '.home_manager_flakes[]? | [.name, .type, .path, (.enabled|tostring)] | @tsv' <<< "$CONFIG_JSON" 2>/dev/null)
+        local hm_json="[" hi=0
+        while IFS=$'\t' read -r hname htype hpath henabled; do
+            [ -z "$hname" ] && continue
+            hpath="${hpath/#\~/$HOME}"
+            local hdirty=0 hgit_label="?" hgen="—"
+            if [ "$henabled" != "false" ] && [ -d "$hpath" ]; then
+                if [ "$htype" = "home-manager" ]; then
+                    local prof_dir="/nix/var/nix/profiles/per-user/${USER:-$(id -un)}"
+                    local gen=""
+                    gen=$(ls "$prof_dir" 2>/dev/null | grep -oP '^home-manager-\K\d+(?=-link)' | sort -n | tail -1)
+                    [ -z "$gen" ] && gen=$(ls "$prof_dir" 2>/dev/null | grep -oP '^profile-\K\d+(?=-link)' | sort -n | tail -1)
+                    [ -n "$gen" ] && hgen="gen $gen"
+                elif [ "$htype" = "nixos" ]; then
+                    local gen=""
+                    gen=$(ls /nix/var/nix/profiles/ 2>/dev/null | grep -oP '^system-\K\d+(?=-link)' | sort -n | tail -1)
+                    [ -n "$gen" ] && hgen="gen $gen"
+                fi
+                if [ -f "$hpath/.git/HEAD" ]; then
+                    local local_ref remote_ref
+                    local_ref=$(git -C "$hpath" rev-parse HEAD 2>/dev/null)
+                    remote_ref=$(git -C "$hpath" rev-parse @{u} 2>/dev/null)
+                    if [ -n "$local_ref" ] && [ -n "$remote_ref" ]; then
+                        [ "$local_ref" = "$remote_ref" ] && hgit_label="synced" || hgit_label="diverged"
+                    fi
+                fi
+            fi
+            [ "$hi" -gt 0 ] && hm_json="$hm_json,"
+            hm_json="$hm_json{\"name\":\"$hname\",\"type\":\"$htype\",\"path\":\"${hpath/$HOME/\~}\",\"enabled\":$henabled,\"dirty\":$hdirty,\"git_label\":\"$hgit_label\",\"generation\":\"$hgen\"}"
+            hi=$((hi+1))
+        done <<< "$_hm_tsv"
+        hm_json="$hm_json]"
+        printf '%s' "$hm_json" > "$_par/hm.dat"
+    ) &
+
+    # ── Foreground: LOCAL PC + PHONE + DRIVES + SERVICES (fast, no I/O) ──
     local lh_hostname lh_os lh_kernel lh_up_secs lh_cpu lh_ram_used lh_ram_total lh_disk_used lh_disk_total
     lh_hostname="${HM_PROFILE:-$(hostname 2>/dev/null || echo 'unknown')}"
     lh_os=$(grep -oP '(?<=PRETTY_NAME=").*(?=")' /etc/os-release 2>/dev/null | head -c16 || echo "Linux")
@@ -662,11 +865,12 @@ collect_all() {
     lh_disk_total=$(df -BG /home 2>/dev/null | awk 'NR==2{gsub("G","",$2); print $2}' || echo 1)
     local local_json="{\"hostname\":\"$lh_hostname\",\"os\":\"$lh_os\",\"kernel\":\"$lh_kernel\",\"uptime_secs\":$lh_up_secs,\"cpu\":\"$lh_cpu\",\"ram_used_g\":$lh_ram_used,\"ram_total_g\":$lh_ram_total,\"disk_used\":$lh_disk_used,\"disk_total\":$lh_disk_total}"
 
-    # ═══ PHONE ═══
     local phone_name phone_model phone_storage_gb phone_stat phone_bat
-    phone_name=$(_jq -r '.mesh.phone.name // "none"')
-    phone_model=$(_jq -r '.mesh.phone.model // "Unknown"')
-    phone_storage_gb=$(_jq -r '.mesh.phone.storage_gb // "?"')
+    local _phone_tsv
+    _phone_tsv=$(_jq -r '[(.mesh.phone.name // "none"), (.mesh.phone.model // "Unknown"), (.mesh.phone.storage_gb // "?")] | @tsv')
+    phone_name=$(echo "$_phone_tsv" | cut -f1)
+    phone_model=$(echo "$_phone_tsv" | cut -f2)
+    phone_storage_gb=$(echo "$_phone_tsv" | cut -f3)
     phone_stat="none"; phone_bat="?"
     if [ "$phone_name" != "none" ] && [ "$phone_name" != "null" ]; then
         phone_stat=$(phone_status)
@@ -674,23 +878,82 @@ collect_all() {
     fi
     local phone_json="{\"name\":\"$phone_name\",\"model\":\"$phone_model\",\"storage_gb\":\"$phone_storage_gb\",\"status\":\"$phone_stat\",\"battery\":\"$phone_bat\"}"
 
-    # ═══ GIT REPOS (PARALLEL) ═══
-    local repos; repos=$(_jq -r '(.git.public_repos // {} | keys[]) , (.git.private_repos // {} | keys[])')
-    local _git_tmpdir; _git_tmpdir=$(mktemp -d)
-    local _git_pids="" _git_i=0
+    # Drives (foreground — checks local mounts)
+    local _drv_tsv
+    _drv_tsv=$(_jq -r '.fuse_drives[]? | [.name, (.account // ""), .remote] | @tsv')
+    local drive_count=0 drives_json="[" _gd_up=0
+    while IFS=$'\t' read -r dname dacct dremote; do
+        [ -z "$dname" ] && continue
+        local dmounted=false dused=0 dtotal=0
+        local mount_path="$MOUNT_DIR/$dname"
+        if is_mounted "$mount_path"; then
+            dmounted=true; _gd_up=$((_gd_up+1))
+            local usage; usage=$(rclone about "${dremote}:" --json 2>/dev/null || echo "{}")
+            local used_b total_b
+            used_b=$(echo "$usage" | jq -r '.used // 0' 2>/dev/null || echo 0)
+            total_b=$(echo "$usage" | jq -r '.total // 0' 2>/dev/null || echo 0)
+            dused=$((used_b / 1073741824)); dtotal=$((total_b / 1073741824))
+            [ "$dtotal" -eq 0 ] && dtotal=15
+        fi
+        [ "$drive_count" -gt 0 ] && drives_json="$drives_json,"
+        drives_json="$drives_json{\"name\":\"$dname\",\"account\":\"$dacct\",\"remote\":\"$dremote\",\"mounted\":$dmounted,\"used_g\":$dused,\"total_g\":$dtotal,\"mount_path\":\"$mount_path\"}"
+        drive_count=$((drive_count+1))
+    done <<< "$_drv_tsv"
+    drives_json="$drives_json]"
+    local symlinks_json="["
+    if [ -d "$MOUNT_DIR" ]; then
+        local slfirst=true
+        while IFS= read -r link; do
+            [ -z "$link" ] && continue
+            local lname; lname=$(basename "$link")
+            local ltarget; ltarget=$(readlink -f "$link" 2>/dev/null || echo "?")
+            [ "$slfirst" = "true" ] && slfirst=false || symlinks_json="$symlinks_json,"
+            symlinks_json="$symlinks_json{\"name\":\"$lname\",\"target\":\"$ltarget\"}"
+        done < <(find "$MOUNT_DIR" -maxdepth 1 -type l 2>/dev/null)
+    fi
+    symlinks_json="$symlinks_json]"
 
-    while IFS= read -r repo_name; do
-        [ -z "$repo_name" ] && continue
-        local dir="$GIT_WORKDIR/$repo_name"
-        _git_collect_repo "$repo_name" "$dir" > "$_git_tmpdir/$(printf '%03d' $_git_i).json" 2>/dev/null &
-        _git_pids="$_git_pids $!"
-        _git_i=$((_git_i+1))
-    done <<< "$repos"
+    # Services (pure jq, fast)
+    local services_json
+    services_json=$(_jq '[
+        .mesh.vms[] as $vm |
+        $vm.services[] as $svc |
+        {
+            name: $svc,
+            vm: $vm.alias,
+            domain: ((.service_details[$svc].domain) // "—"),
+            port: ((.service_details[$svc].port) // "—"),
+            availability: ((.service_details[$svc].availability) // "24/7")
+        }
+    ]')
+    _perf "FOREGROUND_done"
 
-    # Wait for all parallel repo jobs
-    for _pid in $_git_pids; do wait "$_pid" 2>/dev/null; done
+    # ═══ WAIT FOR ALL PARALLEL JOBS ═══
+    wait
+    _perf "ALL_parallel_done"
 
-    # Assemble JSON array from temp files
+    # ── Read parallel results ──
+    local mesh_vms vm_count _gauge_mesh_up
+    mesh_vms=$(cat "$_par/mesh_vms.json" 2>/dev/null || echo "[]")
+    vm_count=$(cat "$_par/mesh_vm_count" 2>/dev/null || echo 0)
+    _gauge_mesh_up=$(cat "$_par/mesh_gauge_up" 2>/dev/null || echo 0)
+
+    local sync_remotes_json sync_rules_json sync_running_json
+    sync_remotes_json=$(cat "$_par/sync_remotes.json" 2>/dev/null || echo "[]")
+    sync_rules_json=$(cat "$_par/sync_rules.json" 2>/dev/null || echo "[]")
+    sync_running_json=$(cat "$_par/sync_running.json" 2>/dev/null || echo "[]")
+
+    local servers_json unison_json
+    servers_json=$(cat "$_par/servers.json" 2>/dev/null || echo "[]")
+    unison_json=$(cat "$_par/unison.json" 2>/dev/null || echo "[]")
+
+    local webservers_json
+    webservers_json=$(cat "$_par/webservers.dat" 2>/dev/null || echo "[]")
+
+    local hm_json
+    hm_json=$(cat "$_par/hm.dat" 2>/dev/null || echo "[]")
+
+    # Git assembly
     local git_json="[" gfirst=true
     for _gf in "$_git_tmpdir"/*.json; do
         [ -f "$_gf" ] || continue
@@ -700,10 +963,8 @@ collect_all() {
         git_json="$git_json$_frag"
     done
     git_json="$git_json]"
-    rm -rf "$_git_tmpdir"
+    rm -rf "$_git_tmpdir" "$_par"
 
-    # Compute totals from assembled JSON (one jq call replaces manual counters)
-    # Note: uses jq --from-file to avoid bash mangling != and // in single-quoted strings
     local _jqtmp; _jqtmp=$(mktemp)
     cat > "$_jqtmp" << 'JQEOF'
 def safesum: if length==0 then 0 else add end;
@@ -720,231 +981,12 @@ def safesum: if length==0 then 0 else add end;
 JQEOF
     local git_totals; git_totals=$(printf '%s' "$git_json" | jq -cf "$_jqtmp")
     rm -f "$_jqtmp"
-    # Extract scalar counters for gauges/alerts (used later in this function)
     local _gt_clean; _gt_clean=$(echo "$git_totals" | jq -r '.clean')
     local _gt_cloned; _gt_cloned=$(echo "$git_totals" | jq -r '.cloned')
     local _gt_dirty; _gt_dirty=$(echo "$git_totals" | jq -r '.dirty')
     local not_cloned_str; not_cloned_str=$(printf '%s' "$git_json" | jq -r '[.[] | select(.cloned==false) | .name] | join(" ")')
     local not_cloned_esc; not_cloned_esc=$(_json_str "$not_cloned_str")
-
-    # ═══ CLOUD DRIVES ═══
-    local drive_count; drive_count=$(_jq '.fuse_drives | length')
-    local drives_json="[" di=0 _gd_up=0
-    while [ "$di" -lt "$drive_count" ]; do
-        local dname dacct dremote dmounted=false dused=0 dtotal=0
-        dname=$(_jq -r ".fuse_drives[$di].name")
-        dacct=$(_jq -r ".fuse_drives[$di].account // \"\"")
-        dremote=$(_jq -r ".fuse_drives[$di].remote")
-        local mount_path="$MOUNT_DIR/$dname"
-        if is_mounted "$mount_path"; then
-            dmounted=true; _gd_up=$((_gd_up+1))
-            local usage; usage=$(rclone about "${dremote}:" --json 2>/dev/null || echo "{}")
-            local used_b total_b
-            used_b=$(echo "$usage" | jq -r '.used // 0' 2>/dev/null || echo 0)
-            total_b=$(echo "$usage" | jq -r '.total // 0' 2>/dev/null || echo 0)
-            dused=$((used_b / 1073741824))
-            dtotal=$((total_b / 1073741824))
-            [ "$dtotal" -eq 0 ] && dtotal=15
-        fi
-        [ "$di" -gt 0 ] && drives_json="$drives_json,"
-        drives_json="$drives_json{\"name\":\"$dname\",\"account\":\"$dacct\",\"remote\":\"$dremote\",\"mounted\":$dmounted,\"used_g\":$dused,\"total_g\":$dtotal,\"mount_path\":\"$mount_path\"}"
-        di=$((di+1))
-    done
-    drives_json="$drives_json]"
-
-    # VM FUSE mounts (uses mesh subdir data already collected)
-    # (render reads from mesh.vms[].subdirs + mount_dir)
-
-    # Symlinks
-    local symlinks_json="["
-    if [ -d "$MOUNT_DIR" ]; then
-        local slfirst=true
-        while IFS= read -r link; do
-            [ -z "$link" ] && continue
-            local lname; lname=$(basename "$link")
-            local ltarget; ltarget=$(readlink -f "$link" 2>/dev/null || echo "?")
-            [ "$slfirst" = "true" ] && slfirst=false || symlinks_json="$symlinks_json,"
-            symlinks_json="$symlinks_json{\"name\":\"$lname\",\"target\":\"$ltarget\"}"
-        done < <(find "$MOUNT_DIR" -maxdepth 1 -type l 2>/dev/null)
-    fi
-    symlinks_json="$symlinks_json]"
-
-    # ═══ SYNC ═══
-    local sync_remotes_json="[]"
-    if command -v rclone >/dev/null 2>&1; then
-        local remotes_raw; remotes_raw=$(rclone listremotes 2>/dev/null | sed 's/:$//')
-        if [ -n "$remotes_raw" ]; then
-            sync_remotes_json=$(echo "$remotes_raw" | jq -Rs 'split("\n") | map(select(length > 0))')
-        fi
-    fi
-    local sync_rules_json; sync_rules_json=$(sync_list_rules 2>/dev/null || echo "[]")
-    local sync_running_json; sync_running_json=$(sync_get_running_jobs 2>/dev/null || echo "[]")
-
-    # ═══ DATA SERVERS ═══
-    local srv_count; srv_count=$(_jq '.data_servers | length')
-    local servers_json="[" si=0
-    while [ "$si" -lt "$srv_count" ]; do
-        local sname stype sport sroot sauth stls smode
-        sname=$(_jq -r ".data_servers[$si].name")
-        stype=$(_jq -r ".data_servers[$si].type")
-        sport=$(_jq -r ".data_servers[$si].port")
-        sroot=$(_srv_expand_path "$(_jq -r ".data_servers[$si].root")")
-        sauth=$(_jq -r ".data_servers[$si].auth // \"none\"")
-        stls=$(_jq -r ".data_servers[$si].tls // false")
-        smode=$(_jq -r ".data_servers[$si].mode // \"local\"")
-        local short_root="${sroot/#$HOME/\~}"
-        [ ${#short_root} -gt 20 ] && short_root="...${short_root: -17}"
-
-        local pid="" bind_addr="—" clients="—" uptime_str="—" running=false
-        pid=$(_srv_detect_pid "$stype" "$sport")
-        if [ -n "$pid" ]; then
-            running=true
-            bind_addr=$(_srv_detect_bind "$sport")
-            clients=$(_srv_client_count "$sport")
-            uptime_str=$(_srv_uptime "$pid")
-        else
-            [ "$smode" = "lan" ] && bind_addr="0.0.0.0:$sport" || bind_addr="127.0.0.1:$sport"
-        fi
-        local pid_val="null"; [ -n "$pid" ] && pid_val="$pid"
-
-        [ "$si" -gt 0 ] && servers_json="$servers_json,"
-        servers_json="$servers_json{\"name\":\"$sname\",\"type\":\"$stype\",\"port\":$sport,\"root\":\"$short_root\",\"auth\":\"$sauth\",\"tls\":$stls,\"mode\":\"$smode\",\"running\":$running,\"pid\":$pid_val,\"bind\":\"$bind_addr\",\"clients\":\"$clients\",\"uptime\":\"$uptime_str\"}"
-        si=$((si+1))
-    done
-    servers_json="$servers_json]"
-
-    # Unison profiles
-    local uni_count; uni_count=$(_jq '.unison_profiles | length // 0')
-    local unison_json="[" ui=0
-    while [ "$ui" -lt "$uni_count" ]; do
-        local uname uprofile uenabled
-        uname=$(_jq -r ".unison_profiles[$ui].name")
-        uprofile=$(_jq -r ".unison_profiles[$ui].profile")
-        uenabled=$(_jq -r ".unison_profiles[$ui].enabled // false")
-        [ "$ui" -gt 0 ] && unison_json="$unison_json,"
-        unison_json="$unison_json{\"name\":\"$uname\",\"profile\":\"$uprofile\",\"enabled\":$uenabled}"
-        ui=$((ui+1))
-    done
-    unison_json="$unison_json]"
-
-    # ═══ SERVICES ═══
-    local services_json="[" svfirst=true svi=0
-    while [ "$svi" -lt "$vm_count" ]; do
-        local sv_alias sv_svc_count
-        sv_alias=$(_jq -r ".mesh.vms[$svi].alias")
-        sv_svc_count=$(_jq ".mesh.vms[$svi].services | length")
-        local svs=0
-        while [ "$svs" -lt "$sv_svc_count" ]; do
-            local svc_name domain port avail
-            svc_name=$(_jq -r ".mesh.vms[$svi].services[$svs]")
-            domain=$(_jq -r --arg svc "$svc_name" '.service_details[$svc].domain // "—"')
-            port=$(_jq -r --arg svc "$svc_name" '.service_details[$svc].port // "—"')
-            avail=$(_jq -r --arg svc "$svc_name" '.service_details[$svc].availability // "24/7"')
-            [ "$svfirst" = "true" ] && svfirst=false || services_json="$services_json,"
-            services_json="$services_json{\"name\":\"$svc_name\",\"vm\":\"$sv_alias\",\"domain\":\"$domain\",\"port\":\"$port\",\"availability\":\"$avail\"}"
-            svs=$((svs+1))
-        done
-        svi=$((svi+1))
-    done
-    services_json="$services_json]"
-
-    # ═══ WEBSERVERS ═══
-    local webservers_json="[" wfirst=true seen_pids=""
-    # Primary: .build.pid files
-    while IFS= read -r pidfile; do
-        [ -z "$pidfile" ] && continue
-        local wport wserver wstarted wpid=""
-        wport=$(jq -r '.port // "?"' "$pidfile" 2>/dev/null)
-        wserver=$(jq -r '.server // "?"' "$pidfile" 2>/dev/null)
-        while IFS= read -r p; do
-            [ -n "$p" ] && kill -0 "$p" 2>/dev/null && wpid="$p" && break
-        done < <(jq -r '.pids | to_entries[] | .value | tostring' "$pidfile" 2>/dev/null)
-        [ -z "$wpid" ] && continue
-        seen_pids="$seen_pids $wpid"
-        local wproj; wproj=$(dirname "$pidfile")
-        wproj="${wproj#$GIT_WORKDIR/}"; wproj="${wproj#$HOME/}"
-        local wfw="$wserver"
-        case "$wserver" in vite) wfw="Vite";; sveltekit) wfw="SvelteKit";; next) wfw="Next.js";; esac
-        local wup; wup=$(ps -o etimes= -p "$wpid" 2>/dev/null | tr -d ' ' || echo 0)
-        local wrt="Node"; echo "$wserver" | grep -qi "python\|flask\|uvicorn" && wrt="Python"
-        local wname; wname=$(basename "$(dirname "$pidfile")")
-        [ "$wfirst" = "true" ] && wfirst=false || webservers_json="$webservers_json,"
-        webservers_json="$webservers_json{\"name\":\"$wname\",\"port\":\"$wport\",\"runtime\":\"$wrt\",\"framework\":\"$wfw\",\"project\":\"${wproj:0:26}\",\"pid\":\"$wpid\",\"uptime_secs\":$wup}"
-    done < <(find "$GIT_WORKDIR" -maxdepth 4 -name ".build.pid" 2>/dev/null | sort)
-    # Secondary: pgrep scan
-    _ws_detect() {
-        local wpid="$1" wrt="$2"
-        echo "$seen_pids" | grep -qw "$wpid" && return
-        local wport wcmd wcwd wproj wfw
-        wport=$(_get_pid_port "$wpid")
-        wcmd=$(ps -o args= -p "$wpid" 2>/dev/null | head -c60 || echo "")
-        wcwd=$(readlink -f "/proc/$wpid/cwd" 2>/dev/null || echo "")
-        wproj="${wcwd#$GIT_WORKDIR/}"; wproj="${wproj#$HOME/}"; wproj="${wproj:0:26}"
-        wfw="$wrt"
-        echo "$wcmd" | grep -qi "vite" && wfw="Vite"
-        echo "$wcmd" | grep -qi "svelte" && wfw="SvelteKit"
-        echo "$wcmd" | grep -qi "next" && wfw="Next.js"
-        echo "$wcmd" | grep -qi "flask" && wfw="Flask"
-        echo "$wcmd" | grep -qi "uvicorn\|fastapi" && wfw="FastAPI"
-        local wup; wup=$(ps -o etimes= -p "$wpid" 2>/dev/null | tr -d ' ' || echo 0)
-        [ "$wfirst" = "true" ] && wfirst=false || webservers_json="$webservers_json,"
-        webservers_json="$webservers_json{\"name\":\"$wrt\",\"port\":\"$wport\",\"runtime\":\"$wrt\",\"framework\":\"$wfw\",\"project\":\"$wproj\",\"pid\":\"$wpid\",\"uptime_secs\":$wup}"
-    }
-    while IFS= read -r wpid; do [ -n "$wpid" ] && _ws_detect "$wpid" "Node"; done \
-        < <(pgrep -f "node.*dev\|node.*serve\|vite\|next.*dev\|live-server" 2>/dev/null || true)
-    while IFS= read -r wpid; do [ -n "$wpid" ] && _ws_detect "$wpid" "Python"; done \
-        < <(pgrep -f "python.*-m http\|uvicorn\|flask run\|gunicorn" 2>/dev/null || true)
-    webservers_json="$webservers_json]"
-
-    # ═══ HOME-MANAGER ═══
-    local hm_count; hm_count=$(_jq '.home_manager_flakes | length')
-    local hm_json="[" hi=0
-    while [ "$hi" -lt "$hm_count" ]; do
-        local hname htype hpath henabled hdirty=0 hgit_label="?" hgen="—"
-        hname=$(_jq -r ".home_manager_flakes[$hi].name")
-        htype=$(_jq -r ".home_manager_flakes[$hi].type")
-        hpath=$(_jq -r ".home_manager_flakes[$hi].path" | sed "s|~|$HOME|")
-        henabled=$(_jq -r ".home_manager_flakes[$hi].enabled")
-
-        if [ "$henabled" != "false" ] && [ -d "$hpath" ]; then
-            if git -C "$hpath" rev-parse --git-dir >/dev/null 2>&1; then
-                hdirty=$(git -C "$hpath" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-                if [ "$hdirty" -gt 0 ]; then
-                    hgit_label="dirty"
-                else
-                    local hunpushed; hunpushed=$(git -C "$hpath" rev-list --count @{u}..HEAD 2>/dev/null || echo 0)
-                    if [ "$hunpushed" -gt 0 ] 2>/dev/null; then
-                        hgit_label="ahead:$hunpushed"
-                    else
-                        hgit_label="clean"
-                    fi
-                fi
-            fi
-            # Generation
-            if [ "$htype" = "home-manager" ]; then
-                local gen=""
-                if command -v home-manager >/dev/null 2>&1; then
-                    gen=$(home-manager generations 2>/dev/null | head -1 | grep -oP 'id \K\d+' || echo "")
-                fi
-                if [ -z "$gen" ]; then
-                    local prof_dir="/nix/var/nix/profiles/per-user/${USER:-$(id -un)}"
-                    gen=$(ls "$prof_dir" 2>/dev/null | grep -oP '^home-manager-\K\d+(?=-link)' | sort -n | tail -1)
-                    [ -z "$gen" ] && gen=$(ls "$prof_dir" 2>/dev/null | grep -oP '^profile-\K\d+(?=-link)' | sort -n | tail -1)
-                fi
-                [ -n "$gen" ] && hgen="gen $gen"
-            elif [ "$htype" = "nixos" ]; then
-                if command -v nixos-rebuild >/dev/null 2>&1; then
-                    local gen; gen=$(nixos-rebuild list-generations 2>/dev/null | grep '\*' | grep -oP '^\s*\K\d+' | head -1)
-                    [ -n "$gen" ] && hgen="gen $gen"
-                fi
-            fi
-        fi
-
-        [ "$hi" -gt 0 ] && hm_json="$hm_json,"
-        hm_json="$hm_json{\"name\":\"$hname\",\"type\":\"$htype\",\"path\":\"${hpath/$HOME/\~}\",\"enabled\":$henabled,\"dirty\":$hdirty,\"git_label\":\"$hgit_label\",\"generation\":\"$hgen\"}"
-        hi=$((hi+1))
-    done
-    hm_json="$hm_json]"
+    _perf "ASSEMBLE_results"
 
     # ═══ GAUGES ═══
     local _gd_vm_up=$_gauge_mesh_up
@@ -980,6 +1022,7 @@ JQEOF
         last_lines=$(tail -20 "$LOG_FILE" 2>/dev/null | jq -Rs 'split("\n") | map(select(length > 0))' 2>/dev/null || echo "[]")
         log_json="{\"size\":\"$log_size\",\"lines\":$log_lines,\"errors\":$log_errs,\"warnings\":$log_warns,\"tail\":$last_lines}"
     fi
+    _perf "GAUGES+ALERTS+LOG"
 
     # ═══ ASSEMBLE CC_DATA ═══
     CC_DATA=$(cat <<EOJSON
@@ -1000,6 +1043,7 @@ JQEOF
 }
 EOJSON
 )
+    _perf "ASSEMBLE"
     # Restore original shell options (re-enable set -e if it was on)
     eval "$_old_opts"
 }
@@ -1634,7 +1678,7 @@ git_cmd_clone_menu() {
                 ;;
             *)
                 # Toggle number
-                if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$count" ]; then
+                if echo "$choice" | grep -qE '^[0-9]+$' && [ "$choice" -ge 1 ] && [ "$choice" -le "$count" ]; then
                     local idx=$((choice-1))
                     if [ "${selected[$idx]}" = "0" ]; then
                         selected[$idx]="1"
@@ -2487,7 +2531,7 @@ sync_run_rule_interactive() {
     [ -z "$sel" ] && return
 
     local name=""
-    if [[ "$sel" =~ ^[0-9]+$ ]]; then
+    if echo "$sel" | grep -qE '^[0-9]+$'; then
         name=$(echo "$rules" | jq -r ".[$sel].name // empty")
     else
         name="$sel"
@@ -4797,6 +4841,8 @@ _dispatch_cmd() {
 CC_PROFILE="full"  # full | compact
 
 run_tui() {
+    local profile="${1:-$CC_PROFILE}"
+    CC_PROFILE="$profile"
     while true; do
         CC_DATA=""  # force re-collection each refresh
         if [ "$CC_PROFILE" = "compact" ]; then
@@ -4814,6 +4860,23 @@ run_tui() {
             *)         _dispatch_cmd "$cmd" ;;
         esac
     done
+}
+
+# POSIX single-key reader (no bashisms)
+_read_key() {
+    local _old_tty
+    _old_tty=$(stty -g)
+    stty raw -echo
+    dd bs=1 count=1 2>/dev/null
+    stty "$_old_tty"
+}
+
+_wait_key() {
+    local _old_tty
+    _old_tty=$(stty -g)
+    stty raw -echo
+    dd bs=1 count=1 >/dev/null 2>&1
+    stty "$_old_tty"
 }
 
 run_keys() {
@@ -4840,7 +4903,7 @@ run_keys() {
         printf "  ${C_DIM}▸${RST} "
 
         local key
-        read -rsn1 key || exit 0
+        key=$(_read_key) || exit 0
         printf "\n"
         case "$key" in
             a) render_mesh ;;
@@ -4863,7 +4926,7 @@ run_keys() {
             E) server_start ;;
             F) server_bisync ;;
             H) hm_switch ;;
-            ?) show_help; printf "\n  ${C_DIM}Press any key...${RST}"; read -rsn1 ;;
+            ?) show_help; printf "\n  ${C_DIM}Press any key...${RST}"; _wait_key ;;
             *) printf "  ${C_DIM}Unknown key: %s${RST}\n" "$key"; sleep 0.3 ;;
         esac
     done
@@ -4885,16 +4948,18 @@ show_help() {
     printf "  %bGit repos, VM mesh, cloud drives, sync, file servers, services, dev servers, HM%b\n\n" "$C_DIM" "$RST"
 
     printf "  %bSYNTAX%b\n" "$BLD" "$RST"
-    printf "    %bcloud-connect%b                    %b# Keybind mode, full profile (default)%b\n" "$C_INFO" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %bcompact%b            %b# Keybind mode, compact profile%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %btui%b                %b# TUI mode (type commands + keybinds)%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %b<command>%b          %b# Run a single command%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %blogs%b               %b# JSON dump of all data%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %b-h%b | %b--help%b        %b# This help page%b\n\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bcloud-connect%b                         %b# REPL keybind mode, full (default)%b\n" "$C_INFO" "$RST" "$C_DIM" "$RST"
+    printf "    %bcloud-connect%b %brepl%b %b[full|compact]%b    %b# REPL keybind mode%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bcloud-connect%b %btui%b %b[full|compact]%b     %b# TUI mode (type commands)%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bcloud-connect%b %bstatus%b %b[full|compact]%b  %b# Single-run dashboard, exit%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bcloud-connect%b %blogs%b                    %b# JSON dump of all data%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bcloud-connect%b %b<command>%b               %b# Run a single command%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bcloud-connect%b %b-h%b | %b--help%b             %b# This help page%b\n\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
 
     printf "  %bMODES%b\n" "$BLD" "$RST"
-    printf "    %bKeybind%b  %b(default)%b  Single keypress navigation: %ba-h%b sections, %bShift%b actions, %bp%b profile, %br%b refresh\n" "$C_INFO" "$RST" "$C_DIM" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
-    printf "    %bTUI%b                Type full commands + Enter, same keybinds also work via %bfull%b/%bcompact%b\n\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
+    printf "    %bREPL%b     %b(default)%b  Single keypress navigation: %ba-h%b sections, %bShift%b actions, %bp%b profile, %br%b refresh\n" "$C_INFO" "$RST" "$C_DIM" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
+    printf "    %bTUI%b                Type full commands + Enter, same keybinds also work via %bfull%b/%bcompact%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
+    printf "    %bStatus%b             Print dashboard once and exit\n\n" "$C_INFO" "$RST"
 
     # ── A) MESH ──
     printf "  %b━━ A) MESH%b %b— WireGuard VPN, VM mounts, OCI lifecycle, phone%b %b(10 commands)%b\n" "$C_MESH" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
@@ -4999,9 +5064,10 @@ show_help() {
 
     # ── Examples ──
     printf "  %bEXAMPLES%b\n" "$BLD" "$RST"
-    printf "    %b$%b cloud-connect                              %b# Keybind mode (default)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b cloud-connect                              %b# REPL mode, full (default)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b cloud-connect repl compact                 %b# REPL mode, compact%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %b$%b cloud-connect tui                          %b# TUI mode (type commands)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect compact                      %b# Keybind, compact profile%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b cloud-connect status                       %b# Single-run dashboard%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %b$%b cloud-connect logs | jq .mesh              %b# JSON data, pipe to jq%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %b$%b cloud-connect sync-run-bg                  %b# Sync all in background%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %b$%b cloud-connect mount-all-vm                 %b# Mount all VMs%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
@@ -5189,17 +5255,31 @@ main() {
             ;;
     esac
 
-    cc_probe_env
-    cc_build_mesh
-    cc_build_hm
-    load_config
+    local _main_t0; _main_t0=$(date +%s%N 2>/dev/null || echo 0)
+    _main_perf() {
+        local now; now=$(date +%s%N 2>/dev/null || echo 0)
+        local ms=$(( (now - _main_t0) / 1000000 ))
+        printf >&2 "  [perf] %-20s %5dms\n" "$1" "$ms"
+        _main_t0=$now
+    }
+    cc_probe_env;  _main_perf "probe_env"
+    cc_build_mesh; _main_perf "build_mesh"
+    cc_build_hm;   _main_perf "build_hm"
+    load_config;   _main_perf "load_config"
 
     case "${1:-}" in
-        # ── Views ──
-        "")              run_keys ;;
-        keys)            run_keys "${2:-full}" ;;
-        tui)             run_tui ;;
-        compact)         CC_PROFILE="compact"; run_keys ;;
+        # ── Modes ──
+        "")              run_keys "${2:-full}" ;;
+        repl)            run_keys "${2:-full}" ;;
+        tui)             run_tui "${2:-full}" ;;
+        status)
+            CC_PROFILE="${2:-full}"
+            if [ "$CC_PROFILE" = "compact" ]; then
+                collect_all; _compact_view
+            else
+                render_dashboard
+            fi
+            ;;
         logs)            _logs_json ;;
         --help|-h|help)  show_help ;;
 
