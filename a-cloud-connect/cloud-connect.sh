@@ -3091,9 +3091,9 @@ deps_menu() {
 
     # Categorized deps
     local categories="Core Phone Cloud"
-    local deps_core="git jq rclone fusermount"
+    local deps_core="git jq rclone fusermount ssh ping clear tput"
     local deps_phone="kdeconnect-cli qdbus"
-    local deps_cloud="oci gh gcloud"
+    local deps_cloud="oci gh gcloud docker"
 
     local missing_required=0 missing_optional=0
 
