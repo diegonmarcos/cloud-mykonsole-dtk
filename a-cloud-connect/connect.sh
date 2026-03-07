@@ -1,15 +1,15 @@
 #!/bin/sh
 # NOTE: Uses 'local' and bash arrays in select_and_mount_vm — needs bash/dash/ash.
 # Key reading is POSIX (stty+dd).
-# cloud-connect.sh - Cloud Connect: Unified Dashboard
+# connect.sh - Cloud Connect: Unified Dashboard
 # Combines: Git Manager + FUSE Mounts + Rclone Sync + Servers + Webservers
 # Author: Diego Nepomuceno Marcos
 # Version: 2.0
 #
 # Usage:
-#   ./cloud-connect.sh              # Launch dashboard
-#   ./cloud-connect.sh <command>    # CLI mode
-#   ./cloud-connect.sh --help       # Show help
+#   ./connect.sh              # Launch dashboard
+#   ./connect.sh <command>    # CLI mode
+#   ./connect.sh --help       # Show help
 
 set -euo pipefail
 
@@ -18,18 +18,18 @@ set -euo pipefail
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
-CC_CACHE_DIR="$SCRIPT_DIR/.cache/cloud-connect"
+CC_CACHE_DIR="$SCRIPT_DIR/.cache/connect"
 
 # Static modules (hand-maintained, committed to git)
 CC_MODULES_STATIC=(
-    "$SCRIPT_DIR/cloud-connect-settings.json"
-    "$SCRIPT_DIR/cloud-connect-mesh.json"
-    "$SCRIPT_DIR/cloud-connect-git.json"
-    "$SCRIPT_DIR/cloud-connect-fuse-drives.json"
-    "$SCRIPT_DIR/cloud-connect-sync.json"
-    "$SCRIPT_DIR/cloud-connect-data-servers.json"
-    "$SCRIPT_DIR/cloud-connect-web-servers.json"
-    "$SCRIPT_DIR/cloud-connect-hm-flakes.json"
+    "$SCRIPT_DIR/connect-settings.json"
+    "$SCRIPT_DIR/connect-mesh.json"
+    "$SCRIPT_DIR/connect-git.json"
+    "$SCRIPT_DIR/connect-fuse-drives.json"
+    "$SCRIPT_DIR/connect-sync.json"
+    "$SCRIPT_DIR/connect-data-servers.json"
+    "$SCRIPT_DIR/connect-web-servers.json"
+    "$SCRIPT_DIR/connect-hm-flakes.json"
 )
 # Dynamic modules (auto-generated at startup into .cache/, override statics)
 CC_MODULES_DYNAMIC=(
@@ -216,7 +216,7 @@ cc_build_mesh() {
 
     # Read static mesh for phone + vm_subdirs defaults
     local static_mesh
-    static_mesh=$(jq '.mesh // {}' "$SCRIPT_DIR/cloud-connect-mesh.json" 2>/dev/null || echo '{}')
+    static_mesh=$(jq '.mesh // {}' "$SCRIPT_DIR/connect-mesh.json" 2>/dev/null || echo '{}')
     local default_subdirs
     default_subdirs=$(echo "$static_mesh" | jq '[{"name":"sys","remote_path":"/"},{"name":"home","remote_path":"/home"},{"name":"docker","remote_path":"/var/lib/docker/volumes"},{"name":"mnt","remote_path":"/mnt"}]')
 
@@ -260,7 +260,7 @@ cc_build_hm() {
     git_root=$(jq -r --arg p "$CC_ENV_PROFILE" '
         if .profiles[$p].git_workdir then .profiles[$p].git_workdir
         else .settings.git_workdir end' \
-        "$SCRIPT_DIR/cloud-connect-settings.json" 2>/dev/null)
+        "$SCRIPT_DIR/connect-settings.json" 2>/dev/null)
     git_root="${git_root/#\~/$HOME}"
 
     local unix_dir="$git_root/unix"
@@ -268,7 +268,7 @@ cc_build_hm() {
 
     # Read static hm-flakes for descriptions and enabled flags
     local static_hm
-    static_hm=$(jq '.home_manager_flakes // []' "$SCRIPT_DIR/cloud-connect-hm-flakes.json" 2>/dev/null || echo '[]')
+    static_hm=$(jq '.home_manager_flakes // []' "$SCRIPT_DIR/connect-hm-flakes.json" 2>/dev/null || echo '[]')
 
     jq -n \
         --arg unix_dir "$unix_dir" \
@@ -312,7 +312,7 @@ _module_for_settings_key() {
             echo "$mfile"; return
         fi
     done
-    echo "$SCRIPT_DIR/cloud-connect-settings.json"
+    echo "$SCRIPT_DIR/connect-settings.json"
 }
 
 # Write a jq mutation to a specific module file, then reload CONFIG_JSON
@@ -1734,7 +1734,7 @@ git_toggle_merge() {
         MERGE_STRATEGY="theirs"
         printf "${C_OK}${S_OK}${RST} Merge strategy: ${C_INFO}Server wins${RST}\n"
     fi
-    _jq_write "$SCRIPT_DIR/cloud-connect-sync.json" \
+    _jq_write "$SCRIPT_DIR/connect-sync.json" \
         --arg v "$MERGE_STRATEGY" '.settings.merge_strategy = $v'
 }
 
@@ -2550,7 +2550,7 @@ sync_run_rule_interactive() {
 
 sync_run_rule_cli() {
     local name="$1"
-    [ -z "$name" ] && { printf "${C_ERR}Usage: cloud-connect.sh sync-run-rule NAME [--dry-run] [--background]${RST}\n"; return 1; }
+    [ -z "$name" ] && { printf "${C_ERR}Usage: connect.sh sync-run-rule NAME [--dry-run] [--background]${RST}\n"; return 1; }
     shift
     local dry_run="false" background="false"
     while [ $# -gt 0 ]; do
@@ -3111,11 +3111,11 @@ sync_quick_menu() {
 # D) SYNC - Ad-hoc CLI & Extra Commands
 # =============================================================================
 
-# Ad-hoc one-way sync from CLI: cloud-connect.sh sync-to SRC DEST [--dry-run] [--background]
+# Ad-hoc one-way sync from CLI: connect.sh sync-to SRC DEST [--dry-run] [--background]
 sync_adhoc() {
     local source="$1" dest="$2"
     [ -z "$source" ] || [ -z "$dest" ] && {
-        printf "${C_ERR}Usage: cloud-connect.sh sync-to SOURCE DEST [--dry-run] [--background]${RST}\n"
+        printf "${C_ERR}Usage: connect.sh sync-to SOURCE DEST [--dry-run] [--background]${RST}\n"
         return 1
     }
     shift 2
@@ -3144,11 +3144,11 @@ sync_adhoc() {
     fi
 }
 
-# Ad-hoc bisync from CLI: cloud-connect.sh bisync-to P1 P2 [--dry-run] [--resync] [--background]
+# Ad-hoc bisync from CLI: connect.sh bisync-to P1 P2 [--dry-run] [--resync] [--background]
 bisync_adhoc() {
     local p1="$1" p2="$2"
     [ -z "$p1" ] || [ -z "$p2" ] && {
-        printf "${C_ERR}Usage: cloud-connect.sh bisync-to PATH1 PATH2 [--dry-run] [--resync] [--background]${RST}\n"
+        printf "${C_ERR}Usage: connect.sh bisync-to PATH1 PATH2 [--dry-run] [--resync] [--background]${RST}\n"
         return 1
     }
     shift 2
@@ -3201,7 +3201,7 @@ sync_run_all_bg() {
 # Cancel by job ID (non-interactive CLI)
 sync_cancel_by_id() {
     local job_id="$1"
-    [ -z "$job_id" ] && { printf "${C_ERR}Usage: cloud-connect.sh sync-cancel-id JOB_ID${RST}\n"; return 1; }
+    [ -z "$job_id" ] && { printf "${C_ERR}Usage: connect.sh sync-cancel-id JOB_ID${RST}\n"; return 1; }
     local jobs; jobs=$(cat "$SYNC_JOBS_FILE" 2>/dev/null || echo "[]")
     local pid; pid=$(echo "$jobs" | jq -r ".[] | select(.job_id == \"$job_id\") | .pid")
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -3271,11 +3271,11 @@ restore_symlinks() {
     bash "$script" "$GIT_WORKDIR"
 }
 
-# Config-set CLI: cloud-connect.sh config-set KEY VALUE
+# Config-set CLI: connect.sh config-set KEY VALUE
 config_set() {
     local key="$1" value="$2"
     if [ -z "$key" ] || [ -z "$value" ]; then
-        printf "${C_ERR}Usage: cloud-connect.sh config-set KEY VALUE${RST}\n\n"
+        printf "${C_ERR}Usage: connect.sh config-set KEY VALUE${RST}\n\n"
         printf "${BLD}Available keys:${RST}\n"
         printf "  git_workdir       Git working directory\n"
         printf "  mount_dir         Mount base directory\n"
@@ -3978,7 +3978,7 @@ _srv_ensure_certs() {
         fi
         mkdir -p "$cert_dir"
         openssl req -x509 -newkey rsa:2048 -keyout "$cert_dir/key.pem" -out "$cert_dir/cert.pem" \
-            -days 365 -nodes -subj "/CN=cloud-connect-local" 2>/dev/null
+            -days 365 -nodes -subj "/CN=connect-local" 2>/dev/null
         printf "  ${C_OK}Generated SSL certificate in %s${RST}\n" "$cert_dir"
     fi
     echo "$cert_dir"
@@ -4320,7 +4320,7 @@ server_mode() {
     printf "  ${C_INFO}Switching %s: %s → %s${RST}\n" "$sname" "$smode" "$new_mode"
 
     # Update JSON config on disk
-    local config_file="$SCRIPT_DIR/cloud-connect-data-servers.json"
+    local config_file="$SCRIPT_DIR/connect-data-servers.json"
     local tmp; tmp=$(jq --arg name "$sname" --arg mode "$new_mode" \
         '(.data_servers[] | select(.name == $name)).mode = $mode' "$config_file")
     echo "$tmp" > "$config_file"
@@ -4948,13 +4948,13 @@ show_help() {
     printf "  %bGit repos, VM mesh, cloud drives, sync, file servers, services, dev servers, HM%b\n\n" "$C_DIM" "$RST"
 
     printf "  %bSYNTAX%b\n" "$BLD" "$RST"
-    printf "    %bcloud-connect%b                         %b# REPL keybind mode, full (default)%b\n" "$C_INFO" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %brepl%b %b[full|compact]%b    %b# REPL keybind mode%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %btui%b %b[full|compact]%b     %b# TUI mode (type commands)%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %bstatus%b %b[full|compact]%b  %b# Single-run dashboard, exit%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %blogs%b                    %b# JSON dump of all data%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %b<command>%b               %b# Run a single command%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bcloud-connect%b %b-h%b | %b--help%b             %b# This help page%b\n\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b                         %b# REPL keybind mode, full (default)%b\n" "$C_INFO" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %brepl%b %b[full|compact]%b    %b# REPL keybind mode%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %btui%b %b[full|compact]%b     %b# TUI mode (type commands)%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %bstatus%b %b[full|compact]%b  %b# Single-run dashboard, exit%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %blogs%b                    %b# JSON dump of all data%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %b<command>%b               %b# Run a single command%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %b-h%b | %b--help%b             %b# This help page%b\n\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
 
     printf "  %bMODES%b\n" "$BLD" "$RST"
     printf "    %bREPL%b     %b(default)%b  Single keypress navigation: %ba-h%b sections, %bShift%b actions, %bp%b profile, %br%b refresh\n" "$C_INFO" "$RST" "$C_DIM" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
@@ -5064,18 +5064,18 @@ show_help() {
 
     # ── Examples ──
     printf "  %bEXAMPLES%b\n" "$BLD" "$RST"
-    printf "    %b$%b cloud-connect                              %b# REPL mode, full (default)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect repl compact                 %b# REPL mode, compact%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect tui                          %b# TUI mode (type commands)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect status                       %b# Single-run dashboard%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect logs | jq .mesh              %b# JSON data, pipe to jq%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect sync-run-bg                  %b# Sync all in background%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect mount-all-vm                 %b# Mount all VMs%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect server-start                 %b# Start a file server%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b cloud-connect flex-start && cloud-connect mount-vm   %b# Boot + mount VM%b\n\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect                              %b# REPL mode, full (default)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect repl compact                 %b# REPL mode, compact%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect tui                          %b# TUI mode (type commands)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect status                       %b# Single-run dashboard%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect logs | jq .mesh              %b# JSON data, pipe to jq%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect sync-run-bg                  %b# Sync all in background%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect mount-all-vm                 %b# Mount all VMs%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect server-start                 %b# Start a file server%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect flex-start && connect mount-vm   %b# Boot + mount VM%b\n\n" "$C_OK" "$RST" "$C_DIM" "$RST"
 
     # ── Footer ──
-    printf "  %bConfig:%b  %s/cloud-connect-*.json\n" "$C_DIM" "$RST" "$SCRIPT_DIR"
+    printf "  %bConfig:%b  %s/connect-*.json\n" "$C_DIM" "$RST" "$SCRIPT_DIR"
     printf "  %bTotal:%b   %b72 commands%b %b(A:10 B:23 C:5 D:17 E:6 H:2 Setup:11)%b  %b+ 2 read-only sections (F,G)%b\n\n" "$C_DIM" "$RST" "$C_INFO" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
 }
 
