@@ -4468,8 +4468,15 @@ render_services() {
 render_security() {
     [ -z "$CC_DATA" ] && collect_all
 
+    local date_str; date_str=$(date '+%a %d %b  %H:%M')
+    printf "\n%b%b" "$C_SEC" "$BLD"
+    printf "┏"; local w=0; while [ "$w" -lt 100 ]; do printf "━"; w=$((w+1)); done; printf "┓\n"
+    printf "┃  ◆ SECURITY%88s  ┃\n" "$date_str"
+    printf "┃  Firewall rules · Caddy routes · Docker bindings · Networks%42s┃\n" ""
+    printf "┗"; w=0; while [ "$w" -lt 100 ]; do printf "━"; w=$((w+1)); done; printf "┛%b\n" "$RST"
+
     # ── A) VPS-Level Firewall ──
-    printf "\n  ${C_SEC}${BLD}VPS-LEVEL FIREWALL${RST} ${C_DIM}(shared security lists, apply to all VMs in provider)${RST}\n"
+    printf "\n%b  ━━ A) VPS FIREWALL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
     printf "  ${BLD}%-10s %8s %-6s %-22s %s${RST}\n" \
         "Provider" "Port" "Proto" "Source" "Description"
     printf "  ${C_DIM}"
@@ -4500,7 +4507,7 @@ render_security() {
     [ "$vps_found" = "false" ] && printf "  ${C_DIM}No VPS-level firewall rules${RST}\n"
 
     # ── B) VM-Level Firewall ──
-    printf "\n  ${C_SEC}${BLD}VM-LEVEL FIREWALL${RST} ${C_DIM}(targeted by tags/security groups)${RST}\n"
+    printf "\n%b  ━━ B) VM FIREWALL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
     printf "  ${BLD}%-14s %8s %-6s %-22s %s${RST}\n" \
         "Scope/Tag" "Port" "Proto" "Source" "Description"
     printf "  ${C_DIM}"
@@ -4529,8 +4536,39 @@ render_security() {
     done
     [ "$vm_found" = "false" ] && printf "  ${C_DIM}No VM-level firewall rules${RST}\n"
 
-    # ── C) Docker Port Bindings ──
-    printf "\n  ${C_SEC}${BLD}DOCKER PORT BINDINGS${RST}\n"
+    # ── C) Caddy Proxy Routes ──
+    printf "\n%b  ━━ C) CADDY PROXY ROUTES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
+    printf "  ${BLD}%-42s %-24s %-16s${RST}\n" \
+        "Domain" "Upstream" "Auth"
+    printf "  ${C_DIM}"
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    local _conf_cache="$CC_CACHE_DIR/cloud-configs.json"
+    if [ -f "$_conf_cache" ]; then
+        local route_count; route_count=$(jq '.infra.caddy.routes | length' "$_conf_cache" 2>/dev/null || echo 0)
+        local ci=0
+        while [ "$ci" -lt "$route_count" ]; do
+            local cdomain cupstream cauth
+            cdomain=$(jq -r ".infra.caddy.routes[$ci].domain" "$_conf_cache")
+            cupstream=$(jq -r ".infra.caddy.routes[$ci].upstream" "$_conf_cache")
+            cauth=$(jq -r ".infra.caddy.routes[$ci].auth" "$_conf_cache")
+            local auth_color="$C_DIM"
+            case "$cauth" in
+                none)               auth_color="$C_WARN" ;;
+                authelia+bearer)    auth_color="$C_OK" ;;
+                3-tier)             auth_color="$C_INFO" ;;
+            esac
+            printf "  %-42s %-24s %b%s%b\n" "$cdomain" "$cupstream" "$auth_color" "$cauth" "$RST"
+            ci=$((ci+1))
+        done
+        [ "$route_count" -eq 0 ] && printf "  ${C_DIM}No Caddy routes found${RST}\n"
+    else
+        printf "  ${C_DIM}cloud-configs.json not cached${RST}\n"
+    fi
+
+    # ── D) Docker Port Bindings ──
+    printf "\n%b  ━━ D) DOCKER PORT BINDINGS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
     printf "  ${BLD}%-15s %-22s %-24s %-8s${RST}\n" \
         "VM" "Service" "Binding" "Public?"
     printf "  ${C_DIM}"
@@ -4562,25 +4600,28 @@ render_security() {
     done
     [ "$port_found" = "false" ] && printf "  ${C_DIM}No port bindings found${RST}\n"
 
-    # ── D) Docker Networks ──
-    printf "\n  ${C_SEC}${BLD}DOCKER NETWORKS${RST}\n"
+    # ── E) Docker Networks ──
+    printf "\n%b  ━━ E) DOCKER NETWORKS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
     printf "  ${BLD}%-30s %s${RST}\n" "Network" "Services"
     printf "  ${C_DIM}"
     w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    # Extract networks from cloud-configs or service_details
-    local net_json
-    net_json=$(_jq '
-        [.service_details | to_entries[] |
-         .key as $svc |
-         (.value.networks // [])[] |
-         {network: ., service: $svc}
-        ] | group_by(.network) | map({
-            network: .[0].network,
-            services: [.[].service] | join(", ")
-        })
-    ' 2>/dev/null || echo "[]")
+    # Extract networks from cached cloud-topology.json
+    local net_json="[]"
+    local _topo_cache="$CC_CACHE_DIR/cloud-topology.json"
+    if [ -f "$_topo_cache" ]; then
+        net_json=$(jq '
+            [.services | to_entries[] |
+             .key as $svc |
+             (.value.networks // [])[] |
+             {network: ., service: $svc}
+            ] | group_by(.network) | map({
+                network: .[0].network,
+                services: [.[].service] | join(", ")
+            })
+        ' "$_topo_cache" 2>/dev/null || echo "[]")
+    fi
 
     local net_count; net_count=$(echo "$net_json" | jq 'length' 2>/dev/null || echo 0)
     if [ "$net_count" -gt 0 ]; then
@@ -4890,10 +4931,14 @@ render_dashboard() {
     fw_vps_count=$(_d '[.mesh.firewalls[] | select(.scope == "vps") | .rules[]] | length' 2>/dev/null || echo 0)
     fw_vm_count=$(_d '[.mesh.firewalls[] | select(.scope != "vps") | .rules[]] | length' 2>/dev/null || echo 0)
     fw_port_count=$(_d '.services | map(select(.port != "—" and .port != null)) | length' 2>/dev/null || echo 0)
-    printf "  ${C_SEC}VPS Firewall${RST} ${C_DIM}%s rules${RST}" "$fw_vps_count"
-    printf "  ${C_SEC}VM Firewall${RST} ${C_DIM}%s rules${RST}" "$fw_vm_count"
-    printf "  ${C_SEC}Docker Ports${RST} ${C_DIM}%s bindings${RST}" "$fw_port_count"
-    printf "  ${C_SEC}Docker Networks${RST}\n"
+    local _conf_c="$CC_CACHE_DIR/cloud-configs.json"
+    local fw_caddy_count=0
+    [ -f "$_conf_c" ] && fw_caddy_count=$(jq '.infra.caddy.routes | length' "$_conf_c" 2>/dev/null || echo 0)
+    printf "  ${C_SEC}A)${RST}${C_DIM}VPS Firewall %s${RST}" "$fw_vps_count"
+    printf "  ${C_SEC}B)${RST}${C_DIM}VM Firewall %s${RST}" "$fw_vm_count"
+    printf "  ${C_SEC}C)${RST}${C_DIM}Caddy Routes %s${RST}" "$fw_caddy_count"
+    printf "  ${C_SEC}D)${RST}${C_DIM}Docker Ports %s${RST}" "$fw_port_count"
+    printf "  ${C_SEC}E)${RST}${C_DIM}Docker Networks${RST}\n"
     printf "  ${C_DIM}— run ${RST}${BLD}connect security${RST}${C_DIM} for details${RST}\n"
 
     # ── Log ──
