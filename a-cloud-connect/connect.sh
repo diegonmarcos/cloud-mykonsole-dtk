@@ -4476,15 +4476,94 @@ render_security() {
     printf "┃  Firewall rules · Caddy routes · Docker bindings · Networks%42s┃\n" ""
     printf "┗"; w=0; while [ "$w" -lt 100 ]; do printf "━"; w=$((w+1)); done; printf "┛%b\n" "$RST"
 
-    # ── A) VPS-Level Firewall ──
-    printf "\n%b  ━━ A) VPS FIREWALL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
-    printf "  ${BLD}%-10s %8s %-6s %-22s %s${RST}\n" \
-        "Provider" "Port" "Proto" "Source" "Description"
+    # Section colors
+    local C_FW="\033[38;5;203m"     # A) Firewall: red
+    local C_WEB="\033[38;5;75m"     # B) Web Server: cyan
+    local C_AUTH="\033[38;5;220m"   # C) Auth: gold
+    local C_RPRX="\033[38;5;44m"   # D) Rev Proxy: teal
+    local C_VPN="\033[38;5;177m"   # E) VPN: magenta
+    local C_CTR="\033[38;5;114m"   # F) Container: mint
+    local C_SCRT="\033[38;5;183m"  # G) Secrets: lavender
+
+    local _topo_cache="$CC_CACHE_DIR/cloud-topology.json"
+    local _conf_cache="$CC_CACHE_DIR/cloud-configs.json"
+    local w=0
+
+    # ══════════════════════════════════════════════════════════════════════
+    # A) FIREWALL — Consolidated cross-reference + detail sub-sections
+    # ══════════════════════════════════════════════════════════════════════
+    printf "\n%b  ━━ A) FIREWALL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_FW" "$RST"
+    printf "  ${C_DIM}Internet → VPS FW (OCI/GCP) → OS iptables → Docker DNAT${RST}\n"
+    printf "  ${C_DIM}Docker bypasses iptables INPUT via DNAT — only VPS firewall + bind address matter for containers${RST}\n"
+    printf "  ${BLD}%-15s %-20s %-22s %-6s %-6s %-6s %s${RST}\n" \
+        "VM" "Service" "Binding" "VPS" "OS" "Bind" "Verdict"
     printf "  ${C_DIM}"
-    local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
+    # Pre-compute VPS + OS firewall port lookups
     local fw_count; fw_count=$(_d '.mesh.firewalls | length' 2>/dev/null || echo 0)
+    local vps_ports_json; vps_ports_json=$(_d '[.mesh.firewalls[] | select(.scope == "vps") | .rules[] | .port | tostring] | unique' 2>/dev/null || echo '[]')
+    local os_fw_json="{}"; [ -f "$_topo_cache" ] && os_fw_json=$(jq '[.os_firewalls[] | {(.vm): [.rules[].port | tostring]}] | add // {}' "$_topo_cache" 2>/dev/null || echo '{}')
+
+    local svc_count; svc_count=$(_d '.services | length')
+    local si=0
+    while [ "$si" -lt "$svc_count" ]; do
+        local sname svm sport
+        sname=$(_d -r ".services[$si].name")
+        svm=$(_d -r ".services[$si].vm")
+        sport=$(_jq -r ".service_details[\"$sname\"].port // \"\"")
+        if [ -n "$sport" ] && [ "$sport" != "—" ] && [ "$sport" != "null" ]; then
+            local host_port; host_port=$(echo "$sport" | grep -oP '^\d+' | head -1)
+            local is_wg_bound=false is_lo_bound=false
+            echo "$sport" | grep -qP '^10\.\d+\.\d+\.\d+:' && is_wg_bound=true
+            echo "$sport" | grep -qP '^127\.0\.0\.1:' && is_lo_bound=true
+
+            local vps_ok="no"
+            [ -n "$host_port" ] && echo "$vps_ports_json" | jq -e "index(\"$host_port\")" >/dev/null 2>&1 && vps_ok="yes"
+
+            local vm_alias; vm_alias=$(_d -r ".mesh.vms[] | select(.id == \"$svm\" or .alias == \"$svm\") | .alias // \"$svm\"" 2>/dev/null || echo "$svm")
+            local os_ok="no"
+            [ -n "$host_port" ] && echo "$os_fw_json" | jq -e ".\"$vm_alias\" // [] | index(\"$host_port\")" >/dev/null 2>&1 && os_ok="yes"
+
+            local bind_lbl="pub"
+            $is_wg_bound && bind_lbl="wg"
+            $is_lo_bound && bind_lbl="lo"
+
+            local verdict="${C_OK}safe${RST}"
+            if [ "$vps_ok" = "yes" ] && [ "$bind_lbl" = "pub" ]; then
+                verdict="${C_ERR}PUBLIC${RST}"
+            elif [ "$vps_ok" = "yes" ] && [ "$bind_lbl" = "wg" ]; then
+                verdict="${C_OK}wg-only${RST}"
+            elif [ "$bind_lbl" = "lo" ]; then
+                verdict="${C_OK}local${RST}"
+            elif [ "$vps_ok" = "no" ]; then
+                verdict="${C_OK}blocked${RST}"
+            fi
+
+            local vps_c="$C_OK" os_c="$C_OK" bind_c="$C_OK"
+            [ "$vps_ok" = "yes" ] && vps_c="$C_WARN"
+            [ "$os_ok" = "yes" ] && os_c="$C_WARN"
+            [ "$bind_lbl" = "pub" ] && bind_c="$C_WARN"
+
+            printf "  %-15s %-20s %-22s %b%-6s%b %b%-6s%b %b%-6s%b %b\n" \
+                "$svm" "$sname" "$sport" \
+                "$vps_c" "$vps_ok" "$RST" \
+                "$os_c" "$os_ok" "$RST" \
+                "$bind_c" "$bind_lbl" "$RST" \
+                "$verdict"
+        fi
+        si=$((si+1))
+    done
+
+    # ── A.1) VPS Firewall ──
+    printf "\n%b    ── A.1) VPS Firewall (cloud provider) ──%b\n" "$C_FW" "$RST"
+    printf "    ${BLD}%-10s %8s %-6s %-22s %s${RST}\n" \
+        "Provider" "Port" "Proto" "Source" "Description"
+    printf "    ${C_DIM}"
+    w=0; while [ "$w" -lt 95 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
     local fwi=0 vps_found=false
     while [ "$fwi" -lt "$fw_count" ]; do
         local fw_scope; fw_scope=$(_d -r ".mesh.firewalls[$fwi].scope")
@@ -4499,36 +4578,32 @@ render_security() {
                 rproto=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].protocol")
                 rsrc=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].source")
                 rdesc=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].description // \"—\"")
-                printf "  %-10s %8s %-6s %-22s %s\n" "$fw_prov" "$rport" "$rproto" "$rsrc" "$rdesc"
+                printf "    %-10s %8s %-6s %-22s %s\n" "$fw_prov" "$rport" "$rproto" "$rsrc" "$rdesc"
                 ri=$((ri+1))
             done
         fi
         fwi=$((fwi+1))
     done
-    [ "$vps_found" = "false" ] && printf "  ${C_DIM}No VPS-level firewall rules${RST}\n"
+    [ "$vps_found" = "false" ] && printf "    ${C_DIM}No VPS-level firewall rules${RST}\n"
 
-    # ── B) VM OS Firewall (iptables via home-manager) ──
-    printf "\n%b  ━━ B) VM OS FIREWALL (iptables) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
-    printf "  ${C_DIM}Policy: INPUT DROP · ACCEPT: lo, wg0, established, ICMP, SSH:22, WG:51820 + ports below${RST}\n"
-    printf "  ${BLD}%-16s %-8s %-6s %s${RST}\n" \
+    # ── A.2) OS iptables ──
+    printf "\n%b    ── A.2) OS iptables (home-manager) ──%b\n" "$C_FW" "$RST"
+    printf "    ${C_DIM}Policy: INPUT DROP · ACCEPT: lo, wg0, established, ICMP, SSH:22, WG:51820 + below${RST}\n"
+    printf "    ${BLD}%-16s %8s %-6s %s${RST}\n" \
         "VM" "Port" "Proto" "Description"
-    printf "  ${C_DIM}"
-    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "    ${C_DIM}"
+    w=0; while [ "$w" -lt 95 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    local _topo_cache="$CC_CACHE_DIR/cloud-topology.json"
     local os_fw_count=0
-    if [ -f "$_topo_cache" ]; then
-        os_fw_count=$(jq '.os_firewalls | length' "$_topo_cache" 2>/dev/null || echo 0)
-    fi
-
+    [ -f "$_topo_cache" ] && os_fw_count=$(jq '.os_firewalls | length' "$_topo_cache" 2>/dev/null || echo 0)
     if [ "$os_fw_count" -gt 0 ]; then
         local ofi=0
         while [ "$ofi" -lt "$os_fw_count" ]; do
             local of_vm; of_vm=$(jq -r ".os_firewalls[$ofi].vm" "$_topo_cache")
             local of_rc; of_rc=$(jq ".os_firewalls[$ofi].rules | length" "$_topo_cache")
             if [ "$of_rc" -eq 0 ]; then
-                printf "  ${C_OK}%-16s${RST} ${C_DIM}%-8s %-6s %s${RST}\n" "$of_vm" "—" "—" "DROP all (no public ports)"
+                printf "    ${C_OK}%-16s${RST} ${C_DIM}%-8s %-6s %s${RST}\n" "$of_vm" "—" "—" "DROP all (no public ports)"
             else
                 local ori=0
                 while [ "$ori" -lt "$of_rc" ]; do
@@ -4537,9 +4612,9 @@ render_security() {
                     ofproto=$(jq -r ".os_firewalls[$ofi].rules[$ori].proto" "$_topo_cache")
                     ofdesc=$(jq -r ".os_firewalls[$ofi].rules[$ori].desc // \"—\"" "$_topo_cache")
                     if [ "$ori" -eq 0 ]; then
-                        printf "  %-16s %8s %-6s %s\n" "$of_vm" "$ofport" "$ofproto" "$ofdesc"
+                        printf "    %-16s %8s %-6s %s\n" "$of_vm" "$ofport" "$ofproto" "$ofdesc"
                     else
-                        printf "  %-16s %8s %-6s %s\n" "" "$ofport" "$ofproto" "$ofdesc"
+                        printf "    %-16s %8s %-6s %s\n" "" "$ofport" "$ofproto" "$ofdesc"
                     fi
                     ori=$((ori+1))
                 done
@@ -4547,18 +4622,106 @@ render_security() {
             ofi=$((ofi+1))
         done
     else
-        printf "  ${C_DIM}No OS firewall data (rebuild topology)${RST}\n"
+        printf "    ${C_DIM}No OS firewall data (rebuild topology)${RST}\n"
     fi
 
-    # ── C) Caddy Proxy Routes ──
-    printf "\n%b  ━━ C) CADDY PROXY ROUTES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
+    # ── A.3) Docker Port Bindings ──
+    printf "\n%b    ── A.3) Docker Port Bindings ──%b\n" "$C_FW" "$RST"
+    printf "    ${BLD}%-15s %-22s %-24s${RST}\n" \
+        "VM" "Service" "Binding"
+    printf "    ${C_DIM}"
+    w=0; while [ "$w" -lt 95 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    si=0
+    local port_found=false
+    while [ "$si" -lt "$svc_count" ]; do
+        local sname svm svc_ports
+        sname=$(_d -r ".services[$si].name")
+        svm=$(_d -r ".services[$si].vm")
+        svc_ports=$(_jq -r ".service_details[\"$sname\"].port // \"—\"")
+        if [ "$svc_ports" != "—" ] && [ "$svc_ports" != "null" ]; then
+            port_found=true
+            local bind_c="$RST"
+            echo "$svc_ports" | grep -qP '^10\.\d+\.\d+\.\d+:' && bind_c="$C_OK"
+            echo "$svc_ports" | grep -qP '^127\.0\.0\.1:' && bind_c="$C_OK"
+            echo "$svc_ports" | grep -qP '^\d+:\d' && [ "$bind_c" = "$RST" ] && bind_c="$C_WARN"
+            printf "    %-15s %-22s %b%-24s%b\n" "$svm" "$sname" "$bind_c" "$svc_ports" "$RST"
+        fi
+        si=$((si+1))
+    done
+    [ "$port_found" = "false" ] && printf "    ${C_DIM}No port bindings found${RST}\n"
+
+    # ══════════════════════════════════════════════════════════════════════
+    # B) WEB SERVER — Caddy TLS, security headers, rate limits
+    # ══════════════════════════════════════════════════════════════════════
+    printf "\n%b  ━━ B) WEB SERVER — Caddy ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_WEB" "$RST"
+    printf "  ${C_DIM}TLS: automatic Let's Encrypt · Security headers: HSTS, X-Frame, CSP · Rate limits per-site${RST}\n"
+    printf "  ${BLD}%-42s %-16s %-14s %s${RST}\n" \
+        "Domain" "TLS" "Headers" "Limits"
+    printf "  ${C_DIM}"
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    if [ -f "$_conf_cache" ]; then
+        local route_count; route_count=$(jq '.infra.caddy.routes | length' "$_conf_cache" 2>/dev/null || echo 0)
+        local ci=0
+        while [ "$ci" -lt "$route_count" ]; do
+            local cdomain; cdomain=$(jq -r ".infra.caddy.routes[$ci].domain" "$_conf_cache")
+            printf "  %-42s %b%-16s%b %b%-14s%b %b%s%b\n" \
+                "$cdomain" "$C_OK" "auto" "$RST" "$C_OK" "import security" "$RST" "$C_OK" "per-site" "$RST"
+            ci=$((ci+1))
+        done
+        [ "$route_count" -eq 0 ] && printf "  ${C_DIM}No Caddy routes found${RST}\n"
+    else
+        printf "  ${C_DIM}cloud-configs.json not cached${RST}\n"
+    fi
+
+    # ══════════════════════════════════════════════════════════════════════
+    # C) AUTH — Authelia ACL rules
+    # ══════════════════════════════════════════════════════════════════════
+    printf "\n%b  ━━ C) AUTH — Authelia ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_AUTH" "$RST"
+    printf "  ${C_DIM}2FA (TOTP/WebAuthn) · OIDC bearer tokens · Cookie sessions${RST}\n"
+    printf "  ${BLD}%-42s %-16s %s${RST}\n" \
+        "Domain" "Policy" "Resources"
+    printf "  ${C_DIM}"
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    if [ -f "$_conf_cache" ]; then
+        local acl_count; acl_count=$(jq '.infra.authelia.acl | length' "$_conf_cache" 2>/dev/null || echo 0)
+        local ai=0
+        while [ "$ai" -lt "$acl_count" ]; do
+            local adomain apolicy aresources
+            adomain=$(jq -r ".infra.authelia.acl[$ai].domain" "$_conf_cache")
+            apolicy=$(jq -r ".infra.authelia.acl[$ai].policy" "$_conf_cache")
+            aresources=$(jq -r ".infra.authelia.acl[$ai].resources // [] | join(\", \")" "$_conf_cache")
+            [ -z "$aresources" ] && aresources="*"
+            local pol_color="$C_OK"
+            case "$apolicy" in
+                bypass)     pol_color="$C_WARN" ;;
+                one_factor) pol_color="$C_INFO" ;;
+                two_factor) pol_color="$C_OK" ;;
+                deny)       pol_color="$C_ERR" ;;
+            esac
+            printf "  %-42s %b%-16s%b %s\n" "$adomain" "$pol_color" "$apolicy" "$RST" "$aresources"
+            ai=$((ai+1))
+        done
+        [ "$acl_count" -eq 0 ] && printf "  ${C_DIM}No ACL rules found${RST}\n"
+    else
+        printf "  ${C_DIM}cloud-configs.json not cached${RST}\n"
+    fi
+
+    # ══════════════════════════════════════════════════════════════════════
+    # D) REV PROXY — Caddy routing
+    # ══════════════════════════════════════════════════════════════════════
+    printf "\n%b  ━━ D) REV PROXY — Caddy ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_RPRX" "$RST"
     printf "  ${BLD}%-42s %-24s %-16s${RST}\n" \
         "Domain" "Upstream" "Auth"
     printf "  ${C_DIM}"
     w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    local _conf_cache="$CC_CACHE_DIR/cloud-configs.json"
     if [ -f "$_conf_cache" ]; then
         local route_count; route_count=$(jq '.infra.caddy.routes | length' "$_conf_cache" 2>/dev/null || echo 0)
         local ci=0
@@ -4581,49 +4744,46 @@ render_security() {
         printf "  ${C_DIM}cloud-configs.json not cached${RST}\n"
     fi
 
-    # ── D) Docker Port Bindings ──
-    printf "\n%b  ━━ D) DOCKER PORT BINDINGS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
-    printf "  ${BLD}%-15s %-22s %-24s %-8s${RST}\n" \
-        "VM" "Service" "Binding" "Public?"
+    # ══════════════════════════════════════════════════════════════════════
+    # E) VPN — WireGuard mesh
+    # ══════════════════════════════════════════════════════════════════════
+    printf "\n%b  ━━ E) VPN — WireGuard ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_VPN" "$RST"
+    printf "  ${C_DIM}Hub-and-spoke mesh: gcp-proxy is hub, all others connect through it${RST}\n"
+    printf "  ${BLD}%-16s %-12s %-8s %-28s${RST}\n" \
+        "Peer" "WG IP" "Role" "Endpoint"
     printf "  ${C_DIM}"
     w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    # Collect all VPS firewall ports for "public?" check
-    local fw_ports; fw_ports=$(_d -r '[.mesh.firewalls[] | select(.scope == "vps") | .rules[].port] | map(tostring) | unique | join(",")' 2>/dev/null || echo "")
+    local wg_count=0
+    [ -f "$_topo_cache" ] && wg_count=$(jq '.wireguard.peers | length' "$_topo_cache" 2>/dev/null || echo 0)
+    if [ "$wg_count" -gt 0 ]; then
+        local wi=0
+        while [ "$wi" -lt "$wg_count" ]; do
+            local wname wip wrole wendpoint
+            wname=$(jq -r ".wireguard.peers[$wi].name" "$_topo_cache")
+            wip=$(jq -r ".wireguard.peers[$wi].wg_ip" "$_topo_cache")
+            wrole=$(jq -r ".wireguard.peers[$wi].role" "$_topo_cache")
+            wendpoint=$(jq -r ".wireguard.peers[$wi].endpoint" "$_topo_cache")
+            local role_color="$C_DIM"
+            case "$wrole" in hub) role_color="$C_OK" ;; spoke) role_color="$C_INFO" ;; client) role_color="$C_WARN" ;; esac
+            printf "  %-16s %-12s %b%-8s%b %s\n" "$wname" "$wip" "$role_color" "$wrole" "$RST" "$wendpoint"
+            wi=$((wi+1))
+        done
+    else
+        printf "  ${C_DIM}No WireGuard data (rebuild topology)${RST}\n"
+    fi
 
-    local svc_count; svc_count=$(_d '.services | length')
-    local si=0 port_found=false
-    while [ "$si" -lt "$svc_count" ]; do
-        local sname svm
-        sname=$(_d -r ".services[$si].name")
-        svm=$(_d -r ".services[$si].vm")
-        # Get ports from service_details via config
-        local svc_ports; svc_ports=$(_jq -r ".service_details[\"$sname\"].port // \"—\"")
-        if [ "$svc_ports" != "—" ] && [ "$svc_ports" != "null" ]; then
-            port_found=true
-            # Check if host port matches a firewall rule
-            local host_port; host_port=$(echo "$svc_ports" | grep -oP '^\d+' | head -1)
-            local pub="no"
-            if [ -n "$host_port" ] && echo ",$fw_ports," | grep -q ",$host_port,"; then
-                pub="${C_OK}yes${RST}"
-            fi
-            printf "  %-15s %-22s %-24s %b\n" "$svm" "$sname" "$svc_ports" "$pub"
-        fi
-        si=$((si+1))
-    done
-    [ "$port_found" = "false" ] && printf "  ${C_DIM}No port bindings found${RST}\n"
-
-    # ── E) Docker Networks ──
-    printf "\n%b  ━━ E) DOCKER NETWORKS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
+    # ══════════════════════════════════════════════════════════════════════
+    # F) CONTAINER — Docker networks & isolation
+    # ══════════════════════════════════════════════════════════════════════
+    printf "\n%b  ━━ F) CONTAINER — Docker ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_CTR" "$RST"
     printf "  ${BLD}%-30s %s${RST}\n" "Network" "Services"
     printf "  ${C_DIM}"
     w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    # Extract networks from cached cloud-topology.json
     local net_json="[]"
-    local _topo_cache="$CC_CACHE_DIR/cloud-topology.json"
     if [ -f "$_topo_cache" ]; then
         net_json=$(jq '
             [.services | to_entries[] |
@@ -4649,6 +4809,44 @@ render_security() {
         done
     else
         printf "  ${C_DIM}No Docker networks found${RST}\n"
+    fi
+
+    # ══════════════════════════════════════════════════════════════════════
+    # G) SECRETS — sops/age encrypted credentials
+    # ══════════════════════════════════════════════════════════════════════
+    printf "\n%b  ━━ G) SECRETS — sops/age ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SCRT" "$RST"
+    printf "  ${BLD}%-25s %-12s %-12s %s${RST}\n" \
+        "Service" "Encrypted" "Deployed" "Status"
+    printf "  ${C_DIM}"
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    local cloud_dir="$HOME/git/cloud"
+    local sol_dir="$cloud_dir/a_solutions"
+    if [ -d "$sol_dir" ]; then
+        local sec_found=false
+        for svc_dir in "$sol_dir"/*/; do
+            local svc_name; svc_name=$(basename "$svc_dir" | sed 's/^[a-z]*-[a-z]*_//')
+            local has_enc=false has_dep=false
+            [ -f "$svc_dir/src/secrets.yaml" ] && has_enc=true
+            [ -f "$svc_dir/dist/.secrets" ] && has_dep=true
+            $has_enc || $has_dep || continue
+            sec_found=true
+            local sestatus="${C_OK}OK${RST}"
+            if $has_enc && ! $has_dep; then
+                sestatus="${C_ERR}NOT DEPLOYED${RST}"
+            elif ! $has_enc && $has_dep; then
+                sestatus="${C_WARN}NO SOURCE${RST}"
+            fi
+            printf "  %-25s %b%-12s%b %b%-12s%b %b\n" \
+                "$svc_name" \
+                "$($has_enc && echo "$C_OK" || echo "$C_DIM")" "$has_enc" "$RST" \
+                "$($has_dep && echo "$C_OK" || echo "$C_WARN")" "$has_dep" "$RST" \
+                "$sestatus"
+        done
+        $sec_found || printf "  ${C_DIM}No services with secrets${RST}\n"
+    else
+        printf "  ${C_DIM}cloud/a_solutions not found${RST}\n"
     fi
 }
 
@@ -4941,20 +5139,24 @@ render_dashboard() {
 
     # ── I) SECURITY ──
     printf "\n%b━━ I) SECURITY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
-    local fw_vps_count fw_vm_count fw_port_count
+    local fw_vps_count fw_vm_count fw_port_count fw_caddy_count fw_acl_count fw_wg_count
     fw_vps_count=$(_d '[.mesh.firewalls[] | select(.scope == "vps") | .rules[]] | length' 2>/dev/null || echo 0)
     local _topo_c="$CC_CACHE_DIR/cloud-topology.json"
-    fw_vm_count=0
+    fw_vm_count=0; fw_wg_count=0
     [ -f "$_topo_c" ] && fw_vm_count=$(jq '[.os_firewalls[].rules[]] | length' "$_topo_c" 2>/dev/null || echo 0)
+    [ -f "$_topo_c" ] && fw_wg_count=$(jq '.wireguard.peers | length' "$_topo_c" 2>/dev/null || echo 0)
     fw_port_count=$(_d '.services | map(select(.port != "—" and .port != null)) | length' 2>/dev/null || echo 0)
     local _conf_c="$CC_CACHE_DIR/cloud-configs.json"
-    local fw_caddy_count=0
+    fw_caddy_count=0; fw_acl_count=0
     [ -f "$_conf_c" ] && fw_caddy_count=$(jq '.infra.caddy.routes | length' "$_conf_c" 2>/dev/null || echo 0)
-    printf "  ${C_SEC}A)${RST}${C_DIM}VPS Firewall %s${RST}" "$fw_vps_count"
-    printf "  ${C_SEC}B)${RST}${C_DIM}OS iptables %s${RST}" "$fw_vm_count"
-    printf "  ${C_SEC}C)${RST}${C_DIM}Caddy Routes %s${RST}" "$fw_caddy_count"
-    printf "  ${C_SEC}D)${RST}${C_DIM}Docker Ports %s${RST}" "$fw_port_count"
-    printf "  ${C_SEC}E)${RST}${C_DIM}Docker Networks${RST}\n"
+    [ -f "$_conf_c" ] && fw_acl_count=$(jq '.infra.authelia.acl | length' "$_conf_c" 2>/dev/null || echo 0)
+    printf "  \033[38;5;203mA)${RST}${C_DIM}Firewall %s+%s+%s${RST}" "$fw_vps_count" "$fw_vm_count" "$fw_port_count"
+    printf "  \033[38;5;75mB)${RST}${C_DIM}WebSrv %s${RST}" "$fw_caddy_count"
+    printf "  \033[38;5;220mC)${RST}${C_DIM}Auth %s${RST}" "$fw_acl_count"
+    printf "  \033[38;5;44mD)${RST}${C_DIM}RevProxy %s${RST}" "$fw_caddy_count"
+    printf "  \033[38;5;177mE)${RST}${C_DIM}VPN %s${RST}" "$fw_wg_count"
+    printf "  \033[38;5;114mF)${RST}${C_DIM}Container${RST}"
+    printf "  \033[38;5;183mG)${RST}${C_DIM}Secrets${RST}\n"
     printf "  ${C_DIM}— run ${RST}${BLD}connect security${RST}${C_DIM} for details${RST}\n"
 
     # ── Log ──
