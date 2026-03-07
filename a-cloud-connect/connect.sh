@@ -1056,29 +1056,8 @@ render_mesh() {
     [ -z "$CC_DATA" ] && collect_all
     local vm_count; vm_count=$(_d '.mesh.vms | length')
 
-    # Topology line
-    printf "  "
-    local i=0
-    while [ "$i" -lt "$vm_count" ]; do
-        local wg_ip alias_name
-        wg_ip=$(_d -r ".mesh.vms[$i].wg_ip")
-        alias_name=$(_d -r ".mesh.vms[$i].alias")
-        if [ "$i" -gt 0 ]; then printf " ${C_DIM}────${RST} "; fi
-        printf "%b%s%b" "$C_MESH" "$wg_ip" "$RST"
-        i=$((i+1))
-    done
-    printf "\n  "
-    i=0
-    while [ "$i" -lt "$vm_count" ]; do
-        local alias_name
-        alias_name=$(_d -r ".mesh.vms[$i].alias")
-        if [ "$i" -gt 0 ]; then printf "       "; fi
-        printf "%-13s" "$alias_name"
-        i=$((i+1))
-    done
-    printf "\n\n"
-
     # VM Table header
+    local i=0
     printf "  ${BLD}%-17s %-7s %-12s %-18s %5s %4s %4s${RST}\n" \
         "VM" "State" "WG IP" "Public IP" "Up" "CPU" "RAM"
     printf "  ${C_DIM}"
@@ -4390,20 +4369,15 @@ server_bisync() {
 
 render_services() {
     [ -z "$CC_DATA" ] && collect_all
-    printf "  ${BLD}%-22s %-15s %-30s %-12s %-10s${RST}\n" \
-        "SERVICE" "VM" "Domain" "Port" "Avail"
+    printf "  ${BLD}%-22s %-15s %-30s %-10s %-6s${RST}\n" \
+        "SERVICE" "VM" "DOMAIN" "PORT" "STATE"
     printf "  ${C_DIM}"
     local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    local total; total=$(_d '.services | length')
-    local i=0
-    while [ "$i" -lt "$total" ]; do
-        printf "  %-22s %-15s %-30s %-12s %-10s\n" \
-            "$(_d -r ".services[$i].name")" "$(_d -r ".services[$i].vm")" \
-            "$(_d -r ".services[$i].domain")" "$(_d -r ".services[$i].port")" \
-            "$(_d -r ".services[$i].availability")"
-        i=$((i+1))
+    _d '.services | sort_by(.name)[]' | jq -r '[.name, .vm, .domain, .port] | @tsv' | \
+    while IFS=$'\t' read -r sname svm sdomain sport; do
+        printf "  %-22s %-15s %-30s %-10s %-6s\n" "$sname" "$svm" "$sdomain" "$sport" "?"
     done
 
     if [ "$total" -eq 0 ]; then printf "  ${C_DIM}No services configured${RST}\n"; fi
