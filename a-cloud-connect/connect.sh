@@ -1043,6 +1043,7 @@ JQEOF
   "timestamp": "$ts",
   "env_profile": "$CC_ENV_PROFILE",
   "mesh": {"vms": $mesh_vms, "local": $local_json, "phone": $phone_json, "storage": $(jq -c '.mesh.storage // []' <<< "$CONFIG_JSON"), "vpss": $(jq -c '.mesh.vpss // {}' <<< "$CONFIG_JSON"), "firewalls": $(jq -c '.mesh.firewalls // []' <<< "$CONFIG_JSON")},
+  "security": {"os_firewalls": $(jq -c '.os_firewalls // []' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '[]'), "wireguard": $(jq -c '.wireguard // {}' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '{}'), "caddy_routes": $(jq -c '.infra.caddy.routes // []' "$CC_CACHE_DIR/cloud-configs.json" 2>/dev/null || echo '[]')},
   "git": {"repos": $git_json, "totals": $git_totals, "not_cloned": $not_cloned_esc},
   "drives": {"cloud": $drives_json, "symlinks": $symlinks_json},
   "sync": {"remotes": $sync_remotes_json, "rules": $sync_rules_json, "running_jobs": $sync_running_json},
@@ -4506,35 +4507,48 @@ render_security() {
     done
     [ "$vps_found" = "false" ] && printf "  ${C_DIM}No VPS-level firewall rules${RST}\n"
 
-    # ── B) VM-Level Firewall ──
-    printf "\n%b  ━━ B) VM FIREWALL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
-    printf "  ${BLD}%-14s %8s %-6s %-22s %s${RST}\n" \
-        "Scope/Tag" "Port" "Proto" "Source" "Description"
+    # ── B) VM OS Firewall (iptables via home-manager) ──
+    printf "\n%b  ━━ B) VM OS FIREWALL (iptables) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
+    printf "  ${C_DIM}Policy: INPUT DROP · ACCEPT: lo, wg0, established, ICMP, SSH:22, WG:51820 + ports below${RST}\n"
+    printf "  ${BLD}%-16s %-8s %-6s %s${RST}\n" \
+        "VM" "Port" "Proto" "Description"
     printf "  ${C_DIM}"
     w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    fwi=0
-    local vm_found=false
-    while [ "$fwi" -lt "$fw_count" ]; do
-        local fw_scope; fw_scope=$(_d -r ".mesh.firewalls[$fwi].scope")
-        if [ "$fw_scope" != "vps" ]; then
-            vm_found=true
-            local rule_count; rule_count=$(_d ".mesh.firewalls[$fwi].rules | length")
-            local ri=0
-            while [ "$ri" -lt "$rule_count" ]; do
-                local rport rproto rsrc rdesc
-                rport=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].port")
-                rproto=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].protocol")
-                rsrc=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].source")
-                rdesc=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].description // \"—\"")
-                printf "  %-14s %8s %-6s %-22s %s\n" "$fw_scope" "$rport" "$rproto" "$rsrc" "$rdesc"
-                ri=$((ri+1))
-            done
-        fi
-        fwi=$((fwi+1))
-    done
-    [ "$vm_found" = "false" ] && printf "  ${C_DIM}No VM-level firewall rules${RST}\n"
+    local _topo_cache="$CC_CACHE_DIR/cloud-topology.json"
+    local os_fw_count=0
+    if [ -f "$_topo_cache" ]; then
+        os_fw_count=$(jq '.os_firewalls | length' "$_topo_cache" 2>/dev/null || echo 0)
+    fi
+
+    if [ "$os_fw_count" -gt 0 ]; then
+        local ofi=0
+        while [ "$ofi" -lt "$os_fw_count" ]; do
+            local of_vm; of_vm=$(jq -r ".os_firewalls[$ofi].vm" "$_topo_cache")
+            local of_rc; of_rc=$(jq ".os_firewalls[$ofi].rules | length" "$_topo_cache")
+            if [ "$of_rc" -eq 0 ]; then
+                printf "  ${C_OK}%-16s${RST} ${C_DIM}%-8s %-6s %s${RST}\n" "$of_vm" "—" "—" "DROP all (no public ports)"
+            else
+                local ori=0
+                while [ "$ori" -lt "$of_rc" ]; do
+                    local ofport ofproto ofdesc
+                    ofport=$(jq -r ".os_firewalls[$ofi].rules[$ori].port" "$_topo_cache")
+                    ofproto=$(jq -r ".os_firewalls[$ofi].rules[$ori].proto" "$_topo_cache")
+                    ofdesc=$(jq -r ".os_firewalls[$ofi].rules[$ori].desc // \"—\"" "$_topo_cache")
+                    if [ "$ori" -eq 0 ]; then
+                        printf "  %-16s %8s %-6s %s\n" "$of_vm" "$ofport" "$ofproto" "$ofdesc"
+                    else
+                        printf "  %-16s %8s %-6s %s\n" "" "$ofport" "$ofproto" "$ofdesc"
+                    fi
+                    ori=$((ori+1))
+                done
+            fi
+            ofi=$((ofi+1))
+        done
+    else
+        printf "  ${C_DIM}No OS firewall data (rebuild topology)${RST}\n"
+    fi
 
     # ── C) Caddy Proxy Routes ──
     printf "\n%b  ━━ C) CADDY PROXY ROUTES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
@@ -4929,13 +4943,15 @@ render_dashboard() {
     printf "\n%b━━ I) SECURITY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
     local fw_vps_count fw_vm_count fw_port_count
     fw_vps_count=$(_d '[.mesh.firewalls[] | select(.scope == "vps") | .rules[]] | length' 2>/dev/null || echo 0)
-    fw_vm_count=$(_d '[.mesh.firewalls[] | select(.scope != "vps") | .rules[]] | length' 2>/dev/null || echo 0)
+    local _topo_c="$CC_CACHE_DIR/cloud-topology.json"
+    fw_vm_count=0
+    [ -f "$_topo_c" ] && fw_vm_count=$(jq '[.os_firewalls[].rules[]] | length' "$_topo_c" 2>/dev/null || echo 0)
     fw_port_count=$(_d '.services | map(select(.port != "—" and .port != null)) | length' 2>/dev/null || echo 0)
     local _conf_c="$CC_CACHE_DIR/cloud-configs.json"
     local fw_caddy_count=0
     [ -f "$_conf_c" ] && fw_caddy_count=$(jq '.infra.caddy.routes | length' "$_conf_c" 2>/dev/null || echo 0)
     printf "  ${C_SEC}A)${RST}${C_DIM}VPS Firewall %s${RST}" "$fw_vps_count"
-    printf "  ${C_SEC}B)${RST}${C_DIM}VM Firewall %s${RST}" "$fw_vm_count"
+    printf "  ${C_SEC}B)${RST}${C_DIM}OS iptables %s${RST}" "$fw_vm_count"
     printf "  ${C_SEC}C)${RST}${C_DIM}Caddy Routes %s${RST}" "$fw_caddy_count"
     printf "  ${C_SEC}D)${RST}${C_DIM}Docker Ports %s${RST}" "$fw_port_count"
     printf "  ${C_SEC}E)${RST}${C_DIM}Docker Networks${RST}\n"

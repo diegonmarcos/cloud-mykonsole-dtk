@@ -267,6 +267,36 @@ ACTION="status"
 MSG=""
 FILES=""
 
+# Help
+case "${1:-}" in
+  -h|--help|help)
+    cat <<'HELP'
+sync — Unified sync engine for git and rclone
+
+Usage:
+  sync [git|rclone] [status|remote|ours] "msg" [files...]
+
+Defaults:  backend=git  action=status  files=all
+
+Actions:
+  status   Smart status: fetch + compare + show divergence (default)
+  remote   Add + commit + rebase (remote wins conflicts) + push
+  ours     Add + commit + rebase (local wins conflicts) + push
+
+Examples:
+  sync                                # git smart status
+  sync git remote "feat: new thing"   # add all + commit + sync + push
+  sync git ours "fix: config"         # same but local wins conflicts
+  sync git remote "msg" src/ lib/     # only add specific files
+  sync rclone status                  # show rclone remotes
+
+Shortcuts:
+  gacp "msg"                          # = sync git remote "msg"
+HELP
+    exit 0
+    ;;
+esac
+
 # Detect backend
 case "${1:-}" in
   git|rclone) BACKEND="$1"; shift ;;
