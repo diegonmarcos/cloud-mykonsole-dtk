@@ -323,7 +323,7 @@ _module_for_settings_key() {
 # Write a jq mutation to a specific module file, then reload CONFIG_JSON
 _jq_write() {
     local mfile="$1"; shift
-    local tmp; tmp=$(mktemp)
+    local tmp="$CC_CACHE_DIR/.jqw.$$"
     jq "$@" "$mfile" > "$tmp" && mv "$tmp" "$mfile"
     _reload_config_json
 }
@@ -672,13 +672,15 @@ collect_all() {
     }
 
     # ═══ PARALLEL SECTION — fire all heavy work as background jobs ═══
-    local _par; _par=$(mktemp -d)
+    local _par="$CC_CACHE_DIR/.par.$$"
+    mkdir -p "$_par"
 
     # ── MESH VMs (parallel nc to wg_ip) ──
     (
         local _vm_tsv _nc_tmpdir vm_count=0 mesh_vms="[" _gauge_mesh_up=0
         _vm_tsv=$(jq -r '.mesh.vms[] | [.name, .alias, .wg_ip, .public_ip] | @tsv' <<< "$CONFIG_JSON" 2>/dev/null)
-        _nc_tmpdir=$(mktemp -d)
+        _nc_tmpdir="$CC_CACHE_DIR/.nc.$$"
+        mkdir -p "$_nc_tmpdir"
         while IFS=$'\t' read -r _n _a _w _p; do
             [ -z "$_w" ] && continue
             ( nc -z -w2 "$_w" 22 2>/dev/null && echo "online" || echo "offline" ) > "$_nc_tmpdir/$_a" &
@@ -712,7 +714,8 @@ collect_all() {
     ) &
 
     # ── GIT REPOS ──
-    local _git_tmpdir; _git_tmpdir=$(mktemp -d)
+    local _git_tmpdir="$CC_CACHE_DIR/.git.$$"
+    mkdir -p "$_git_tmpdir"
     (
         local repos; repos=$(jq -r '(.git.public_repos // {} | keys[]) , (.git.private_repos // {} | keys[])' <<< "$CONFIG_JSON" 2>/dev/null)
         local _git_pids="" _git_i=0
@@ -973,7 +976,7 @@ collect_all() {
     git_json="$git_json]"
     rm -rf "$_git_tmpdir" "$_par"
 
-    local _jqtmp; _jqtmp=$(mktemp)
+    local _jqtmp="$CC_CACHE_DIR/.jqtmp.$$"
     cat > "$_jqtmp" << 'JQEOF'
 def safesum: if length==0 then 0 else add end;
 {
@@ -4466,7 +4469,7 @@ render_security() {
     [ -z "$CC_DATA" ] && collect_all
 
     # ── A) VPS-Level Firewall ──
-    printf "\n  ${BLD}VPS-LEVEL FIREWALL${RST} ${C_DIM}(shared security lists, apply to all VMs in provider)${RST}\n"
+    printf "\n  ${C_SEC}${BLD}VPS-LEVEL FIREWALL${RST} ${C_DIM}(shared security lists, apply to all VMs in provider)${RST}\n"
     printf "  ${BLD}%-10s %8s %-6s %-22s %s${RST}\n" \
         "Provider" "Port" "Proto" "Source" "Description"
     printf "  ${C_DIM}"
@@ -4497,7 +4500,7 @@ render_security() {
     [ "$vps_found" = "false" ] && printf "  ${C_DIM}No VPS-level firewall rules${RST}\n"
 
     # ── B) VM-Level Firewall ──
-    printf "\n  ${BLD}VM-LEVEL FIREWALL${RST} ${C_DIM}(targeted by tags/security groups)${RST}\n"
+    printf "\n  ${C_SEC}${BLD}VM-LEVEL FIREWALL${RST} ${C_DIM}(targeted by tags/security groups)${RST}\n"
     printf "  ${BLD}%-14s %8s %-6s %-22s %s${RST}\n" \
         "Scope/Tag" "Port" "Proto" "Source" "Description"
     printf "  ${C_DIM}"
@@ -4527,7 +4530,7 @@ render_security() {
     [ "$vm_found" = "false" ] && printf "  ${C_DIM}No VM-level firewall rules${RST}\n"
 
     # ── C) Docker Port Bindings ──
-    printf "\n  ${BLD}DOCKER PORT BINDINGS${RST}\n"
+    printf "\n  ${C_SEC}${BLD}DOCKER PORT BINDINGS${RST}\n"
     printf "  ${BLD}%-15s %-22s %-24s %-8s${RST}\n" \
         "VM" "Service" "Binding" "Public?"
     printf "  ${C_DIM}"
@@ -4560,7 +4563,7 @@ render_security() {
     [ "$port_found" = "false" ] && printf "  ${C_DIM}No port bindings found${RST}\n"
 
     # ── D) Docker Networks ──
-    printf "\n  ${BLD}DOCKER NETWORKS${RST}\n"
+    printf "\n  ${C_SEC}${BLD}DOCKER NETWORKS${RST}\n"
     printf "  ${BLD}%-30s %s${RST}\n" "Network" "Services"
     printf "  ${C_DIM}"
     w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
@@ -4883,8 +4886,15 @@ render_dashboard() {
 
     # ── I) SECURITY ──
     printf "\n%b━━ I) SECURITY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
-    local fw_total; fw_total=$(_d '[.mesh.firewalls[].rules[]] | length' 2>/dev/null || echo 0)
-    printf "  %s firewall rules  ${C_DIM}— run ${RST}${BLD}connect security${RST}${C_DIM} for details${RST}\n" "$fw_total"
+    local fw_vps_count fw_vm_count fw_port_count
+    fw_vps_count=$(_d '[.mesh.firewalls[] | select(.scope == "vps") | .rules[]] | length' 2>/dev/null || echo 0)
+    fw_vm_count=$(_d '[.mesh.firewalls[] | select(.scope != "vps") | .rules[]] | length' 2>/dev/null || echo 0)
+    fw_port_count=$(_d '.services | map(select(.port != "—" and .port != null)) | length' 2>/dev/null || echo 0)
+    printf "  ${C_SEC}VPS Firewall${RST} ${C_DIM}%s rules${RST}" "$fw_vps_count"
+    printf "  ${C_SEC}VM Firewall${RST} ${C_DIM}%s rules${RST}" "$fw_vm_count"
+    printf "  ${C_SEC}Docker Ports${RST} ${C_DIM}%s bindings${RST}" "$fw_port_count"
+    printf "  ${C_SEC}Docker Networks${RST}\n"
+    printf "  ${C_DIM}— run ${RST}${BLD}connect security${RST}${C_DIM} for details${RST}\n"
 
     # ── Log ──
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
