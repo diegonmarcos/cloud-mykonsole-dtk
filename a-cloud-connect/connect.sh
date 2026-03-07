@@ -69,14 +69,15 @@ if [ -t 1 ]; then
     DIM="\033[2m"
     # Section accent colors (256-color)
     C_HEAD="\033[38;5;255m"     # header: bright white
-    C_MESH="\033[38;5;44m"      # A) MESH: teal
-    C_GIT="\033[38;5;77m"       # B) GIT: green
+    C_HM="\033[38;5;183m"       # A) HOME-MANAGER: lavender
+    C_MESH="\033[38;5;44m"      # B) MESH: teal
+    C_GIT="\033[38;5;77m"       # C) GIT: green
     C_DRIVE="\033[38;5;220m"    # C) FUSE DRIVES: gold
-    C_SYNC="\033[38;5;177m"     # D) SYNC: magenta
-    C_SRVR="\033[38;5;69m"      # E) DATA SERVERS: blue
-    C_SVC="\033[38;5;114m"      # F) SERVICES: mint green
+    C_SYNC="\033[38;5;177m"     # E) SYNC: magenta
+    C_SRVR="\033[38;5;69m"      # F) DATA SERVERS: blue
     C_WEB="\033[38;5;208m"      # G) WEBSERVER: orange
-    C_HM="\033[38;5;183m"       # H) HOME-MANAGER: lavender
+    C_SVC="\033[38;5;114m"      # H) SERVICES: mint green
+    C_SEC="\033[38;5;203m"      # I) SECURITY: alert red
     # Status colors
     C_OK="\033[38;5;77m"        # green
     C_WARN="\033[38;5;220m"     # yellow
@@ -96,7 +97,7 @@ if [ -t 1 ]; then
 else
     RST='' BLD='' DIM=''
     C_HEAD='' C_MESH='' C_GIT='' C_DRIVE='' C_SYNC='' C_SRVR='' C_SVC='' C_WEB='' C_HM=''
-    C_OK='' C_WARN='' C_ERR='' C_INFO='' C_DIM='' C_ALERT=''
+    C_OK='' C_WARN='' C_ERR='' C_INFO='' C_DIM='' C_ALERT='' C_SEC=''
     C_G1='' C_G2='' C_G3='' C_G4='' C_SP='' BG_HEAD=''
 fi
 
@@ -236,11 +237,15 @@ cc_build_mesh() {
                         "wg_ip":      .value.wg_ip,
                         "public_ip":  .value.ip,
                         "description":.value.description,
+                        "specs":      (.value.specs // null),
                         "vm_subdirs": $subdirs,
                         "services":   (.key as $vmid | $cfg.services | to_entries | map(select(.value.vm == $vmid)) | map(.key))
                     }
                 ],
-                "phone": ($static.phone // {})
+                "phone": ($static.phone // {}),
+                "storage": ($cfg.storage // []),
+                "vpss":    ($cfg.vpss // {}),
+                "firewalls": ($cfg.firewalls // [])
             },
             "service_details": ($cfg.services | to_entries | map({
                 key: .key,
@@ -530,7 +535,7 @@ phone_battery() {
 
 # =============================================================================
 # SINGLE-SOURCE DATA COLLECTION — collect_all()
-# All views (full, compact, logs, gauges, alerts) read from CC_DATA.
+# All views (full, compact, resume, logs, gauges, alerts) read from CC_DATA.
 # No render function does its own I/O — collect_all() does ALL system calls.
 # =============================================================================
 
@@ -691,9 +696,12 @@ collect_all() {
                 sub_json="$sub_json{\"name\":\"$sub\",\"mounted\":$sm}"
             done
             sub_json="$sub_json]"
+            # Extract specs from mesh.json (static terraform data)
+            local specs_json
+            specs_json=$(jq -c ".mesh.vms[$vm_count].specs // null" <<< "$CONFIG_JSON" 2>/dev/null || echo "null")
             [ "$mounted" -gt 0 ] && _gauge_mesh_up=$((_gauge_mesh_up+1))
             [ "$vm_count" -gt 0 ] && mesh_vms="$mesh_vms,"
-            mesh_vms="$mesh_vms{\"name\":\"$name\",\"alias\":\"$alias_name\",\"wg_ip\":\"$wg_ip\",\"public_ip\":\"$pub_ip\",\"state\":\"$state\",\"uptime_secs\":0,\"cpu_pct\":\"?\",\"ram_pct\":\"?\",\"mounts_up\":$mounted,\"subdirs\":$sub_json}"
+            mesh_vms="$mesh_vms{\"name\":\"$name\",\"alias\":\"$alias_name\",\"wg_ip\":\"$wg_ip\",\"public_ip\":\"$pub_ip\",\"state\":\"$state\",\"uptime_secs\":0,\"cpu_pct\":\"?\",\"ram_pct\":\"?\",\"specs\":$specs_json,\"mounts_up\":$mounted,\"subdirs\":$sub_json}"
             vm_count=$((vm_count+1))
         done <<< "$_vm_tsv"
         mesh_vms="$mesh_vms]"
@@ -1003,7 +1011,9 @@ JQEOF
             [ $(( now_epoch - lr_epoch )) -lt 86400 ] && _gs_recent=$((_gs_recent+1))
         done < <(echo "$sync_rules_json" | jq -r '.[] | select(.enabled == true) | .last_run // "never"')
     fi
-    local gauges_json="{\"mesh_cur\":$_gauge_mesh_up,\"mesh_max\":$vm_count,\"git_cur\":$_gt_clean,\"git_max\":$_gt_cloned,\"drive_cur\":$_gd_total,\"drive_max\":$_gd_max,\"sync_cur\":$_gs_recent,\"sync_max\":$_gs_enabled}"
+    local _hm_max; _hm_max=$(echo "$hm_json" | jq 'length' 2>/dev/null || echo 0)
+    local _hm_cur; _hm_cur=$(echo "$hm_json" | jq '[.[] | select(.enabled == true)] | length' 2>/dev/null || echo 0)
+    local gauges_json="{\"hm_cur\":$_hm_cur,\"hm_max\":$_hm_max,\"mesh_cur\":$_gauge_mesh_up,\"mesh_max\":$vm_count,\"git_cur\":$_gt_clean,\"git_max\":$_gt_cloned,\"drive_cur\":$_gd_total,\"drive_max\":$_gd_max,\"sync_cur\":$_gs_recent,\"sync_max\":$_gs_enabled}"
 
     # ═══ ALERTS ═══
     local _al_vm_down=$((vm_count - _gauge_mesh_up))
@@ -1029,7 +1039,7 @@ JQEOF
 {
   "timestamp": "$ts",
   "env_profile": "$CC_ENV_PROFILE",
-  "mesh": {"vms": $mesh_vms, "local": $local_json, "phone": $phone_json},
+  "mesh": {"vms": $mesh_vms, "local": $local_json, "phone": $phone_json, "storage": $(jq -c '.mesh.storage // []' <<< "$CONFIG_JSON"), "vpss": $(jq -c '.mesh.vpss // {}' <<< "$CONFIG_JSON"), "firewalls": $(jq -c '.mesh.firewalls // []' <<< "$CONFIG_JSON")},
   "git": {"repos": $git_json, "totals": $git_totals, "not_cloned": $not_cloned_esc},
   "drives": {"cloud": $drives_json, "symlinks": $symlinks_json},
   "sync": {"remotes": $sync_remotes_json, "rules": $sync_rules_json, "running_jobs": $sync_running_json},
@@ -1056,12 +1066,32 @@ render_mesh() {
     [ -z "$CC_DATA" ] && collect_all
     local vm_count; vm_count=$(_d '.mesh.vms | length')
 
+    # VPS Providers
+    local vps_keys; vps_keys=$(_d -r '.mesh.vpss | keys[]' 2>/dev/null)
+    if [ -n "$vps_keys" ]; then
+        printf "  ${BLD}%-12s %-20s %-14s %-12s${RST}\n" \
+            "VPS" "Provider" "Tier" "Terraform"
+        printf "  ${C_DIM}"
+        local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+        printf "${RST}\n"
+        for vk in $vps_keys; do
+            local prov tier has_tf
+            prov=$(_d -r ".mesh.vpss[\"$vk\"].provider // \"$vk\"")
+            tier=$(_d -r ".mesh.vpss[\"$vk\"].tier // \"—\"")
+            has_tf=$(_d -r ".mesh.vpss[\"$vk\"].has_terraform // false")
+            local tf_str
+            if [ "$has_tf" = "true" ]; then tf_str="${C_OK}✓${RST}"; else tf_str="${C_DIM}—${RST}"; fi
+            printf "  %-12s %-20s %-14s %b\n" "$vk" "$prov" "$tier" "$tf_str"
+        done
+        printf "\n"
+    fi
+
     # VM Table header
     local i=0
-    printf "  ${BLD}%-17s %-7s %-12s %-18s %5s %4s %4s${RST}\n" \
-        "VM" "State" "WG IP" "Public IP" "Up" "CPU" "RAM"
+    printf "  ${BLD}%-17s %-7s %-12s %-18s %5s %11s %11s %11s %10s${RST}\n" \
+        "VM" "State" "WG IP" "Public IP" "Up" "CPU" "RAM" "Disk" "GPU"
     printf "  ${C_DIM}"
-    local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
     # VM rows — pure formatting, all data from CC_DATA
@@ -1076,7 +1106,15 @@ render_mesh() {
         cpu_pct=$(_d -r ".mesh.vms[$i].cpu_pct")
         ram_pct=$(_d -r ".mesh.vms[$i].ram_pct")
 
-        local state state_sym state_color up_str cpu_str ram_str
+        # Specs from terraform (static)
+        local spec_cpu spec_ram spec_disk spec_gpu spec_gpu_vram
+        spec_cpu=$(_d -r ".mesh.vms[$i].specs.cpu // 0")
+        spec_ram=$(_d -r ".mesh.vms[$i].specs.ram_gb // 0")
+        spec_disk=$(_d -r ".mesh.vms[$i].specs.disk_gb // 0")
+        spec_gpu=$(_d -r ".mesh.vms[$i].specs.gpu // null")
+        spec_gpu_vram=$(_d -r ".mesh.vms[$i].specs.gpu_vram // null")
+
+        local state state_sym state_color up_str cpu_str ram_str disk_str
         if [ "$vm_state" = "online" ]; then
             state="RUN"; state_sym="$S_RUN"; state_color="$C_OK"
             if [ "$up_secs" -gt 86400 ] 2>/dev/null; then
@@ -1088,17 +1126,53 @@ render_mesh() {
             else
                 up_str="?"
             fi
-            cpu_str="${cpu_pct}%"; ram_str="${ram_pct}%"
+            cpu_str="${cpu_pct}%/${spec_cpu}c"; ram_str="${ram_pct}%/${spec_ram}G"
         else
             state="STOP"; state_sym="$S_STOP"; state_color="$C_DIM"
-            up_str="—"; cpu_str="—"; ram_str="—"
+            up_str="—"; cpu_str="—/${spec_cpu}c"; ram_str="—/${spec_ram}G"
         fi
 
-        printf "  %-17s %b%s %-4s%b %-12s %-18s %5s %4s %4s\n" \
+        if [ "$spec_disk" -gt 0 ] 2>/dev/null; then
+            disk_str="${spec_disk}G"
+        else
+            disk_str="—"
+        fi
+
+        local gpu_str="—"
+        if [ "$spec_gpu" != "null" ] && [ -n "$spec_gpu" ]; then
+            # Short label: "T4/16G", "A100/40G", etc.
+            local gpu_short; gpu_short=$(echo "$spec_gpu" | sed 's/NVIDIA //')
+            if [ "$spec_gpu_vram" != "null" ] && [ -n "$spec_gpu_vram" ]; then
+                gpu_str="${gpu_short}/${spec_gpu_vram}"
+            else
+                gpu_str="$gpu_short"
+            fi
+        fi
+
+        printf "  %-17s %b%s %-4s%b %-12s %-18s %5s %11s %11s %11s %10s\n" \
             "$name" "$state_color" "$state_sym" "$state" "$RST" \
-            "$wg_ip" "$pub_ip" "$up_str" "$cpu_str" "$ram_str"
+            "$wg_ip" "$pub_ip" "$up_str" "$cpu_str" "$ram_str" "$disk_str" "$gpu_str"
         i=$((i+1))
     done
+
+    # Object Storage
+    local storage_count; storage_count=$(_d '.mesh.storage | length' 2>/dev/null || echo 0)
+    if [ "$storage_count" -gt 0 ] 2>/dev/null; then
+        printf "\n  ${BLD}%-12s %-30s %-12s${RST}\n" \
+            "Storage" "Bucket" "Tier"
+        printf "  ${C_DIM}"
+        w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+        printf "${RST}\n"
+        local si=0
+        while [ "$si" -lt "$storage_count" ]; do
+            local s_prov s_name s_tier
+            s_prov=$(_d -r ".mesh.storage[$si].provider")
+            s_name=$(_d -r ".mesh.storage[$si].name")
+            s_tier=$(_d -r ".mesh.storage[$si].tier")
+            printf "  %-12s %-30s %-12s\n" "$s_prov" "$s_name" "$s_tier"
+            si=$((si+1))
+        done
+    fi
 
     # LOCAL PC
     printf "\n  ${BLD}%-17s %-16s %-17s %5s %4s %-12s  Disk${RST}\n" \
@@ -4375,12 +4449,149 @@ render_services() {
     local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
+    local total; total=$(_d '.services | length')
     _d '.services | sort_by(.name)[]' | jq -r '[.name, .vm, .domain, .port] | @tsv' | \
     while IFS=$'\t' read -r sname svm sdomain sport; do
         printf "  %-22s %-15s %-30s %-10s %-6s\n" "$sname" "$svm" "$sdomain" "$sport" "?"
     done
 
     if [ "$total" -eq 0 ]; then printf "  ${C_DIM}No services configured${RST}\n"; fi
+}
+
+# =============================================================================
+# I) SECURITY - Firewall rules, port bindings, networks
+# =============================================================================
+
+render_security() {
+    [ -z "$CC_DATA" ] && collect_all
+
+    # ── A) VPS-Level Firewall ──
+    printf "\n  ${BLD}VPS-LEVEL FIREWALL${RST} ${C_DIM}(shared security lists, apply to all VMs in provider)${RST}\n"
+    printf "  ${BLD}%-10s %8s %-6s %-22s %s${RST}\n" \
+        "Provider" "Port" "Proto" "Source" "Description"
+    printf "  ${C_DIM}"
+    local w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    local fw_count; fw_count=$(_d '.mesh.firewalls | length' 2>/dev/null || echo 0)
+    local fwi=0 vps_found=false
+    while [ "$fwi" -lt "$fw_count" ]; do
+        local fw_scope; fw_scope=$(_d -r ".mesh.firewalls[$fwi].scope")
+        if [ "$fw_scope" = "vps" ]; then
+            vps_found=true
+            local fw_prov; fw_prov=$(_d -r ".mesh.firewalls[$fwi].provider")
+            local rule_count; rule_count=$(_d ".mesh.firewalls[$fwi].rules | length")
+            local ri=0
+            while [ "$ri" -lt "$rule_count" ]; do
+                local rport rproto rsrc rdesc
+                rport=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].port")
+                rproto=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].protocol")
+                rsrc=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].source")
+                rdesc=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].description // \"—\"")
+                printf "  %-10s %8s %-6s %-22s %s\n" "$fw_prov" "$rport" "$rproto" "$rsrc" "$rdesc"
+                ri=$((ri+1))
+            done
+        fi
+        fwi=$((fwi+1))
+    done
+    [ "$vps_found" = "false" ] && printf "  ${C_DIM}No VPS-level firewall rules${RST}\n"
+
+    # ── B) VM-Level Firewall ──
+    printf "\n  ${BLD}VM-LEVEL FIREWALL${RST} ${C_DIM}(targeted by tags/security groups)${RST}\n"
+    printf "  ${BLD}%-14s %8s %-6s %-22s %s${RST}\n" \
+        "Scope/Tag" "Port" "Proto" "Source" "Description"
+    printf "  ${C_DIM}"
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    fwi=0
+    local vm_found=false
+    while [ "$fwi" -lt "$fw_count" ]; do
+        local fw_scope; fw_scope=$(_d -r ".mesh.firewalls[$fwi].scope")
+        if [ "$fw_scope" != "vps" ]; then
+            vm_found=true
+            local rule_count; rule_count=$(_d ".mesh.firewalls[$fwi].rules | length")
+            local ri=0
+            while [ "$ri" -lt "$rule_count" ]; do
+                local rport rproto rsrc rdesc
+                rport=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].port")
+                rproto=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].protocol")
+                rsrc=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].source")
+                rdesc=$(_d -r ".mesh.firewalls[$fwi].rules[$ri].description // \"—\"")
+                printf "  %-14s %8s %-6s %-22s %s\n" "$fw_scope" "$rport" "$rproto" "$rsrc" "$rdesc"
+                ri=$((ri+1))
+            done
+        fi
+        fwi=$((fwi+1))
+    done
+    [ "$vm_found" = "false" ] && printf "  ${C_DIM}No VM-level firewall rules${RST}\n"
+
+    # ── C) Docker Port Bindings ──
+    printf "\n  ${BLD}DOCKER PORT BINDINGS${RST}\n"
+    printf "  ${BLD}%-15s %-22s %-24s %-8s${RST}\n" \
+        "VM" "Service" "Binding" "Public?"
+    printf "  ${C_DIM}"
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    # Collect all VPS firewall ports for "public?" check
+    local fw_ports; fw_ports=$(_d -r '[.mesh.firewalls[] | select(.scope == "vps") | .rules[].port] | map(tostring) | unique | join(",")' 2>/dev/null || echo "")
+
+    local svc_count; svc_count=$(_d '.services | length')
+    local si=0 port_found=false
+    while [ "$si" -lt "$svc_count" ]; do
+        local sname svm
+        sname=$(_d -r ".services[$si].name")
+        svm=$(_d -r ".services[$si].vm")
+        # Get ports from service_details via config
+        local svc_ports; svc_ports=$(_jq -r ".service_details[\"$sname\"].port // \"—\"")
+        if [ "$svc_ports" != "—" ] && [ "$svc_ports" != "null" ]; then
+            port_found=true
+            # Check if host port matches a firewall rule
+            local host_port; host_port=$(echo "$svc_ports" | grep -oP '^\d+' | head -1)
+            local pub="no"
+            if [ -n "$host_port" ] && echo ",$fw_ports," | grep -q ",$host_port,"; then
+                pub="${C_OK}yes${RST}"
+            fi
+            printf "  %-15s %-22s %-24s %b\n" "$svm" "$sname" "$svc_ports" "$pub"
+        fi
+        si=$((si+1))
+    done
+    [ "$port_found" = "false" ] && printf "  ${C_DIM}No port bindings found${RST}\n"
+
+    # ── D) Docker Networks ──
+    printf "\n  ${BLD}DOCKER NETWORKS${RST}\n"
+    printf "  ${BLD}%-30s %s${RST}\n" "Network" "Services"
+    printf "  ${C_DIM}"
+    w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
+    printf "${RST}\n"
+
+    # Extract networks from cloud-configs or service_details
+    local net_json
+    net_json=$(_jq '
+        [.service_details | to_entries[] |
+         .key as $svc |
+         (.value.networks // [])[] |
+         {network: ., service: $svc}
+        ] | group_by(.network) | map({
+            network: .[0].network,
+            services: [.[].service] | join(", ")
+        })
+    ' 2>/dev/null || echo "[]")
+
+    local net_count; net_count=$(echo "$net_json" | jq 'length' 2>/dev/null || echo 0)
+    if [ "$net_count" -gt 0 ]; then
+        local ni=0
+        while [ "$ni" -lt "$net_count" ]; do
+            local nname nsvcs
+            nname=$(echo "$net_json" | jq -r ".[$ni].network")
+            nsvcs=$(echo "$net_json" | jq -r ".[$ni].services")
+            printf "  %-30s %s\n" "$nname" "$nsvcs"
+            ni=$((ni+1))
+        done
+    else
+        printf "  ${C_DIM}No Docker networks found${RST}\n"
+    fi
 }
 
 # =============================================================================
@@ -4444,6 +4655,8 @@ render_webservers() {
 compute_gauges() {
     # All gauges pre-computed in collect_all() — just read from CC_DATA
     [ -z "$CC_DATA" ] && collect_all
+    GAUGE_HM_CUR=$(_d -r '.gauges.hm_cur // 0')
+    GAUGE_HM_MAX=$(_d -r '.gauges.hm_max // 0')
     GAUGE_MESH_CUR=$(_d -r '.gauges.mesh_cur')
     GAUGE_MESH_MAX=$(_d -r '.gauges.mesh_max')
     GAUGE_GIT_CUR=$(_d -r '.gauges.git_cur')
@@ -4606,6 +4819,9 @@ render_dashboard() {
     printf "┛%b\n" "$RST"
 
     # ── Gauge Strip ──
+    printf "  ${C_HM}HM${RST} "
+    gauge_bar "$GAUGE_HM_CUR" "$GAUGE_HM_MAX" 6
+    printf " ${C_DIM}%s/%s${RST}" "$GAUGE_HM_CUR" "$GAUGE_HM_MAX"
     printf "  ${C_MESH}MESH${RST} "
     gauge_bar "$GAUGE_MESH_CUR" "$GAUGE_MESH_MAX" 12
     printf " ${C_DIM}%s/%s${RST}" "$GAUGE_MESH_CUR" "$GAUGE_MESH_MAX"
@@ -4628,37 +4844,47 @@ render_dashboard() {
     render_alerts
     printf "\n"
 
-    # ── A) MESH ──
-    printf "\n%b━━ A) MESH ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_MESH" "$RST"
+    # ── A) HOME-MANAGER FLAKES ──
+    printf "\n%b━━ A) HOME-MANAGER FLAKES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_HM" "$RST"
+    render_home_manager
+
+    # ── B) MESH ──
+    printf "\n%b━━ B) MESH ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_MESH" "$RST"
     render_mesh
 
-    # ── B) GIT ──
-    printf "\n%b━━ B) GIT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_GIT" "$RST"
+    # ── C) GIT ──
+    printf "\n%b━━ C) GIT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_GIT" "$RST"
     render_git
 
-    # ── C) FUSE DRIVES ──
-    printf "\n%b━━ C) FUSE DRIVES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_DRIVE" "$RST"
+    # ── D) FUSE DRIVES ──
+    printf "\n%b━━ D) FUSE DRIVES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_DRIVE" "$RST"
     render_drives
 
-    # ── D) SYNC ──
-    printf "\n%b━━ D) SYNC ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SYNC" "$RST"
+    # ── E) SYNC ──
+    printf "\n%b━━ E) SYNC ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SYNC" "$RST"
     render_sync
 
-    # ── E) DATA SERVERS ──
-    printf "\n%b━━ E) DATA SERVERS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SRVR" "$RST"
+    # ── F) DATA SERVERS ──
+    printf "\n%b━━ F) DATA SERVERS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SRVR" "$RST"
     render_servers
-
-    # ── F) SERVICES ──
-    printf "\n%b━━ F) SERVICES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SVC" "$RST"
-    render_services
 
     # ── G) WEBSERVER ──
     printf "\n%b━━ G) WEBSERVER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_WEB" "$RST"
     render_webservers
 
-    # ── H) HOME-MANAGER FLAKES ──
-    printf "\n%b━━ H) HOME-MANAGER FLAKES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_HM" "$RST"
-    render_home_manager
+    # ── H) SERVICES ──
+    printf "\n%b━━ H) SERVICES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SVC" "$RST"
+    if [ "$CC_PROFILE" = "compact" ]; then
+        local svc_total; svc_total=$(_d '.services | length')
+        printf "  %s services configured  ${C_DIM}— run ${RST}${BLD}connect.sh full${RST}${C_DIM} for details${RST}\n" "$svc_total"
+    else
+        render_services
+    fi
+
+    # ── I) SECURITY ──
+    printf "\n%b━━ I) SECURITY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$C_SEC" "$RST"
+    local fw_total; fw_total=$(_d '[.mesh.firewalls[].rules[]] | length' 2>/dev/null || echo 0)
+    printf "  %s firewall rules  ${C_DIM}— run ${RST}${BLD}connect security${RST}${C_DIM} for details${RST}\n" "$fw_total"
 
     # ── Log ──
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
@@ -4676,18 +4902,19 @@ render_dashboard() {
 
     # ── Commands ──
     printf "\n%b━━ COMMANDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%b\n" "$BLD" "$RST"
+    printf "  ${C_HM}HM${RST}     ${C_DIM}hm-build  hm-switch${RST}\n"
+    printf "  ${C_MESH}MESH${RST}   ${C_DIM}mount-vm  unmount-vm  mount-all-vm  unmount-all  mount-phone  unmount-phone${RST}\n"
+    printf "  ${C_MESH}OCI${RST}    ${C_DIM}flex-start  flex-stop  flex-reset  flex-status${RST}\n"
     printf "  ${C_GIT}GIT${RST}    ${C_DIM}sync  pull  push  commit  fetch  fetch-status  clone  dirty  git-notok  git-refresh${RST}\n"
     printf "  ${C_GIT}   ${RST}    ${C_DIM}untracked  unstaged  ignored  merge  restore-symlinks  git-remotes  git-branches  git-tags${RST}\n"
     printf "  ${C_GIT}   ${RST}    ${C_DIM}git-log  git-stash-list  git-diff  git-gc  git-prune${RST}\n"
-    printf "  ${C_MESH}MESH${RST}   ${C_DIM}mount-vm  unmount-vm  mount-all-vm  unmount-all  mount-phone  unmount-phone${RST}\n"
-    printf "  ${C_MESH}OCI${RST}    ${C_DIM}flex-start  flex-stop  flex-reset  flex-status${RST}\n"
     printf "  ${C_DRIVE}DRIVE${RST}  ${C_DIM}mount-drive  unmount-drive  mount-all-drives  unmount-all-drives  toggle-drives${RST}\n"
     printf "  ${C_SYNC}SYNC${RST}   ${C_DIM}sync-run  sync-run-bg  sync-run-rule  sync-to  bisync-to  sync-quick  sync-status  sync-list${RST}\n"
     printf "  ${C_SYNC}    ${RST}   ${C_DIM}sync-add  sync-delete  sync-toggle  sync-edit  sync-jobs  sync-cancel  sync-cancel-id  sync-kill  sync-clear-jobs${RST}\n"
     printf "  ${C_SRVR}DATA SRVR${RST}   ${C_DIM}server-start  server-stop  server-restart  server-mode  server-status  bisync${RST}\n"
-    printf "  ${C_HM}HM${RST}     ${C_DIM}hm-build  hm-switch${RST}\n"
     printf "  ${C_DIM}SETUP${RST}  ${C_DIM}settings  config-set  deps  deps-core  deps-phone  deps-cloud  remotes  view-log  clear-log  edit-workdir  edit-config${RST}\n"
-    printf "  ${C_DIM}────${RST}   ${C_DIM}refresh  full  compact  logs  help  quit${RST}\n"
+    printf "  ${C_SEC}SECURITY${RST} ${C_DIM}security${RST}\n"
+    printf "  ${C_DIM}────${RST}   ${C_DIM}refresh  full  compact  resume  logs  help  quit${RST}\n"
     printf "%b" "$BLD"
     w=0; while [ "$w" -lt 102 ]; do printf "━"; w=$((w+1)); done
     printf "%b\n" "$RST"
@@ -4784,9 +5011,13 @@ _dispatch_cmd() {
         git-gc)              git_cmd_gc ;;
         git-prune)           git_cmd_prune ;;
 
+        # ── Security ──
+        security)            render_security ;;
+
         # ── View modes ──
         compact)             CC_PROFILE="compact" ;;
         full)                CC_PROFILE="full" ;;
+        resume)              CC_PROFILE="resume" ;;
 
         # ── Setup ──
         settings)            settings_menu ;;
@@ -4812,17 +5043,17 @@ _dispatch_cmd() {
     esac
 }
 
-CC_PROFILE="full"  # full | compact
+CC_PROFILE="full"  # full | compact | resume
 
 run_tui() {
     local profile="${1:-$CC_PROFILE}"
     CC_PROFILE="$profile"
     while true; do
         CC_DATA=""  # force re-collection each refresh
-        if [ "$CC_PROFILE" = "compact" ]; then
+        if [ "$CC_PROFILE" = "resume" ]; then
             clear
-            _compact_view
-            printf "\n  ${C_DIM}[r]efresh  [f]ull  [q]uit  or type command:${RST} "
+            _resume_view
+            printf "\n  ${C_DIM}[r]efresh  [f]ull  [c]ompact  [q]uit  or type command:${RST} "
         else
             render_dashboard "interactive"
         fi
@@ -4831,6 +5062,7 @@ run_tui() {
         case "$cmd" in
             f|full)    CC_PROFILE="full" ;;
             c|compact) CC_PROFILE="compact" ;;
+            s|resume)  CC_PROFILE="resume" ;;
             *)         _dispatch_cmd "$cmd" ;;
         esac
     done
@@ -4858,21 +5090,23 @@ run_keys() {
     CC_PROFILE="$profile"
     while true; do
         CC_DATA=""  # force re-collection each refresh
-        if [ "$CC_PROFILE" = "compact" ]; then
+        if [ "$CC_PROFILE" = "resume" ]; then
             clear
-            _compact_view
+            _resume_view
         else
             render_dashboard "interactive"
         fi
         printf "\n"
         printf "  ${C_DIM}Keys: ${RST}"
-        printf "${C_MESH}a${RST}${C_DIM})mesh ${RST}"
-        printf "${C_GIT}b${RST}${C_DIM})git ${RST}"
-        printf "${C_DRIVE}c${RST}${C_DIM})drives ${RST}"
-        printf "${C_SYNC}d${RST}${C_DIM})sync ${RST}"
-        printf "${C_SRVR}e${RST}${C_DIM})servers ${RST}"
-        printf "${C_SVC}f${RST}${C_DIM})services ${RST}"
-        printf "${C_HM}h${RST}${C_DIM})hm ${RST}"
+        printf "${C_HM}a${RST}${C_DIM})hm ${RST}"
+        printf "${C_MESH}b${RST}${C_DIM})mesh ${RST}"
+        printf "${C_GIT}c${RST}${C_DIM})git ${RST}"
+        printf "${C_DRIVE}d${RST}${C_DIM})drives ${RST}"
+        printf "${C_SYNC}e${RST}${C_DIM})sync ${RST}"
+        printf "${C_SRVR}f${RST}${C_DIM})servers ${RST}"
+        printf "${C_WEB}g${RST}${C_DIM})web ${RST}"
+        printf "${C_SVC}h${RST}${C_DIM})services ${RST}"
+        printf "${C_SEC}i${RST}${C_DIM})security ${RST}"
         printf "${C_DIM}r)refresh  p)profile  q)quit${RST}\n"
         printf "  ${C_DIM}▸${RST} "
 
@@ -4880,26 +5114,30 @@ run_keys() {
         key=$(_read_key) || exit 0
         printf "\n"
         case "$key" in
-            a) render_mesh ;;
-            b) render_git ;;
-            c) render_drives ;;
-            d) render_sync ;;
-            e) render_servers ;;
-            f) render_services ;;
+            a) render_home_manager ;;
+            b) render_mesh ;;
+            c) render_git ;;
+            d) render_drives ;;
+            e) render_sync ;;
+            f) render_servers ;;
             g) render_webservers ;;
-            h) render_home_manager ;;
+            h) render_services ;;
+            i) render_security ;;
             r) ;; # refresh = just loop
-            p) [ "$CC_PROFILE" = "full" ] && CC_PROFILE="compact" || CC_PROFILE="full"
+            p) case "$CC_PROFILE" in
+                   full)    CC_PROFILE="compact" ;;
+                   compact) CC_PROFILE="resume" ;;
+                   resume)  CC_PROFILE="full" ;;
+               esac
                printf "  ${C_INFO}Profile: %s${RST}\n" "$CC_PROFILE"; sleep 0.3 ;;
             q) printf "\n"; exit 0 ;;
             # Section actions via shift keys
-            A) select_and_mount_vm ;;
-            B) git_cmd_sync ;;
-            C) select_and_mount_drive ;;
-            D) sync_run_all ;;
-            E) server_start ;;
-            F) server_bisync ;;
-            H) hm_switch ;;
+            A) hm_switch ;;
+            B) select_and_mount_vm ;;
+            C) git_cmd_sync ;;
+            D) select_and_mount_drive ;;
+            E) sync_run_all ;;
+            F) server_start ;;
             ?) show_help; printf "\n  ${C_DIM}Press any key...${RST}"; _wait_key ;;
             *) printf "  ${C_DIM}Unknown key: %s${RST}\n" "$key"; sleep 0.3 ;;
         esac
@@ -4918,25 +5156,29 @@ show_help() {
     printf "  %b/ /__/ / /_/ / /_/ / /_/ /_____/ /__/ /_/ / / / / / / /  __/ /__/ /_  %b\n" "$C_SYNC" "$RST"
     printf "  %b\\___/_/\\___/\\__,_/\\__,_/      \\___/\\____/_/ /_/_/ /_/\\___/\\___/\\__/  %b\n" "$C_SRVR" "$RST"
     printf "\n"
-    printf "  %b%b Unified Command Center %b— 72 commands across 8 sections%b\n" "$BLD" "$C_HEAD" "$C_DIM" "$RST"
-    printf "  %bGit repos, VM mesh, cloud drives, sync, file servers, services, dev servers, HM%b\n\n" "$C_DIM" "$RST"
+    printf "  %b%b Unified Command Center %b— 73 commands across 9 sections%b\n" "$BLD" "$C_HEAD" "$C_DIM" "$RST"
+    printf "  %bHM, VM mesh, git repos, cloud drives, sync, file servers, dev servers, services, security%b\n\n" "$C_DIM" "$RST"
 
     printf "  %bSYNTAX%b\n" "$BLD" "$RST"
     printf "    %bconnect%b                         %b# REPL keybind mode, full (default)%b\n" "$C_INFO" "$RST" "$C_DIM" "$RST"
-    printf "    %bconnect%b %brepl%b %b[full|compact]%b    %b# REPL keybind mode%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bconnect%b %btui%b %b[full|compact]%b     %b# TUI mode (type commands)%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %bconnect%b %bstatus%b %b[full|compact]%b  %b# Single-run dashboard, exit%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %brepl%b %b[full|compact|resume]%b    %b# REPL keybind mode%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %btui%b %b[full|compact|resume]%b     %b# TUI mode (type commands)%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %bconnect%b %bstatus%b %b[full|compact|resume]%b  %b# Single-run dashboard, exit%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %bconnect%b %blogs%b                    %b# JSON dump of all data%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %bconnect%b %b<command>%b               %b# Run a single command%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %bconnect%b %b-h%b | %b--help%b             %b# This help page%b\n\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_DIM" "$RST"
 
     printf "  %bMODES%b\n" "$BLD" "$RST"
-    printf "    %bREPL%b     %b(default)%b  Single keypress navigation: %ba-h%b sections, %bShift%b actions, %bp%b profile, %br%b refresh\n" "$C_INFO" "$RST" "$C_DIM" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
-    printf "    %bTUI%b                Type full commands + Enter, same keybinds also work via %bfull%b/%bcompact%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
+    printf "    %bREPL%b     %b(default)%b  Single keypress navigation: %ba-i%b sections, %bShift%b actions, %bp%b profile, %br%b refresh\n" "$C_INFO" "$RST" "$C_DIM" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
+    printf "    %bTUI%b                Type full commands + Enter, same keybinds also work via %bfull%b/%bcompact%b/%bresume%b\n" "$C_INFO" "$RST" "$C_OK" "$RST" "$C_OK" "$RST" "$C_OK" "$RST"
     printf "    %bStatus%b             Print dashboard once and exit\n\n" "$C_INFO" "$RST"
 
     # ── A) MESH ──
-    printf "  %b━━ A) MESH%b %b— WireGuard VPN, VM mounts, OCI lifecycle, phone%b %b(10 commands)%b\n" "$C_MESH" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
+    printf "  %b━━ A) HOME-MANAGER%b %b— Nix flake build/switch for VM configs%b %b(2 commands)%b\n" "$C_HM" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
+    printf "    %bhm-build%b             Build home-manager flake\n" "$C_HM" "$RST"
+    printf "    %bhm-switch%b            Build + activate home-manager\n\n" "$C_HM" "$RST"
+
+    printf "  %b━━ B) MESH%b %b— WireGuard VPN, VM mounts, OCI lifecycle, phone%b %b(10 commands)%b\n" "$C_MESH" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
     printf "    %bmount-vm%b [NAME]      Mount single VM via SSHFS %b(interactive picker)%b\n" "$C_MESH" "$RST" "$C_DIM" "$RST"
     printf "    %bunmount-vm%b [NAME]    Unmount single VM\n" "$C_MESH" "$RST"
     printf "    %bmount-all-vm%b         Mount all configured VMs\n" "$C_MESH" "$RST"
@@ -4949,7 +5191,7 @@ show_help() {
     printf "    %bflex-status%b [NAME]   Show OCI A1.Flex VM status\n\n" "$C_MESH" "$RST"
 
     # ── B) GIT ──
-    printf "  %b━━ B) GIT%b %b— Multi-repo management, sync, fetch, branches, stash%b %b(23 commands)%b\n" "$C_GIT" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
+    printf "  %b━━ C) GIT%b %b— Multi-repo management, sync, fetch, branches, stash%b %b(23 commands)%b\n" "$C_GIT" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
     printf "    %bsync%b                 Commit + pull + push all repos\n" "$C_GIT" "$RST"
     printf "    %bpull%b                 Pull all repos\n" "$C_GIT" "$RST"
     printf "    %bpush%b                 Push all repos\n" "$C_GIT" "$RST"
@@ -4975,7 +5217,7 @@ show_help() {
     printf "    %bgit-notok%b            Same as dirty\n\n" "$C_GIT" "$RST"
 
     # ── C) DRIVES ──
-    printf "  %b━━ C) FUSE DRIVES%b %b— Rclone cloud drive mounts (GDrive, etc)%b %b(5 commands)%b\n" "$C_DRIVE" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
+    printf "  %b━━ D) FUSE DRIVES%b %b— Rclone cloud drive mounts (GDrive, etc)%b %b(5 commands)%b\n" "$C_DRIVE" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
     printf "    %bmount-drive%b [NAME]   Mount a cloud drive %b(interactive picker)%b\n" "$C_DRIVE" "$RST" "$C_DIM" "$RST"
     printf "    %bunmount-drive%b [NAME] Unmount a cloud drive\n" "$C_DRIVE" "$RST"
     printf "    %bmount-all-drives%b     Mount all drives\n" "$C_DRIVE" "$RST"
@@ -4983,7 +5225,7 @@ show_help() {
     printf "    %btoggle-drives%b        Toggle all %b(mount unmounted, unmount mounted)%b\n\n" "$C_DRIVE" "$RST" "$C_DIM" "$RST"
 
     # ── D) SYNC ──
-    printf "  %b━━ D) SYNC%b %b— Rclone sync/bisync rules, background jobs%b %b(17 commands)%b\n" "$C_SYNC" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
+    printf "  %b━━ E) SYNC%b %b— Rclone sync/bisync rules, background jobs%b %b(17 commands)%b\n" "$C_SYNC" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
     printf "    %bsync-run%b             Run all enabled rules\n" "$C_SYNC" "$RST"
     printf "    %bsync-run-bg%b          Run all in background %b(non-interactive)%b\n" "$C_SYNC" "$RST" "$C_DIM" "$RST"
     printf "    %bsync-run-rule%b NAME   Run a specific rule %b[--dry-run] [--background]%b\n" "$C_SYNC" "$RST" "$C_DIM" "$RST"
@@ -5003,7 +5245,7 @@ show_help() {
     printf "    %bbisync-to%b P1 P2      Ad-hoc bidirectional %b[--dry-run] [--resync]%b\n\n" "$C_SYNC" "$RST" "$C_DIM" "$RST"
 
     # ── E) DATA SERVERS ──
-    printf "  %b━━ E) DATA SERVERS%b %b— WebDAV, SFTP, HTTP+Eruda, Unison bisync%b %b(6 commands)%b\n" "$C_SRVR" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
+    printf "  %b━━ F) DATA SERVERS%b %b— WebDAV, SFTP, HTTP+Eruda, Unison bisync%b %b(6 commands)%b\n" "$C_SRVR" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
     printf "    %bserver-start%b         Start a server %b(WebDAV/SFTP/HTTP picker)%b\n" "$C_SRVR" "$RST" "$C_DIM" "$RST"
     printf "    %bserver-stop%b          Stop a running server\n" "$C_SRVR" "$RST"
     printf "    %bserver-restart%b       Restart a running server\n" "$C_SRVR" "$RST"
@@ -5012,15 +5254,13 @@ show_help() {
     printf "    %bbisync%b               Run Unison bidirectional sync\n\n" "$C_SRVR" "$RST"
 
     # ── F) SERVICES ──
-    printf "  %b━━ F) SERVICES%b %b— Cloud services deployed across VMs%b %b(read-only)%b\n\n" "$C_SVC" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
+    printf "  %b━━ H) SERVICES%b %b— Cloud services deployed across VMs%b %b(read-only)%b\n\n" "$C_SVC" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
 
     # ── G) WEBSERVER ──
     printf "  %b━━ G) WEBSERVER%b %b— Auto-detected dev servers (Vite, SvelteKit, etc)%b %b(read-only)%b\n\n" "$C_WEB" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
 
+
     # ── H) HOME-MANAGER ──
-    printf "  %b━━ H) HOME-MANAGER%b %b— Nix flake build/switch for VM configs%b %b(2 commands)%b\n" "$C_HM" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
-    printf "    %bhm-build%b             Build home-manager flake\n" "$C_HM" "$RST"
-    printf "    %bhm-switch%b            Build + activate home-manager\n\n" "$C_HM" "$RST"
 
     # ── Setup ──
     printf "  %b━━ SETUP%b %b— Dependencies, config, logs%b %b(11 commands)%b\n" "$C_DIM" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
@@ -5039,7 +5279,8 @@ show_help() {
     # ── Examples ──
     printf "  %bEXAMPLES%b\n" "$BLD" "$RST"
     printf "    %b$%b connect                              %b# REPL mode, full (default)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
-    printf "    %b$%b connect repl compact                 %b# REPL mode, compact%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect repl compact                 %b# REPL mode, compact (no services detail)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
+    printf "    %b$%b connect repl resume                  %b# REPL mode, resume (one-liner summary)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %b$%b connect tui                          %b# TUI mode (type commands)%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %b$%b connect status                       %b# Single-run dashboard%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
     printf "    %b$%b connect logs | jq .mesh              %b# JSON data, pipe to jq%b\n" "$C_OK" "$RST" "$C_DIM" "$RST"
@@ -5050,7 +5291,7 @@ show_help() {
 
     # ── Footer ──
     printf "  %bConfig:%b  %s/connect-*.json\n" "$C_DIM" "$RST" "$SCRIPT_DIR"
-    printf "  %bTotal:%b   %b72 commands%b %b(A:10 B:23 C:5 D:17 E:6 H:2 Setup:11)%b  %b+ 2 read-only sections (F,G)%b\n\n" "$C_DIM" "$RST" "$C_INFO" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
+    printf "  %bTotal:%b   %b73 commands%b %b(A:2 B:10 C:23 D:5 E:17 F:6 Setup:11)%b  %b+ 3 read-only sections (G,H,I)%b\n\n" "$C_DIM" "$RST" "$C_INFO" "$RST" "$C_DIM" "$RST" "$C_DIM" "$RST"
 }
 
 # =============================================================================
@@ -5105,9 +5346,22 @@ _toggle_all_drives() {
     done
 }
 
-_compact_view() {
+_resume_view() {
     [ -z "$CC_DATA" ] && collect_all
-    printf "\n${BLD}━━━ Compact Status ━━━${RST}\n\n"
+    printf "\n${BLD}━━━ Resume ━━━${RST}\n\n"
+
+    # HOME-MANAGER: one liner
+    local hm_count; hm_count=$(_d '.home_manager | length')
+    local hm_clean=0 hm_dirty=0 i=0
+    while [ "$i" -lt "$hm_count" ]; do
+        local hd; hd=$(_d -r ".home_manager[$i].dirty")
+        [ "$hd" -gt 0 ] 2>/dev/null && hm_dirty=$((hm_dirty+1)) || hm_clean=$((hm_clean+1))
+        i=$((i+1))
+    done
+    printf "  ${C_HM}HM FLAKES${RST}  %s flakes" "$hm_count"
+    [ "$hm_clean" -gt 0 ] && printf "  ${C_OK}%s clean${RST}" "$hm_clean"
+    [ "$hm_dirty" -gt 0 ] && printf "  ${C_WARN}%s dirty${RST}" "$hm_dirty"
+    printf "\n"
 
     # MESH: one liner per VM
     local vm_count; vm_count=$(_d '.mesh.vms | length')
@@ -5178,22 +5432,9 @@ _compact_view() {
     done
     printf "  ${C_SRVR}DATA SRVR${RST}   %s/%s servers running\n" "$srv_up" "$srv_count"
 
-    # SERVICES: one liner
+    # SERVICES: one liner (last)
     local svc_total; svc_total=$(_d '.services | length')
     printf "  ${C_SVC}SERVICES${RST}   %s services across %s VMs\n" "$svc_total" "$vm_count"
-
-    # HOME-MANAGER: one liner
-    local hm_count; hm_count=$(_d '.home_manager | length')
-    local hm_clean=0 hm_dirty=0 i=0
-    while [ "$i" -lt "$hm_count" ]; do
-        local hd; hd=$(_d -r ".home_manager[$i].dirty")
-        [ "$hd" -gt 0 ] 2>/dev/null && hm_dirty=$((hm_dirty+1)) || hm_clean=$((hm_clean+1))
-        i=$((i+1))
-    done
-    printf "  ${C_HM}HM FLAKES${RST}  %s flakes" "$hm_count"
-    [ "$hm_clean" -gt 0 ] && printf "  ${C_OK}%s clean${RST}" "$hm_clean"
-    [ "$hm_dirty" -gt 0 ] && printf "  ${C_WARN}%s dirty${RST}" "$hm_dirty"
-    printf "\n"
 
     printf "\n"
 }
@@ -5248,8 +5489,8 @@ main() {
         tui)             run_tui "${2:-full}" ;;
         status)
             CC_PROFILE="${2:-full}"
-            if [ "$CC_PROFILE" = "compact" ]; then
-                collect_all; _compact_view
+            if [ "$CC_PROFILE" = "resume" ]; then
+                collect_all; _resume_view
             else
                 render_dashboard
             fi
@@ -5358,6 +5599,9 @@ main() {
         # ── Home-Manager ──
         hm-build)        hm_build ;;
         hm-switch)       hm_switch ;;
+
+        # ── Security ──
+        security)        render_security ;;
 
         # ── Setup ──
         settings)        settings_menu ;;
