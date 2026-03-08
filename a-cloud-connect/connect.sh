@@ -1043,7 +1043,7 @@ JQEOF
   "timestamp": "$ts",
   "env_profile": "$CC_ENV_PROFILE",
   "mesh": {"vms": $mesh_vms, "local": $local_json, "phone": $phone_json, "storage": $(jq -c '.mesh.storage // []' <<< "$CONFIG_JSON"), "vpss": $(jq -c '.mesh.vpss // {}' <<< "$CONFIG_JSON"), "firewalls": $(jq -c '.mesh.firewalls // []' <<< "$CONFIG_JSON")},
-  "security": {"os_firewalls": $(jq -c '.os_firewalls // []' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '[]'), "wireguard": $(jq -c '.wireguard // {}' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '{}'), "caddy_routes": $(jq -c '.infra.caddy.routes // []' "$CC_CACHE_DIR/cloud-configs.json" 2>/dev/null || echo '[]')},
+  "security": {"os_firewalls": $(jq -c '.os_firewalls // []' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '[]'), "os_firewall_global": $(jq -c '.os_firewall_global // {}' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '{}'), "wireguard": $(jq -c '.wireguard // {}' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '{}'), "caddy_routes": $(jq -c '.infra.caddy.routes // []' "$CC_CACHE_DIR/cloud-configs.json" 2>/dev/null || echo '[]')},
   "git": {"repos": $git_json, "totals": $git_totals, "not_cloned": $not_cloned_esc},
   "drives": {"cloud": $drives_json, "symlinks": $symlinks_json},
   "sync": {"remotes": $sync_remotes_json, "rules": $sync_rules_json, "running_jobs": $sync_running_json},
@@ -4623,6 +4623,59 @@ render_security() {
         done
     else
         printf "    ${C_DIM}No OS firewall data (rebuild topology)${RST}\n"
+    fi
+
+    # ── A.2b) FORWARD chain ──
+    printf "\n%b    ── A.2b) FORWARD chain (home-manager) ──%b\n" "$C_FW" "$RST"
+    local fw_global_exists=false
+    [ -f "$_topo_cache" ] && jq -e '.os_firewall_global' "$_topo_cache" >/dev/null 2>&1 && fw_global_exists=true
+    if [ "$fw_global_exists" = "true" ]; then
+        local docker_ipt; docker_ipt=$(jq -r '.os_firewall_global.docker_iptables' "$_topo_cache")
+        local fwd_policy; fwd_policy=$(jq -r '.os_firewall_global.forward_policy' "$_topo_cache")
+        local docker_sub; docker_sub=$(jq -r '.os_firewall_global.docker_subnet' "$_topo_cache")
+        local wg_sub; wg_sub=$(jq -r '.os_firewall_global.wg_subnet' "$_topo_cache")
+        printf "    ${C_DIM}Docker iptables: ${RST}%b${RST} ${C_DIM}│ Policy: FORWARD %s │ Docker: %s │ WG: %s${RST}\n" \
+            "$([ "$docker_ipt" = "false" ] && printf "${C_OK}disabled (we own all)${RST}" || printf "${C_ERR}enabled (Docker manages)${RST}")" \
+            "$fwd_policy" "$docker_sub" "$wg_sub"
+        printf "    ${BLD}%-10s %-18s %-18s %s${RST}\n" "Action" "Source" "Destination" "Description"
+        printf "    ${C_DIM}"
+        w=0; while [ "$w" -lt 95 ]; do printf "─"; w=$((w+1)); done
+        printf "${RST}\n"
+        local fwd_count; fwd_count=$(jq '.os_firewall_global.forward_rules | length' "$_topo_cache" 2>/dev/null || echo 0)
+        local fi=0
+        while [ "$fi" -lt "$fwd_count" ]; do
+            local fa fs fd fdesc
+            fa=$(jq -r ".os_firewall_global.forward_rules[$fi].action" "$_topo_cache")
+            fs=$(jq -r ".os_firewall_global.forward_rules[$fi].source" "$_topo_cache")
+            fd=$(jq -r ".os_firewall_global.forward_rules[$fi].destination" "$_topo_cache")
+            fdesc=$(jq -r ".os_firewall_global.forward_rules[$fi].desc" "$_topo_cache")
+            printf "    %-10s %-18s %-18s %s\n" "$fa" "$fs" "$fd" "$fdesc"
+            fi=$((fi+1))
+        done
+    else
+        printf "    ${C_DIM}No FORWARD data (rebuild topology)${RST}\n"
+    fi
+
+    # ── A.2c) NAT POSTROUTING ──
+    printf "\n%b    ── A.2c) NAT POSTROUTING (home-manager) ──%b\n" "$C_FW" "$RST"
+    if [ "$fw_global_exists" = "true" ]; then
+        printf "    ${BLD}%-14s %-18s %-18s %s${RST}\n" "Action" "Source" "Destination" "Description"
+        printf "    ${C_DIM}"
+        w=0; while [ "$w" -lt 95 ]; do printf "─"; w=$((w+1)); done
+        printf "${RST}\n"
+        local nat_count; nat_count=$(jq '.os_firewall_global.nat_rules | length' "$_topo_cache" 2>/dev/null || echo 0)
+        local ni=0
+        while [ "$ni" -lt "$nat_count" ]; do
+            local na ns nd ndesc
+            na=$(jq -r ".os_firewall_global.nat_rules[$ni].action" "$_topo_cache")
+            ns=$(jq -r ".os_firewall_global.nat_rules[$ni].source" "$_topo_cache")
+            nd=$(jq -r ".os_firewall_global.nat_rules[$ni].destination" "$_topo_cache")
+            ndesc=$(jq -r ".os_firewall_global.nat_rules[$ni].desc" "$_topo_cache")
+            printf "    %-14s %-18s %-18s %s\n" "$na" "$ns" "$nd" "$ndesc"
+            ni=$((ni+1))
+        done
+    else
+        printf "    ${C_DIM}No NAT data (rebuild topology)${RST}\n"
     fi
 
     # ── A.3) Docker Port Bindings ──
