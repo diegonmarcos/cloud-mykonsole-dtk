@@ -69,8 +69,8 @@
       "~/Mounts/Git/vault/A0_keys/providers/system/oauth/age_keys.txt"
     ],
     "http_server_paths": [
-      "~/git/front/server-static.mjs",
-      "~/Mounts/Git/front/server-static.mjs"
+      "~/git/tools/a-cloud-connect/libs/web-server-md-eruda.mjs",
+      "~/Mounts/Git/tools/a-cloud-connect/libs/web-server-md-eruda.mjs"
     ],
     "log_dir": "~/.config/cloud-connect/server-logs"
   }

@@ -4073,7 +4073,7 @@ _srv_detect_pid() {
     # 2) Fallback: pgrep by process pattern
     case "$stype" in
         webdav|sftp) pid=$(pgrep -f "rclone serve $stype.*:${sport}\b" 2>/dev/null | head -1) ;;
-        http)        pid=$(pgrep -f "node.*server-static.*${sport}" 2>/dev/null | head -1) ;;
+        http)        pid=$(pgrep -f "node.*web-server-md-eruda.*${sport}" 2>/dev/null | head -1) ;;
     esac
     [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && { echo "$pid"; return 0; }
     # 3) Broader pgrep fallback (any rclone serve on that port)
@@ -4190,13 +4190,13 @@ _srv_build_cmd() {
     [ "$smode" = "lan" ] && bind_addr="0.0.0.0:$sport" || bind_addr="127.0.0.1:$sport"
 
     if [ "$stype" = "http" ]; then
-        # Node.js HTTP server with Eruda
+        # Node.js HTTP server with Eruda + Markdown rendering
+        # Loopback-only when mode=local (server has app-level firewall rejecting non-127.0.0.1)
         local http_server; http_server=$(_srv_find_http_server)
         if [ -z "$http_server" ]; then
-            printf "  ${C_ERR}server-static.mjs not found${RST}\n" >&2; return 1
+            printf "  ${C_ERR}web-server-md-eruda.mjs not found${RST}\n" >&2; return 1
         fi
-        # node binds to 0.0.0.0 by default; pass port + root
-        echo "node '$http_server' '$sport' '$sroot'"
+        echo "node '$http_server' '$sport' '$sroot' '$bind_addr'"
         return 0
     fi
 
