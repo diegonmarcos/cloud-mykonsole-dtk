@@ -1,0 +1,5 @@
+{
+  "name": "claude-launcher",
+  "version": "2.0.0",
+  "description": "Unified Claude Code launcher — native, sandbox, container, and AppImage"
+}
