@@ -3,6 +3,9 @@
 # ---------------------------------------------------------------------------
 
 run_native() {
+    # Always ensure shells are available first
+    shell_solve
+
     # --- Tier 1: native claude binary ---
     _rn_bin=$(find_bin claude) || _rn_bin=""
 
@@ -40,6 +43,8 @@ run_native() {
 
 # Mirror mode — direct exec with full home access
 run_mirror() {
+    shell_solve
+
     _rm_bin=$(find_bin claude) || _rm_bin=""
 
     if [ -n "$_rm_bin" ]; then
