@@ -23,16 +23,13 @@ show_help() {
     NUM_EXT=5
     NUM_MODELS=4
 
-    printf "${C}"
-    cat <<'BANNER'
-
-           _          _ _
-     __ _ (_)  __ __ | (_)
-    / _` || | / _/ _|| | |
-    \__,_||_| \__\__||_|_|
-
-BANNER
-    printf "${R}"
+    echo ""
+    printf "   \033[1;35m █████\033[1;36m ██\033[0m        \033[1;33m █████\033[1;32m ██\033[0m     \033[1;31m ██\033[0m\n"
+    printf "   \033[1;35m██   ██\033[1;36m ██\033[0m       \033[1;33m██   ██\033[1;32m ██\033[0m     \033[1;31m ██\033[0m\n"
+    printf "   \033[1;35m███████\033[1;36m ██\033[0m \033[2m═══\033[0m  \033[1;33m██     \033[1;32m ██\033[0m     \033[1;31m ██\033[0m\n"
+    printf "   \033[1;35m██   ██\033[1;36m ██\033[0m       \033[1;33m██   ██\033[1;32m ██\033[0m     \033[1;31m ██\033[0m\n"
+    printf "   \033[1;35m██   ██\033[1;36m ██\033[0m       \033[1;33m █████\033[1;32m ████\033[0m   \033[1;31m ██\033[0m\n"
+    echo ""
     printf "   ${W}Unified AI Agent Launcher${R} v${VERSION}\n"
     printf "   ${D}goose v${GOOSE_VER} · block/goose · MCP-native · ${NUM_MODELS} models · ${NUM_EXT} extensions${R}\n"
     echo ""
