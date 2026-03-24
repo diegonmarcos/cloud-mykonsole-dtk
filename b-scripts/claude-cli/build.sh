@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build claude-launcher — concatenate modules + package distributions
+# Build ai-cli — concatenate modules + package distributions
 set -e
 
 BASE="$(cd "$(dirname "$0")" && pwd)"
@@ -9,15 +9,15 @@ LIBS="$BASE/libs"
 
 # Read version from build.json
 VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$BASE/build.json")
-printf 'Building claude-launcher v%s\n\n' "$VERSION"
+printf 'Building ai-cli v%s\n\n' "$VERSION"
 
 mkdir -p "$DIST" "$LIBS"
 
-# ── Step 1: Concatenate shell modules → dist/claude-sh.sh ───────────────
+# ── Step 1: Concatenate shell modules → dist/ai-cli.sh ─────────────────
 
 printf '1. Concatenating shell modules...\n'
 
-cat "$SRC/00_header.sh" > "$DIST/claude-sh.sh"
+cat "$SRC/00_header.sh" > "$DIST/ai-cli.sh"
 
 for mod in \
     "$SRC/01_config.sh" \
@@ -31,13 +31,13 @@ for mod in \
     "$SRC/09_status.sh" \
     "$SRC/10_help.sh" \
     "$SRC/11_main.sh"; do
-    printf '\n' >> "$DIST/claude-sh.sh"
-    sed '/^#!\/bin\/sh/d' "$mod" >> "$DIST/claude-sh.sh"
+    printf '\n' >> "$DIST/ai-cli.sh"
+    sed '/^#!\/bin\/sh/d' "$mod" >> "$DIST/ai-cli.sh"
 done
 
-sed -i "s/%%VERSION%%/$VERSION/g" "$DIST/claude-sh.sh"
-chmod +x "$DIST/claude-sh.sh"
-printf '   -> claude-sh.sh\n'
+sed -i "s/%%VERSION%%/$VERSION/g" "$DIST/ai-cli.sh"
+chmod +x "$DIST/ai-cli.sh"
+printf '   -> ai-cli.sh\n'
 
 # ── Step 2: Copy container files ─────────────────────────────────────────
 

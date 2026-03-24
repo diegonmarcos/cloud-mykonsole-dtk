@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash -x /home/diego/git/tools/a-cloud-connect/connect.sh)",
+      "Bash(bash /home/diego/git/tools/a-cloud-connect/connect.sh --help)",
+      "Bash(curl -sI --max-time 5 https://raw.githubusercontent.com/diegonmarcos/cloud/main/cloud-topology.json)",
+      "Bash(find /home/diego/Mounts/Git/cloud -name cloud-topology* -o -name cloud-configs*)",
+      "Bash(gh api:*)",
+      "Bash(ls:*)",
+      "Bash(bash /home/diego/Mounts/Git/tools/a-cloud-connect/connect.sh status compact)",
+      "Bash(bash /home/diego/Mounts/Git/tools/a-cloud-connect/connect.sh logs)",
+      "Bash(bash /home/diego/Mounts/Git/tools/a-cloud-connect/connect.sh status)",
+      "Bash(bash -e /home/diego/Mounts/Git/tools/a-cloud-connect/connect.sh status)",
+      "Bash(command cat:*)",
+      "Bash(bash -c 'set +e; x=$\\(jq -c \".foo // []\" /nonexistent 2>/dev/null || echo \"[]\"\\); echo \"x=$x\"')",
+      "Bash(echo \"exit=$?\")",
+      "Bash(bash /home/diego/Mounts/Git/tools/a-connect/connect.sh status compact)",
+      "Bash(sh -x a-connect/connect.sh status)",
+      "Bash(sh a-connect/connect.sh status)",
+      "Bash(git:*)",
+      "Bash(command -v connect)",
+      "Bash(command -v sync)",
+      "Bash(/home/diego/Mounts/Git/unix/ba_flakes_desktop/build.sh switch:*)",
+      "Bash(fish -c 'fish_greeting' 2>&1)",
+      "Bash(fish -il)",
+      "Bash(command -v hhelp)",
+      "Bash(fish -c 'type hhelp')",
+      "Bash(fish -c 'hhelp' 2>&1)",
+      "Bash(fish -c 'hhelp profiles')",
+      "Bash(fish -c 'hhelp tools')",
+      "Bash(fish -c 'hhelp alias')",
+      "Bash(fish -c 'hhelp')",
+      "mcp__cloud-infra__docker_ps",
+      "Bash(sh /home/diego/Mounts/Git/tools/b-scripts/ai-cli/build.sh)",
+      "Bash(sh /home/diego/Mounts/Git/tools/b-scripts/ai-cli/dist/ai-cli.sh --help 2>&1)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "unix",
+    "cloud-infra",
+    "code-graph-context",
+    "diego-personal-data",
+    "cloud-services",
+    "mattermost",
+    "mailu-mcp",
+    "google-workspace"
+  ]
+}

@@ -2,6 +2,10 @@
 # Configuration — constants and mount tables
 # ---------------------------------------------------------------------------
 
+# AI Agent selection (default: claude)
+AI_AGENT="${AI_AGENT:-claude}"
+
+# Claude
 PKG="@anthropic-ai/claude-code"
 CLAUDE_IMAGE="node:20-slim"
 CARBONYL_IMAGE="fathyb/carbonyl"
