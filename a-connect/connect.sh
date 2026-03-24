@@ -48,6 +48,10 @@ _d() { jq "$@" <<< "$CC_DATA" 2>/dev/null; }
 # JSON-escape a string value (handles quotes, backslashes, newlines)
 _json_str() { printf '%s' "$1" | jq -Rs .; }
 
+# Safe jq-from-file: _jqf <filter> <file> <fallback>
+# Returns fallback if file missing, empty, or jq produces no output
+_jqf() { local r; r=$(jq -c "$1" "$2" 2>/dev/null) && [ -n "$r" ] && printf '%s' "$r" || printf '%s' "$3"; }
+
 # Environment detection — set by cc_probe_env(), used by load_config() for path overrides
 CC_ENV_PROFILE=""   # android-arm | desktop-x86 | desktop-arm
 CC_ENV_SYSTEM=""    # Android ARM | Desktop x86 | Desktop ARM
@@ -193,7 +197,7 @@ _fetch_cloud_json() {
     local pid1=$!
     curl -sf --max-time 5 "$CLOUD_RAW_BASE/cloud-configs.json" > "$cache_conf.tmp" &
     local pid2=$!
-    wait "$pid1" "$pid2"
+    wait "$pid1" "$pid2" || true
 
     # Validate and commit
     if jq empty "$cache_topo.tmp" 2>/dev/null && jq empty "$cache_conf.tmp" 2>/dev/null; then
@@ -336,12 +340,15 @@ load_config() {
 
     local existing=()
     local mfile
-    for mfile in "${CC_MODULES[@]}"; do
+    for mfile in "${CC_MODULES_STATIC[@]}"; do
         if [ ! -f "$mfile" ]; then
             printf "${C_WARN}Module not found: %s${RST}\n" "$(basename "$mfile")" >&2
         else
             existing+=("$mfile")
         fi
+    done
+    for mfile in "${CC_MODULES_DYNAMIC[@]}"; do
+        [ -f "$mfile" ] && existing+=("$mfile")
     done
 
     if [ "${#existing[@]}" -eq 0 ]; then
@@ -685,7 +692,7 @@ collect_all() {
             [ -z "$_w" ] && continue
             ( nc -z -w2 "$_w" 22 2>/dev/null && echo "online" || echo "offline" ) > "$_nc_tmpdir/$_a" &
         done <<< "$_vm_tsv"
-        wait
+        wait || true
         while IFS=$'\t' read -r name alias_name wg_ip pub_ip; do
             [ -z "$name" ] && continue
             local state="offline"
@@ -887,7 +894,9 @@ collect_all() {
         phone_stat=$(phone_status)
         phone_bat=$(phone_battery)
     fi
-    local phone_json="{\"name\":\"$phone_name\",\"model\":\"$phone_model\",\"storage_gb\":\"$phone_storage_gb\",\"status\":\"$phone_stat\",\"battery\":\"$phone_bat\"}"
+    local phone_json
+    phone_json=$(jq -nc --arg n "$phone_name" --arg m "$phone_model" --arg s "$phone_storage_gb" --arg st "$phone_stat" --arg b "$phone_bat" \
+        '{name:$n, model:$m, storage_gb:$s, status:$st, battery:$b}')
 
     # Drives (foreground — checks local mounts)
     local _drv_tsv
@@ -940,7 +949,7 @@ collect_all() {
     _perf "FOREGROUND_done"
 
     # ═══ WAIT FOR ALL PARALLEL JOBS ═══
-    wait
+    wait || true
     _perf "ALL_parallel_done"
 
     # ── Read parallel results ──
@@ -1043,7 +1052,7 @@ JQEOF
   "timestamp": "$ts",
   "env_profile": "$CC_ENV_PROFILE",
   "mesh": {"vms": $mesh_vms, "local": $local_json, "phone": $phone_json, "storage": $(jq -c '.mesh.storage // []' <<< "$CONFIG_JSON"), "vpss": $(jq -c '.mesh.vpss // {}' <<< "$CONFIG_JSON"), "firewalls": $(jq -c '.mesh.firewalls // []' <<< "$CONFIG_JSON")},
-  "security": {"os_firewalls": $(jq -c '.os_firewalls // []' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '[]'), "os_firewall_global": $(jq -c '.os_firewall_global // {}' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '{}'), "wireguard": $(jq -c '.wireguard // {}' "$CC_CACHE_DIR/cloud-topology.json" 2>/dev/null || echo '{}'), "caddy_routes": $(jq -c '.infra.caddy.routes // []' "$CC_CACHE_DIR/cloud-configs.json" 2>/dev/null || echo '[]')},
+  "security": {"os_firewalls": $(_jqf '.os_firewalls // []' "$CC_CACHE_DIR/cloud-topology.json" '[]'), "os_firewall_global": $(_jqf '.os_firewall_global // {}' "$CC_CACHE_DIR/cloud-topology.json" '{}'), "wireguard": $(_jqf '.wireguard // {}' "$CC_CACHE_DIR/cloud-topology.json" '{}'), "caddy_routes": $(_jqf '.infra.caddy.routes // []' "$CC_CACHE_DIR/cloud-configs.json" '[]')},
   "git": {"repos": $git_json, "totals": $git_totals, "not_cloned": $not_cloned_esc},
   "drives": {"cloud": $drives_json, "symlinks": $symlinks_json},
   "sync": {"remotes": $sync_remotes_json, "rules": $sync_rules_json, "running_jobs": $sync_running_json},
