@@ -408,8 +408,8 @@ step_compose() {
     elif [ -n "$FULL_IMAGE" ] && ssh $SSH_OPTS "$DEPLOY_HOST" "docker image inspect $FULL_IMAGE:latest >/dev/null 2>&1" 2>/dev/null; then
         log "Image already local -- config-only restart"
     elif [ -n "$FULL_IMAGE" ]; then
-        log "No local image -- falling back to docker compose pull"
-        ssh $SSH_OPTS "$DEPLOY_HOST" "cd $DEPLOY_PATH && docker compose pull --ignore-buildable"
+        log "No local image -- pulling via docker pull (lighter than compose pull)"
+        ssh $SSH_OPTS "$DEPLOY_HOST" "cd $DEPLOY_PATH && docker compose config --images 2>/dev/null | while read img; do echo \"  pull: \$img\"; ionice -c3 nice -n19 docker pull \"\$img\" 2>/dev/null || true; done"
     fi
 
     # Pre-compose hook (e.g. mailu init.sh)
