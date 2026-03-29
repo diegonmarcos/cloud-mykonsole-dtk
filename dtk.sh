@@ -10,17 +10,8 @@ LOGFILE="${HOME:-/tmp}/dtk.log"
 _LOG_USER=$(whoami 2>/dev/null || echo "?")
 _LOG_HOST=$(hostname -s 2>/dev/null || echo "?")
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') ${_LOG_USER}@${_LOG_HOST} === dtk.sh $* ===" >> "$LOGFILE"
-# POSIX: write set -x trace to log file via fd 9, copy stdout/stderr to log too
-exec 9>>"$LOGFILE"
-# set -x trace goes to stderr → capture stderr to both screen and log
-# Use a named pipe to tee stderr without bash process substitution
-_DTK_FIFO="/tmp/.dtk-log-$$"
-mkfifo "$_DTK_FIFO" 2>/dev/null || true
-tee -a "$LOGFILE" < "$_DTK_FIFO" >&2 &
-_DTK_TEE_PID=$!
-exec 2>"$_DTK_FIFO"
-trap 'rm -f "$_DTK_FIFO"; kill "$_DTK_TEE_PID" 2>/dev/null || true' EXIT
-# set -x enabled after setup (avoids noisy PATH/detect_system trace)
+# Trace goes to stderr (screen) — log file gets header only (no FIFO, no exec redirect)
+# This keeps the terminal clean: exit from container returns to host shell
 
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
 export PATH="/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:${HOME:-/root}/.nix-profile/bin:/run/current-system/sw/bin:$PATH"
