@@ -346,7 +346,7 @@ do_docker_run() {
       FLAGS="--privileged --network host --pid host"
       [ "$RUNTIME" = "podman" ] && FLAGS="--privileged --network host"
 
-      exec "$DOCKER" run -it --rm \
+      "$DOCKER" run -it --rm \
         --name diego-cli \
         --hostname "${SYS_HOSTNAME}-cli" \
         $FLAGS $MOUNTS \
@@ -382,7 +382,7 @@ do_docker_run() {
       FLAGS="$FLAGS --pids-limit=-1 --ulimit host"
       [ "$RUNTIME" = "podman" ] && FLAGS="$FLAGS --userns keep-id"
 
-      exec "$DOCKER" run -it --rm \
+      "$DOCKER" run -it --rm \
         --name diego-gui \
         --hostname "${SYS_HOSTNAME}-gui" \
         $FLAGS $MOUNTS \
