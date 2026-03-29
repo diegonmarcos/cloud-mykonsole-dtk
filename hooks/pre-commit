@@ -1,0 +1,19 @@
+#!/bin/sh
+# Block commits to read-only submodule paths
+set -u
+STAGED=$(git diff --cached --name-only)
+[ -z "$STAGED" ] && exit 0
+
+BLOCKED=$(echo "$STAGED" | grep -E '^(cloud-data|front-data)(/|$)' || true)
+if [ -n "$BLOCKED" ]; then
+  echo "══════════════════════════════════════════════════" >&2
+  echo "BLOCKED: submodule paths are READ-ONLY" >&2
+  echo "══════════════════════════════════════════════════" >&2
+  echo "$BLOCKED" | while IFS= read -r f; do echo "  - $f" >&2; done
+  echo "" >&2
+  echo "Commit to the submodule's own repo instead:" >&2
+  echo "  cloud-data → ~/git/cloud-data/" >&2
+  echo "  front-data → ~/git/front-data/" >&2
+  echo "══════════════════════════════════════════════════" >&2
+  exit 1
+fi
