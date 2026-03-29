@@ -308,16 +308,35 @@ ensure_runtime() {
 
 # ── docker-run: pick profile then launch ─────────────────────────────
 do_docker_run() {
-  _profile="${1:-}"
-  _extra_cmd="${2:-}"
+  _variant="${1:-}"
+  _profile="${2:-}"
+  _extra_cmd="${3:-}"
+
+  # ── Pick image variant ──────────────────────────────────────────
+  if [ -z "$_variant" ]; then
+    pick "Image:" deb-nix deb-apt
+    _variant="$PICK"
+  fi
+  # Normalize legacy names
+  case "$_variant" in
+    diego-cli|diego-gui|diego-tty)
+      # Legacy: dtk.sh containers diego-cli → deb-nix cli
+      _profile=$(echo "$_variant" | sed 's/diego-//')
+      _variant="deb-nix" ;;
+  esac
+
+  # ── Pick profile ────────────────────────────────────────────────
   if [ -z "$_profile" ]; then
-    pick "Container:" diego-cli diego-gui diego-tty
+    pick "Profile:" cli gui tty
     _profile="$PICK"
   fi
-  # Normalize: diego-cli → cli, diego-gui → gui, diego-tty → tty
-  case "$_profile" in diego-cli) _profile=cli ;; diego-gui) _profile=gui ;; diego-tty) _profile=tty ;; esac
 
-  IMG="ghcr.io/diegonmarcos/diego-user-env:latest"
+  # ── Resolve image ──────────────────────────────────────────────
+  case "$_variant" in
+    deb-nix) IMG="ghcr.io/diegonmarcos/diego-deb-nix:latest" ;;
+    deb-apt) IMG="ghcr.io/diegonmarcos/diego-deb-apt:latest" ;;
+    *)       IMG="ghcr.io/diegonmarcos/diego-deb-nix:latest" ;;
+  esac
   HOME_DIR="${HOME:-/root}"
   ensure_runtime "docker-run"
 
@@ -347,7 +366,7 @@ printf "  ${Y}nix${R}   $_nix                        ${Y}docker${R}  $_dk\n"
 printf "  ${D}──────────────────────────────────────────────${R}\n"
 printf "\n"
 '
-  _HELLO=$(printf '%s' "$_HELLO" | sed "s/PROFILE_PLACEHOLDER/$_profile/")
+  _HELLO=$(printf '%s' "$_HELLO" | sed "s/PROFILE_PLACEHOLDER/$_variant \/ $_profile/")
 
   echo "=== docker-run [$_profile]: $IMG ==="
   "$DOCKER" pull "$IMG"
