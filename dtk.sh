@@ -318,12 +318,13 @@ ensure_runtime() {
 # ── docker-run: pick profile then launch ─────────────────────────────
 do_docker_run() {
   _profile="${1:-}"
+  _extra_cmd="${2:-}"
   if [ -z "$_profile" ]; then
-    pick "Container:" diego-cli diego-gui
+    pick "Container:" diego-cli diego-gui diego-tty
     _profile="$PICK"
   fi
-  # Normalize: diego-cli → cli, diego-gui → gui
-  case "$_profile" in diego-cli) _profile=cli ;; diego-gui) _profile=gui ;; esac
+  # Normalize: diego-cli → cli, diego-gui → gui, diego-tty → tty
+  case "$_profile" in diego-cli) _profile=cli ;; diego-gui) _profile=gui ;; diego-tty) _profile=tty ;; esac
 
   IMG="ghcr.io/diegonmarcos/diego-user-env:latest"
   HOME_DIR="${HOME:-/root}"
@@ -399,7 +400,29 @@ do_docker_run() {
         "$IMG" bash -c "$SHELL_CMD"
       ;;
 
-    *) echo "Unknown profile: $_profile (use: cli or gui)"; exit 1 ;;
+    tty)
+      # ── TTY: non-interactive (CI, Claude Code, Dagu, cron, scripts) ──
+      # No -it flag. Runs command from $2 or drops to bash (not fish — no TTY).
+      _CMD="${_extra_cmd:-bash}"
+      MOUNTS="-v $HOME_DIR:$HOME_DIR"
+      [ -S /var/run/docker.sock ] && MOUNTS="$MOUNTS -v /var/run/docker.sock:/var/run/docker.sock"
+      [ -d /etc/wireguard ]       && MOUNTS="$MOUNTS -v /etc/wireguard:/etc/wireguard:ro"
+      [ -d /opt ]                 && MOUNTS="$MOUNTS -v /opt:/opt"
+
+      FLAGS="--privileged --network host --pid host"
+
+      "$DOCKER" run --rm \
+        --name diego-tty \
+        --hostname "${SYS_HOSTNAME}-tty" \
+        $FLAGS $MOUNTS \
+        -w "$HOME_DIR" \
+        -e HOME="$HOME_DIR" -e USER="${USER:-root}" \
+        -e TERM=dumb \
+        -e PATH="$_NIX_PATH" \
+        "$IMG" bash -c "$_CMD"
+      ;;
+
+    *) echo "Unknown profile: $_profile (use: cli, gui, or tty)"; exit 1 ;;
   esac
 }
 
@@ -712,8 +735,8 @@ if [ $# -ge 1 ]; then
     commands)       do_commands "${2:-}" ;;
     fix-journal)    do_commands 14 ;;
     full-rescue)    do_commands 15 ;;
-    containers)     do_docker_run "${2:-}" ;;
-    docker-run)     do_docker_run "${2:-}" ;;
+    containers)     shift; do_docker_run "$@" ;;
+    docker-run)     shift; do_docker_run "$@" ;;
     docker-start)   do_docker_run cli ;;
     install)        do_install ;;
     ssh)            do_ssh ;;
