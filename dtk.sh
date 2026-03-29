@@ -268,15 +268,10 @@ find_podman() {
   return 1
 }
 
-do_docker_start() {
-  IMG="ghcr.io/diegonmarcos/diego-user-env:latest"
-  HOME_DIR="${HOME:-/root}"
+# Shared: ensure container runtime is ready
+ensure_runtime() {
   DOCKER=""; RUNTIME="docker"
-
-  # ── Step 1: Find docker binary ───────────────────────────────────────
   find_docker || true
-
-  # ── Step 2: Install if not found ─────────────────────────────────────
   if [ -z "$DOCKER" ]; then
     echo "Docker not found — installing for $SYS_PKG..."
     case "$SYS_PKG" in
@@ -285,87 +280,125 @@ do_docker_start() {
       pacman) pacman -Sy --noconfirm docker ;;
       nix)
         if [ "$SYS_OS" = "nixos" ]; then
-          echo "On NixOS, Docker must be enabled in your system flake:"
-          echo "  virtualisation.docker.enable = true;"
-          echo "Then: sudo nixos-rebuild switch"
-          echo ""
-          echo "Trying nix-shell fallback for docker CLI..."
+          echo "On NixOS: virtualisation.docker.enable = true; then nixos-rebuild switch"
+          echo "Trying nix-shell fallback..."
         fi
-        exec nix-shell -p docker --run "sh $0 docker-start" ;;
+        exec nix-shell -p docker --run "sh $0 $1" ;;
       brew)   brew install --cask docker ;;
       pkg)    echo "Docker not available on Termux"; exit 1 ;;
       *)      echo "No supported package manager — install docker manually"; exit 1 ;;
     esac
     find_docker || true
-    [ -z "$DOCKER" ] && { echo "ERROR: docker still not found after install"; exit 1; }
+    [ -z "$DOCKER" ] && { echo "ERROR: docker not found after install"; exit 1; }
   fi
-
-  # ── Step 3: Start daemon if not running ──────────────────────────────
   if ! "$DOCKER" info >/dev/null 2>&1; then
     echo "Docker daemon not running — starting..."
     if [ "$SYS_INIT" = "systemd" ]; then
       systemctl start docker 2>/dev/null || true
-      _w=0; while [ $_w -lt 15 ]; do
-        "$DOCKER" info >/dev/null 2>&1 && break
-        sleep 1; _w=$((_w + 1))
-      done
+      _w=0; while [ $_w -lt 15 ]; do "$DOCKER" info >/dev/null 2>&1 && break; sleep 1; _w=$((_w + 1)); done
     elif command -v service >/dev/null 2>&1; then
       service docker start 2>/dev/null || true; sleep 3
     elif [ "$SYS_OS" = "macos" ]; then
       open -a Docker 2>/dev/null || true
-      echo "Waiting for Docker Desktop..."
-      _w=0; while [ $_w -lt 30 ]; do
-        "$DOCKER" info >/dev/null 2>&1 && break
-        sleep 1; _w=$((_w + 1))
-      done
+      _w=0; while [ $_w -lt 30 ]; do "$DOCKER" info >/dev/null 2>&1 && break; sleep 1; _w=$((_w + 1)); done
     fi
   fi
-
-  # ── Step 4: Podman fallback ──────────────────────────────────────────
   if ! "$DOCKER" info >/dev/null 2>&1; then
     if find_podman; then
-      echo "Docker daemon failed — falling back to podman ($_PODMAN)"
+      echo "Docker failed — podman fallback ($_PODMAN)"
       DOCKER="$_PODMAN"; RUNTIME="podman"
       "$DOCKER" system migrate 2>/dev/null || true
     else
-      echo "ERROR: Neither docker daemon nor podman available"
-      echo "  Docker: $DOCKER (found but daemon not running)"
-      echo "  OS=$SYS_OS PKG=$SYS_PKG INIT=$SYS_INIT"
-      echo "  Try: systemctl status docker / journalctl -u docker"
-      exit 1
+      echo "ERROR: Neither docker nor podman available"; exit 1
     fi
   fi
   echo "Using: $RUNTIME ($DOCKER)"
+}
 
-  # ── Step 5: Pull and run ─────────────────────────────────────────────
-  echo "=== Docker Start: $IMG ==="
-  echo "Pulling latest image..."
+# ── docker-run: pick profile then launch ─────────────────────────────
+do_docker_run() {
+  _profile="${1:-}"
+  if [ -z "$_profile" ]; then
+    pick "Profile:" cli gui
+    _profile="$PICK"
+  fi
+
+  IMG="ghcr.io/diegonmarcos/diego-user-env:latest"
+  HOME_DIR="${HOME:-/root}"
+  ensure_runtime "docker-run"
+
+  echo "=== docker-run [$_profile]: $IMG ==="
   "$DOCKER" pull "$IMG"
 
-  # Build mount args (only mount paths that exist)
-  MOUNTS="-v $HOME_DIR:$HOME_DIR"
-  [ -S /var/run/docker.sock ] && MOUNTS="$MOUNTS -v /var/run/docker.sock:/var/run/docker.sock"
-  [ -d /etc/wireguard ]       && MOUNTS="$MOUNTS -v /etc/wireguard:/etc/wireguard:ro"
-  [ -d /opt ]                 && MOUNTS="$MOUNTS -v /opt:/opt"
-
-  echo "Starting container ($RUNTIME, home=$HOME_DIR, arch=$SYS_ARCH)..."
-  EXTRA_FLAGS="--privileged --network host --pid host"
-  [ "$RUNTIME" = "podman" ] && EXTRA_FLAGS="--privileged --network host"
-
   SHELL_CMD='exec fish 2>/dev/null || exec bash 2>/dev/null || exec sh'
+  _NIX_PATH="/home/${USER:-root}/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin:/sbin"
 
-  exec "$DOCKER" run -it --rm \
-    --name diego-env \
-    --hostname "${SYS_HOSTNAME}-dev" \
-    $EXTRA_FLAGS \
-    $MOUNTS \
-    -w "$HOME_DIR" \
-    -e HOME="$HOME_DIR" \
-    -e USER="${USER:-root}" \
-    -e TERM="${TERM:-xterm-256color}" \
-    -e PATH="/home/${USER:-root}/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin:/sbin" \
-    "$IMG" \
-    bash -c "$SHELL_CMD"
+  case "$_profile" in
+    cli)
+      # ── CLI: headless dev environment (VMs, SSH, rescue) ─────────────
+      MOUNTS="-v $HOME_DIR:$HOME_DIR"
+      [ -S /var/run/docker.sock ] && MOUNTS="$MOUNTS -v /var/run/docker.sock:/var/run/docker.sock"
+      [ -d /etc/wireguard ]       && MOUNTS="$MOUNTS -v /etc/wireguard:/etc/wireguard:ro"
+      [ -d /opt ]                 && MOUNTS="$MOUNTS -v /opt:/opt"
+
+      FLAGS="--privileged --network host --pid host"
+      [ "$RUNTIME" = "podman" ] && FLAGS="--privileged --network host"
+
+      exec "$DOCKER" run -it --rm \
+        --name diego-cli \
+        --hostname "${SYS_HOSTNAME}-cli" \
+        $FLAGS $MOUNTS \
+        -w "$HOME_DIR" \
+        -e HOME="$HOME_DIR" -e USER="${USER:-root}" \
+        -e TERM="${TERM:-xterm-256color}" \
+        -e PATH="$_NIX_PATH" \
+        "$IMG" bash -c "$SHELL_CMD"
+      ;;
+
+    gui)
+      # ── GUI: full desktop integration (distrobox-equivalent) ─────────
+      _UID=$(id -u 2>/dev/null || echo 1000)
+      _XDG="${XDG_RUNTIME_DIR:-/run/user/$_UID}"
+
+      MOUNTS="-v $HOME_DIR:$HOME_DIR:rslave"
+      MOUNTS="$MOUNTS -v /tmp:/tmp:rslave"
+      MOUNTS="$MOUNTS -v /dev:/dev:rslave"
+      MOUNTS="$MOUNTS -v /sys:/sys:rslave"
+      MOUNTS="$MOUNTS -v /dev/pts -v /dev/null:/dev/ptmx"
+      [ -d "$_XDG" ]              && MOUNTS="$MOUNTS -v $_XDG:$_XDG:rslave"
+      [ -S /var/run/docker.sock ] && MOUNTS="$MOUNTS -v /var/run/docker.sock:/var/run/docker.sock"
+      [ -d /etc/wireguard ]       && MOUNTS="$MOUNTS -v /etc/wireguard:/etc/wireguard:ro"
+      [ -d /opt ]                 && MOUNTS="$MOUNTS -v /opt:/opt"
+      [ -d /nix ]                 && MOUNTS="$MOUNTS -v /nix:/nix"
+      [ -d /var/log/journal ]     && MOUNTS="$MOUNTS -v /var/log/journal:/var/log/journal"
+      MOUNTS="$MOUNTS -v /etc/hosts:/etc/hosts:ro"
+      MOUNTS="$MOUNTS -v /etc/resolv.conf:/etc/resolv.conf:ro"
+      MOUNTS="$MOUNTS -v /etc/hostname:/etc/hostname:ro"
+
+      FLAGS="--privileged --network host --pid host --ipc host"
+      FLAGS="$FLAGS --security-opt label=disable --security-opt apparmor=unconfined"
+      FLAGS="$FLAGS --pids-limit=-1 --ulimit host"
+      [ "$RUNTIME" = "podman" ] && FLAGS="$FLAGS --userns keep-id"
+
+      exec "$DOCKER" run -it --rm \
+        --name diego-gui \
+        --hostname "${SYS_HOSTNAME}-gui" \
+        $FLAGS $MOUNTS \
+        -w "$HOME_DIR" \
+        -e HOME="$HOME_DIR" -e USER="${USER:-root}" \
+        -e TERM="${TERM:-xterm-256color}" \
+        -e DISPLAY="${DISPLAY:-}" \
+        -e WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+        -e XDG_RUNTIME_DIR="$_XDG" \
+        -e DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-}" \
+        -e PULSE_SERVER="${PULSE_SERVER:-}" \
+        -e SHELL=fish \
+        -e PATH="$_NIX_PATH" \
+        "$IMG" bash -c "$SHELL_CMD"
+      ;;
+
+    *) echo "Unknown profile: $_profile (use: cli or gui)"; exit 1 ;;
+  esac
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -677,19 +710,20 @@ if [ $# -ge 1 ]; then
     commands)       do_commands "${2:-}" ;;
     fix-journal)    do_commands 14 ;;
     full-rescue)    do_commands 15 ;;
-    docker-start)   do_docker_start ;;
+    docker-run)     do_docker_run "${2:-}" ;;
+    docker-start)   do_docker_run cli ;;
     install)        do_install ;;
     ssh)            do_ssh ;;
     git-clone)      do_git_clone "${2:-$HOME/git}" ;;
     info)           do_info ;;
-    *)              echo "Usage: $0 {commands|docker-start|install|ssh|git-clone|info}"; exit 1 ;;
+    *)              echo "Usage: $0 {commands|docker-run [cli|gui]|install|ssh|git-clone|info}"; exit 1 ;;
   esac
 else
   show_banner
-  pick "What do you need?" commands docker-start install ssh git-clone info
+  pick "What do you need?" commands docker-run install ssh git-clone info
   case "$PICK" in
     commands)       do_commands ;;
-    docker-start)   do_docker_start ;;
+    docker-run)   do_docker_run ;;
     install)        do_install ;;
     ssh)            do_ssh ;;
     git-clone)      do_git_clone ;;
