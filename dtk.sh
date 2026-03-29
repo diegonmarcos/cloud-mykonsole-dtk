@@ -319,9 +319,11 @@ ensure_runtime() {
 do_docker_run() {
   _profile="${1:-}"
   if [ -z "$_profile" ]; then
-    pick "Profile:" cli gui
+    pick "Container:" diego-cli diego-gui
     _profile="$PICK"
   fi
+  # Normalize: diego-cli → cli, diego-gui → gui
+  case "$_profile" in diego-cli) _profile=cli ;; diego-gui) _profile=gui ;; esac
 
   IMG="ghcr.io/diegonmarcos/diego-user-env:latest"
   HOME_DIR="${HOME:-/root}"
@@ -710,6 +712,7 @@ if [ $# -ge 1 ]; then
     commands)       do_commands "${2:-}" ;;
     fix-journal)    do_commands 14 ;;
     full-rescue)    do_commands 15 ;;
+    containers)     do_docker_run "${2:-}" ;;
     docker-run)     do_docker_run "${2:-}" ;;
     docker-start)   do_docker_run cli ;;
     install)        do_install ;;
@@ -720,10 +723,10 @@ if [ $# -ge 1 ]; then
   esac
 else
   show_banner
-  pick "What do you need?" commands docker-run install ssh git-clone info
+  pick "What do you need?" commands containers install ssh git-clone info
   case "$PICK" in
     commands)       do_commands ;;
-    docker-run)   do_docker_run ;;
+    containers)     do_docker_run ;;
     install)        do_install ;;
     ssh)            do_ssh ;;
     git-clone)      do_git_clone ;;
