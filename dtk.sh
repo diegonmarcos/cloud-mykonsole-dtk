@@ -330,10 +330,57 @@ do_docker_run() {
   HOME_DIR="${HOME:-/root}"
   ensure_runtime "docker-run"
 
+  # Show banner inside container after launch
+  _HELLO='
+R="\033[0m"; C="\033[1;36m"; B="\033[1;34m"; M="\033[1;35m"; W="\033[1;37m"; D="\033[0;90m"; Y="\033[1;33m"; G="\033[1;32m"
+printf "\n"
+printf "${C}  ██████╗ ${B}████████╗${M}██╗  ██╗${R}\n"
+printf "${C}  ██╔══██╗${B}╚══██╔══╝${M}██║ ██╔╝${R}\n"
+printf "${C}  ██║  ██║${B}   ██║   ${M}█████╔╝ ${R}  ${W}Diego'\''s Container${R}\n"
+printf "${C}  ██║  ██║${B}   ██║   ${M}██╔═██╗ ${R}  ${D}Profile: PROFILE_PLACEHOLDER${R}\n"
+printf "${C}  ██████╔╝${B}   ██║   ${M}██║  ██╗${R}\n"
+printf "${C}  ╚═════╝ ${B}   ╚═╝   ${M}╚═╝  ╚═╝${R}\n"
+printf "\n"
+_h=$(hostname -s 2>/dev/null || echo "?")
+_os=$(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d "\"" || uname -s)
+_arch=$(uname -m 2>/dev/null || echo "?")
+_kern=$(uname -r 2>/dev/null || echo "?"); _kern=${_kern%%[-+]*}
+_cpu=$(nproc 2>/dev/null || echo "?")
+_ram=$(awk "/MemTotal/{printf \"%d\", \$2/1024}" /proc/meminfo 2>/dev/null || echo "?")
+_nix="off"; command -v nix >/dev/null 2>&1 && _nix="${G}ON${R}"
+_dk="off"; command -v docker >/dev/null 2>&1 && _dk="${G}ON${R}"
+printf "  ${Y}host${R}  ${W}%-20s${R}  ${Y}os${R}    ${W}%s${R}\n" "$_h" "$_os"
+printf "  ${Y}arch${R}  ${W}%-20s${R}  ${Y}kernel${R}  ${W}%s${R}\n" "$_arch" "$_kern"
+printf "  ${Y}cpu${R}   ${W}%-20s${R}  ${Y}ram${R}     ${W}%sMB${R}\n" "$_cpu cores" "$_ram"
+printf "  ${Y}nix${R}   $_nix                        ${Y}docker${R}  $_dk\n"
+printf "  ${D}──────────────────────────────────────────────${R}\n"
+printf "\n"
+'
+  _HELLO=$(printf '%s' "$_HELLO" | sed "s/PROFILE_PLACEHOLDER/$_profile/")
+
   echo "=== docker-run [$_profile]: $IMG ==="
   "$DOCKER" pull "$IMG"
 
-  SHELL_CMD='exec fish 2>/dev/null || exec bash 2>/dev/null || exec sh'
+  # Add image + label info to hello banner
+  _IMG_SIZE=$("$DOCKER" image inspect "$IMG" --format '{{.Size}}' 2>/dev/null || echo "0")
+  _IMG_SIZE_MB=$(( _IMG_SIZE / 1024 / 1024 ))
+  _IMG_CREATED=$("$DOCKER" image inspect "$IMG" --format '{{.Created}}' 2>/dev/null | cut -c1-10 || echo "?")
+  _IMG_ARCH=$("$DOCKER" image inspect "$IMG" --format '{{.Architecture}}' 2>/dev/null || echo "?")
+  _IMG_SRC=$("$DOCKER" image inspect "$IMG" --format '{{index .Config.Labels "org.opencontainers.image.source"}}' 2>/dev/null || echo "?")
+  _IMG_DESC=$("$DOCKER" image inspect "$IMG" --format '{{index .Config.Labels "org.opencontainers.image.description"}}' 2>/dev/null || echo "?")
+  _IMG_DFILE=$("$DOCKER" image inspect "$IMG" --format '{{index .Config.Labels "dockerfile.path"}}' 2>/dev/null || echo "?")
+  _HELLO="${_HELLO}
+printf \"  \${Y}image\${R} \${W}%-20s\${R}  \${Y}size\${R}    \${W}%sMB\${R}\n\" \"$_IMG_ARCH\" \"$_IMG_SIZE_MB\"
+printf \"  \${Y}built\${R} \${W}%-20s\${R}  \${Y}tag\${R}     \${W}%s\${R}\n\" \"$_IMG_CREATED\" \"latest\"
+printf \"  \${Y}src\${R}   \${W}%s\${R}\n\" \"${_IMG_SRC:-?}\"
+printf \"  \${Y}desc\${R}  \${D}%s\${R}\n\" \"${_IMG_DESC:-?}\"
+printf \"  \${Y}file\${R}  \${D}%s\${R}\n\" \"${_IMG_DFILE:-embedded}\"
+printf \"\n\"
+"
+
+  # Shell commands: show banner then drop to shell (or run tty command)
+  SHELL_CMD="${_HELLO}
+exec fish 2>/dev/null || exec bash 2>/dev/null || exec sh"
   _NIX_PATH="/home/${USER:-root}/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin:/sbin"
 
   case "$_profile" in
@@ -419,7 +466,8 @@ do_docker_run() {
         -e HOME="$HOME_DIR" -e USER="${USER:-root}" \
         -e TERM=dumb \
         -e PATH="$_NIX_PATH" \
-        "$IMG" bash -c "$_CMD"
+        "$IMG" bash -c "${_HELLO}
+$_CMD"
       ;;
 
     *) echo "Unknown profile: $_profile (use: cli, gui, or tty)"; exit 1 ;;
