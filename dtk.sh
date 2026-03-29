@@ -357,15 +357,40 @@ printf "\n"
   _IMG_SIZE_MB=$(( _IMG_SIZE / 1024 / 1024 ))
   _IMG_CREATED=$("$DOCKER" image inspect "$IMG" --format '{{.Created}}' 2>/dev/null | cut -c1-10 || echo "?")
   _IMG_ARCH=$("$DOCKER" image inspect "$IMG" --format '{{.Architecture}}' 2>/dev/null || echo "?")
-  _IMG_SRC=$("$DOCKER" image inspect "$IMG" --format '{{index .Config.Labels "org.opencontainers.image.source"}}' 2>/dev/null || echo "?")
-  _IMG_DESC=$("$DOCKER" image inspect "$IMG" --format '{{index .Config.Labels "org.opencontainers.image.description"}}' 2>/dev/null || echo "?")
-  _IMG_DFILE=$("$DOCKER" image inspect "$IMG" --format '{{index .Config.Labels "dockerfile.path"}}' 2>/dev/null || echo "?")
+  # Image metadata (labels → fallback)
+  _lbl() { _v=$("$DOCKER" image inspect "$IMG" --format "{{index .Config.Labels \"$1\"}}" 2>/dev/null); [ "$_v" != "<no value>" ] && [ -n "$_v" ] && echo "$_v" || echo "$2"; }
+  _IMG_DIGEST=$("$DOCKER" image inspect "$IMG" --format '{{index .RepoDigests 0}}' 2>/dev/null | sed 's/.*@//' | cut -c1-19 || echo "?")
+  _IMG_LAYERS=$("$DOCKER" image inspect "$IMG" --format '{{len .RootFS.Layers}}' 2>/dev/null || echo "?")
+  _IMG_SRC=$(_lbl "org.opencontainers.image.source" "github.com/diegonmarcos/unix")
+  _IMG_DESC=$(_lbl "org.opencontainers.image.description" "Nix dev env (nix profile install)")
+  _IMG_DFILE=$(_lbl "diego.image.dockerfile.path" "ba_flakes_desktop/src/container/Containerfile")
+  _IMG_COMPOSE=$(_lbl "diego.image.compose.path" "ba_flakes_desktop/src/container/compose.yaml")
+  _IMG_FLAKE=$(_lbl "diego.image.flake.path" "ba_flakes_desktop/src/")
+  _IMG_GHCR=$(_lbl "diego.image.ghcr" "$IMG")
+  _IMG_RUNNER=$(_lbl "diego.image.runner" "~/git/tools/dtk.sh containers {cli|gui|tty}")
+  _IMG_SHELL=$(_lbl "diego.image.packages.shell" "fish starship eza bat fd rg fzf jq")
+  _IMG_LANG=$(_lbl "diego.image.packages.lang" "rust go node python ruby gcc llvm")
+  _IMG_CLOUD=$(_lbl "diego.image.packages.cloud" "docker kubectl helm terraform sops age")
+  _IMG_META=$(_lbl "diego.image.container.path" "~/.image-meta/ (Containerfile + compose.yaml)")
+
   _HELLO="${_HELLO}
 printf \"  \${Y}image\${R} \${W}%-20s\${R}  \${Y}size\${R}    \${W}%sMB\${R}\n\" \"$_IMG_ARCH\" \"$_IMG_SIZE_MB\"
 printf \"  \${Y}built\${R} \${W}%-20s\${R}  \${Y}tag\${R}     \${W}%s\${R}\n\" \"$_IMG_CREATED\" \"latest\"
-printf \"  \${Y}src\${R}   \${W}%s\${R}\n\" \"${_IMG_SRC:-?}\"
-printf \"  \${Y}desc\${R}  \${D}%s\${R}\n\" \"${_IMG_DESC:-?}\"
-printf \"  \${Y}file\${R}  \${D}%s\${R}\n\" \"${_IMG_DFILE:-embedded}\"
+printf \"  \${Y}layers\${R}\${W}%-19s\${R}  \${Y}digest\${R}  \${W}%s\${R}\n\" \" $_IMG_LAYERS\" \"$_IMG_DIGEST\"
+printf \"  \${D}──────────────────────────────────────────────\${R}\n\"
+printf \"  \${Y}ghcr\${R}      \${W}%s\${R}\n\" \"$_IMG_GHCR\"
+printf \"  \${Y}src\${R}       \${W}%s\${R}\n\" \"$_IMG_SRC\"
+printf \"  \${Y}flake\${R}     \${W}%s\${R}\n\" \"$_IMG_FLAKE\"
+printf \"  \${Y}file\${R}      \${D}%s\${R}\n\" \"$_IMG_DFILE\"
+printf \"  \${Y}compose\${R}   \${D}%s\${R}\n\" \"$_IMG_COMPOSE\"
+printf \"  \${Y}embedded\${R}  \${D}%s\${R}\n\" \"$_IMG_META\"
+printf \"  \${Y}runner\${R}    \${D}%s\${R}\n\" \"$_IMG_RUNNER\"
+printf \"  \${D}──────────────────────────────────────────────\${R}\n\"
+printf \"  \${Y}shell\${R}     \${D}%s\${R}\n\" \"$_IMG_SHELL\"
+printf \"  \${Y}lang\${R}      \${D}%s\${R}\n\" \"$_IMG_LANG\"
+printf \"  \${Y}cloud\${R}     \${D}%s\${R}\n\" \"$_IMG_CLOUD\"
+printf \"  \${D}──────────────────────────────────────────────\${R}\n\"
+printf \"  \${D}%s\${R}\n\" \"$_IMG_DESC\"
 printf \"\n\"
 "
 
