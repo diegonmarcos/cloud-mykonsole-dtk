@@ -128,9 +128,9 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}14 python${R}        ${D}24 deb-apt-cli${R}   ${D}34 servers${R}        ${D}44 commands${R}       \n"
   printf "  ${D}15 system${R}        ${D}25 deb-apt-gui${R}                    ${D}45 info${R}           \n"
   printf "  ${D}16 git${R}           ${D}26 deb-apt-tty${R}                    ${D}46 engines${R}        \n"
-  printf "  ${D}17 docker${R}                                                            \n"
-  printf "  ${D}18 session${R}                                                           \n"
-  printf "  ${D}19 web-terminal${R}                                                      \n"
+  printf "  ${D}17 docker${R}        ${D}27 nixos-hm-cli${R}                                            \n"
+  printf "  ${D}18 session${R}       ${D}28 nixos-hm-gui${R}                                            \n"
+  printf "  ${D}19 web-terminal${R}  ${D}29 nixos-hm-tty${R}                                            \n"
   printf "  ${D}1a misc${R}                                                              \n"
   printf "  ${D}1b functions${R}                                                         \n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
@@ -606,6 +606,7 @@ _resolve_shortcode() {
       case "$_minor" in
         1) sh "$_containers_sh" 1 ;; 2) sh "$_containers_sh" 2 ;; 3) sh "$_containers_sh" 3 ;;
         4) sh "$_containers_sh" 4 ;; 5) sh "$_containers_sh" 5 ;; 6) sh "$_containers_sh" 6 ;;
+        7) sh "$_containers_sh" 7 ;; 8) sh "$_containers_sh" 8 ;; 9) sh "$_containers_sh" 9 ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # connect
