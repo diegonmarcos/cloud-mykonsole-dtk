@@ -1,5 +1,5 @@
 #!/bin/sh
-# Diego's Toolkit (DTK) — install, ssh, clone, info
+# Diego's Toolkit (DTK) — unified CLI for aliases, containers, connect, and ops
 # Usage: ./dtk.sh                # interactive
 #        ./dtk.sh <cmd> [args]   # direct
 # OS-agnostic POSIX: NixOS, Arch, Debian, Fedora, macOS, Termux
@@ -10,8 +10,6 @@ LOGFILE="${HOME:-/tmp}/dtk.log"
 _LOG_USER=$(whoami 2>/dev/null || echo "?")
 _LOG_HOST=$(hostname -s 2>/dev/null || echo "?")
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') ${_LOG_USER}@${_LOG_HOST} === dtk.sh $* ===" >> "$LOGFILE"
-# Trace goes to stderr (screen) — log file gets header only (no FIFO, no exec redirect)
-# This keeps the terminal clean: exit from container returns to host shell
 
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
 export PATH="/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:${HOME:-/root}/.nix-profile/bin:/run/current-system/sw/bin:$PATH"
@@ -109,9 +107,29 @@ show_banner() { set +x 2>/dev/null
   printf "  ${Y}cpu${R}   ${W}%-20s${R}  ${Y}ram${R}  ${W}%sMB${R}\n" "${SYS_CPUS} cores" "$SYS_RAM_MB"
   printf "  ${Y}pkg${R}   ${W}%-20s${R}  ${Y}init${R}  ${W}%s${R}\n" "$SYS_PKG" "$SYS_INIT"
   printf "  ${Y}nix${R}   $nix_icon                     ${Y}docker${R}  $docker_icon\n"
-  printf "  ${D}──────────────────────────────────────────────${R}\n"
+  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '\n'
-  set -x 2>/dev/null || true
+}
+
+show_menu_header() { set +x 2>/dev/null
+  R='\033[0m'; C='\033[1;36m'; D='\033[0;90m'
+  show_banner
+
+  printf "  ${C}1) aliases${R}        ${C}2) containers${R}    ${C}3) connect${R}       ${C}4) others${R}        ${C}5) help${R}\n"
+  printf "  ${D}11 modern-cli${R}    ${D}21 deb-nix${R}       ${D}31 git${R}            ${D}41 ssh${R}            ${D}usage${R}\n"
+  printf "  ${D}12 navigation${R}    ${D}22 deb-apt${R}       ${D}32 mounts${R}         ${D}42 git-clone${R}      ${D}commands${R}\n"
+  printf "  ${D}13 safety${R}        ${D}23 cli${R}           ${D}33 sync${R}           ${D}43 install${R}        \n"
+  printf "  ${D}14 python${R}        ${D}24 gui${R}           ${D}34 servers${R}        ${D}44 commands${R}       \n"
+  printf "  ${D}15 system${R}        ${D}25 tty${R}                             ${D}45 info${R}           \n"
+  printf "  ${D}16 git${R}                                                ${D}46 engines${R}        \n"
+  printf "  ${D}17 docker${R}                                                            \n"
+  printf "  ${D}18 session${R}                                                           \n"
+  printf "  ${D}19 web-terminal${R}                                                      \n"
+  printf "  ${D}1a misc${R}                                                              \n"
+  printf "  ${D}1b functions${R}                                                         \n"
+  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  printf "  ${D}(b)ack  (q)uit  1-5 menu  11-46 shortcode${R}\n"
+  printf "\n"
 }
 
 detect_system
@@ -150,73 +168,161 @@ pick() { set +x 2>/dev/null
   done
   printf "> "
   read -r _idx
-  _idx=$((_idx)) 2>/dev/null || { echo "Invalid"; exit 1; }
-  [ "$_idx" -ge 1 ] && [ "$_idx" -le $# ] || { echo "Invalid"; exit 1; }
-  # Get item by index
+  case "$_idx" in b|B) PICK="back"; return 0 ;; q|Q) echo "Bye."; exit 0 ;; esac
+  _idx=$((_idx)) 2>/dev/null || { echo "Invalid"; return 1; }
+  [ "$_idx" -ge 1 ] && [ "$_idx" -le $# ] || { echo "Invalid"; return 1; }
   _c=0
   for _item in "$@"; do
     _c=$((_c + 1))
-    [ "$_c" -eq "$_idx" ] && PICK="$_item" && set -x 2>/dev/null && return 0
+    [ "$_c" -eq "$_idx" ] && PICK="$_item" && return 0
   done
-  set -x 2>/dev/null || true
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# 0) COMMANDS — quick commands to run on this machine
+# A) ALIASES — toolchain list (all aliases/functions by category)
 # ═══════════════════════════════════════════════════════════════════
 
-do_commands() {
-  _idx="${1:-}"
-  if [ -z "$_idx" ]; then
-    echo "Commands (runs locally on this machine):"
-    echo "   1) flush-iptables"
-    echo "   2) restart-sshd"
-    echo "   3) restart-wg"
-    echo "   4) restart-docker"
-    echo "   5) stop-docker"
-    echo "   6) start-docker"
-    echo "   7) docker-ps"
-    echo "   8) wg-status"
-    echo "   9) iptables-show"
-    echo "  10) free-mem"
-    echo "  11) disk-usage"
-    echo "  12) kill-watchdog"
-    echo "  13) journal-silence"
-    echo "  14) fix-journal"
-    echo "  15) full-rescue"
-    printf "> "
-    read -r _idx
+do_aliases() { set +x 2>/dev/null
+  R='\033[0m'; B='\033[1;34m'; C='\033[1;36m'; G='\033[1;32m'
+  Y='\033[1;33m'; M='\033[1;35m'; W='\033[1;37m'; D='\033[0;90m'
+
+  _sub="${1:-}"
+  if [ -z "$_sub" ]; then
+    while true; do
+      show_menu_header
+      pick "Alias category:" modern-cli navigation safety python system git docker session web-terminal misc functions all
+      [ "$PICK" = "back" ] && return 0
+      _sub="$PICK"
+      break
+    done
   fi
-  case "$_idx" in
-    1)  iptables -F INPUT; iptables -P INPUT ACCEPT; echo "iptables flushed" ;;
-    2)  systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null; echo "sshd restarted" ;;
-    3)  systemctl restart wg-quick@wg0; echo "wg restarted" ;;
-    4)  systemctl restart docker; echo "docker restarted" ;;
-    5)  systemctl stop docker; echo "docker stopped" ;;
-    6)  systemctl start docker; echo "docker started" ;;
-    7)  docker ps --format '{{.Names}}: {{.Status}}' | sort ;;
-    8)  wg show wg0 ;;
-    9)  iptables -L INPUT -n --line-numbers ;;
-    10) free -m ;;
-    11) df -h / /var /opt 2>/dev/null ;;
-    12) systemctl stop watchdog-petter.timer watchdog-petter.service 2>/dev/null
-        systemctl disable watchdog-petter.timer 2>/dev/null; echo "watchdog killed" ;;
-    13) echo 0 > /proc/sys/kernel/printk; dmesg -n 1; echo "journal silenced" ;;
-    14) echo 0 > /proc/sys/kernel/printk 2>/dev/null || true
-        dmesg -n 1 2>/dev/null || true
-        systemctl stop systemd-journald-audit.socket 2>/dev/null || true
-        mkdir -p /etc/sysctl.d
-        echo 'kernel.printk = 0 0 0 0' > /etc/sysctl.d/99-silence-console.conf 2>/dev/null || true
-        echo "journal spam silenced" ;;
-    15) iptables -F INPUT; iptables -P INPUT ACCEPT
-        systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null
-        systemctl restart wg-quick@wg0 2>/dev/null; echo "full rescue done" ;;
-    *)  echo "Invalid" ;;
+
+  case "$_sub" in
+    modern-cli)
+      printf "\n${C}── Modern CLI Replacements ──${R}\n"
+      printf "  ${Y}ls${R}    eza --color=auto --icons\n"
+      printf "  ${Y}ll${R}    eza -alF --icons\n"
+      printf "  ${Y}la${R}    eza -A --icons\n"
+      printf "  ${Y}l${R}     eza -CF --icons\n"
+      printf "  ${Y}lh${R}    eza -lh --icons\n"
+      printf "  ${Y}lt${R}    eza --tree --level=2 --icons\n"
+      printf "  ${Y}cat${R}   bat --paging=never\n"
+      printf "  ${Y}grep${R}  rg (ripgrep)\n"
+      printf "  ${Y}find${R}  fd\n"
+      printf "  ${Y}df${R}    duf\n"
+      printf "  ${Y}du${R}    ncdu\n"
+      ;;
+    navigation)
+      printf "\n${C}── Navigation ──${R}\n"
+      printf "  ${Y}..${R}     cd ..\n"
+      printf "  ${Y}...${R}    cd ../..\n"
+      printf "  ${Y}....${R}   cd ../../..\n"
+      printf "  ${Y}mkcd${R}   mkdir + cd\n"
+      printf "  ${Y}mkd${R}    mkdir multiple + cd last\n"
+      ;;
+    safety)
+      printf "\n${C}── Safety Aliases ──${R}\n"
+      printf "  ${Y}rm${R}    rm -i (confirm before delete)\n"
+      printf "  ${Y}cp${R}    cp -i (confirm before overwrite)\n"
+      printf "  ${Y}mv${R}    mv -i (confirm before overwrite)\n"
+      ;;
+    python)
+      printf "\n${C}── Python ──${R}\n"
+      printf "  ${Y}py${R}      python3\n"
+      printf "  ${Y}python${R}  python3\n"
+      printf "  ${Y}pip${R}     pip3\n"
+      printf "  ${Y}ppy${R}     poetry run python3\n"
+      ;;
+    system)
+      printf "\n${C}── System ──${R}\n"
+      printf "  ${Y}free${R}     free -h\n"
+      printf "  ${Y}ports${R}    ss -tulanp\n"
+      printf "  ${Y}myip${R}    curl -s ifconfig.me\n"
+      printf "  ${Y}cpucap${R}  show CPU freq/capability\n"
+      printf "  ${Y}duh${R}     du -h --max-depth=1 | sort\n"
+      printf "  ${Y}localip${R} show local IPs\n"
+      ;;
+    git)
+      printf "\n${C}── Git Abbreviations (expand on space) ──${R}\n"
+      printf "  ${Y}gs${R}    git status -sb\n"
+      printf "  ${Y}ga${R}    git add\n"
+      printf "  ${Y}gaa${R}   git add --all\n"
+      printf "  ${Y}gc${R}    git commit\n"
+      printf "  ${Y}gcm${R}   git commit -m\n"
+      printf "  ${Y}gp${R}    git push\n"
+      printf "  ${Y}gl${R}    git log --oneline --graph -20\n"
+      printf "  ${Y}gd${R}    git diff\n"
+      printf "  ${Y}gco${R}   git checkout\n"
+      printf "  ${Y}gpl${R}   git pull\n"
+      printf "  ${Y}gcl${R}   git clone\n"
+      printf "\n${C}── Git Functions ──${R}\n"
+      printf "  ${Y}gcam${R}  git add --all + commit -m\n"
+      printf "  ${Y}gpsh${R}  git push origin (current branch)\n"
+      printf "  ${Y}gacp${R}  git add --all + commit + push\n"
+      ;;
+    docker)
+      printf "\n${C}── Docker Abbreviations ──${R}\n"
+      printf "  ${Y}dps${R}    docker ps\n"
+      printf "  ${Y}dpsa${R}   docker ps -a\n"
+      printf "  ${Y}dcu${R}    docker compose up\n"
+      printf "  ${Y}dcd${R}    docker compose down\n"
+      ;;
+    session)
+      printf "\n${C}── Session (Plasma 6) ──${R}\n"
+      printf "  ${Y}logout${R}    KDE logout\n"
+      printf "  ${Y}reboot${R}   KDE reboot\n"
+      printf "  ${Y}poweroff${R} KDE shutdown\n"
+      ;;
+    web-terminal)
+      printf "\n${C}── Web Terminal ──${R}\n"
+      printf "  ${Y}fish-e${R}       start web terminal (ttyd+tmux on WireGuard)\n"
+      printf "  ${Y}fish-e-stop${R}  stop all fish-e sessions\n"
+      ;;
+    misc)
+      printf "\n${C}── Misc ──${R}\n"
+      printf "  ${Y}c${R}       clear\n"
+      printf "  ${Y}cls${R}     clear\n"
+      printf "  ${Y}h${R}       history\n"
+      printf "  ${Y}hg${R}      history | grep\n"
+      printf "  ${Y}path${R}    show PATH entries\n"
+      printf "  ${Y}reload${R}  re-source fish config\n"
+      printf "  ${Y}welcome${R} show greeting screen\n"
+      printf "  ${Y}chrome_no_CORS${R} launch chromium without CORS\n"
+      ;;
+    functions)
+      printf "\n${C}── Functions ──${R}\n"
+      printf "  ${Y}ai-cli${R}     AI CLI launcher\n"
+      printf "  ${Y}hhelp${R}      flake inspector (config/tools/alias/envvar/profiles/grep)\n"
+      printf "  ${Y}extract${R}    extract any archive (tar/zip/7z/rar/deb)\n"
+      printf "  ${Y}backup${R}     backup file with timestamp\n"
+      printf "  ${Y}qfind${R}      quick find by pattern\n"
+      printf "  ${Y}serve${R}      start http-dev server\n"
+      printf "  ${Y}myhelp${R}     quick reference card\n"
+      printf "\n${C}── Search (fzf) ──${R}\n"
+      printf "  ${Y}Ctrl+T${R}   find file\n"
+      printf "  ${Y}Ctrl+R${R}   search history\n"
+      printf "  ${Y}Ctrl+P${R}   search commands\n"
+      printf "  ${Y}Alt+C${R}    cd to folder\n"
+      ;;
+    all)
+      do_aliases modern-cli
+      do_aliases navigation
+      do_aliases safety
+      do_aliases python
+      do_aliases system
+      do_aliases git
+      do_aliases docker
+      do_aliases session
+      do_aliases web-terminal
+      do_aliases misc
+      do_aliases functions
+      ;;
   esac
+  printf "\n"
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# 1) DOCKER START — pull & run dev environment container
+# B) CONTAINERS — pull & run dev environment container
 # ═══════════════════════════════════════════════════════════════════
 
 # Find docker binary by full path (skip shell aliases/wrappers)
@@ -314,20 +420,23 @@ do_docker_run() {
 
   # ── Pick image variant ──────────────────────────────────────────
   if [ -z "$_variant" ]; then
+    show_menu_header
     pick "Image:" deb-nix deb-apt
+    [ "$PICK" = "back" ] && return 0
     _variant="$PICK"
   fi
   # Normalize legacy names
   case "$_variant" in
     diego-cli|diego-gui|diego-tty)
-      # Legacy: dtk.sh containers diego-cli → deb-nix cli
       _profile=$(echo "$_variant" | sed 's/diego-//')
       _variant="deb-nix" ;;
   esac
 
   # ── Pick profile ────────────────────────────────────────────────
   if [ -z "$_profile" ]; then
+    show_menu_header
     pick "Profile:" cli gui tty
+    [ "$PICK" = "back" ] && return 0
     _profile="$PICK"
   fi
 
@@ -376,7 +485,6 @@ printf "\n"
   _IMG_SIZE_MB=$(( _IMG_SIZE / 1024 / 1024 ))
   _IMG_CREATED=$("$DOCKER" image inspect "$IMG" --format '{{.Created}}' 2>/dev/null | cut -c1-10 || echo "?")
   _IMG_ARCH=$("$DOCKER" image inspect "$IMG" --format '{{.Architecture}}' 2>/dev/null || echo "?")
-  # Image metadata (labels → fallback)
   _lbl() { _v=$("$DOCKER" image inspect "$IMG" --format "{{index .Config.Labels \"$1\"}}" 2>/dev/null); [ "$_v" != "<no value>" ] && [ -n "$_v" ] && echo "$_v" || echo "$2"; }
   _IMG_DIGEST=$("$DOCKER" image inspect "$IMG" --format '{{index .RepoDigests 0}}' 2>/dev/null | sed 's/.*@//' | cut -c1-19 || echo "?")
   _IMG_LAYERS=$("$DOCKER" image inspect "$IMG" --format '{{len .RootFS.Layers}}' 2>/dev/null || echo "?")
@@ -420,7 +528,6 @@ exec fish 2>/dev/null || exec bash 2>/dev/null || exec sh"
 
   case "$_profile" in
     cli)
-      # ── CLI: headless dev environment (VMs, SSH, rescue) ─────────────
       MOUNTS="-v $HOME_DIR:$HOME_DIR"
       [ -S /var/run/docker.sock ] && MOUNTS="$MOUNTS -v /var/run/docker.sock:/var/run/docker.sock"
       [ -d /etc/wireguard ]       && MOUNTS="$MOUNTS -v /etc/wireguard:/etc/wireguard:ro"
@@ -441,7 +548,6 @@ exec fish 2>/dev/null || exec bash 2>/dev/null || exec sh"
       ;;
 
     gui)
-      # ── GUI: full desktop integration (distrobox-equivalent) ─────────
       _UID=$(id -u 2>/dev/null || echo 1000)
       _XDG="${XDG_RUNTIME_DIR:-/run/user/$_UID}"
 
@@ -483,8 +589,6 @@ exec fish 2>/dev/null || exec bash 2>/dev/null || exec sh"
       ;;
 
     tty)
-      # ── TTY: non-interactive (CI, Claude Code, Dagu, cron, scripts) ──
-      # No -it flag. Runs command from $2 or drops to bash (not fish — no TTY).
       _CMD="${_extra_cmd:-bash}"
       MOUNTS="-v $HOME_DIR:$HOME_DIR"
       [ -S /var/run/docker.sock ] && MOUNTS="$MOUNTS -v /var/run/docker.sock:/var/run/docker.sock"
@@ -510,9 +614,69 @@ $_CMD"
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# 2) INSTALL
+# C) CONNECT — unified dashboard (git/mounts/sync/servers)
 # ═══════════════════════════════════════════════════════════════════
 
+do_connect() {
+  _connect_sh="${HOME:-/home/diego}/git/tools/a-connect/connect.sh"
+  if [ -f "$_connect_sh" ]; then
+    sh "$_connect_sh" "$@"
+  else
+    echo "connect.sh not found at: $_connect_sh"
+    echo "Clone tools repo: git clone https://github.com/diegonmarcos/tools.git ~/git/tools"
+    exit 1
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# D) OTHERS — ssh, git-clone, install, commands, info
+# ═══════════════════════════════════════════════════════════════════
+
+# ── D1) SSH ──────────────────────────────────────────────────────
+do_ssh() {
+  show_menu_header
+  pick "SSH Mode:" serial ssh rescue reset kill-watchdog
+  [ "$PICK" = "back" ] && return 0
+  _mode="$PICK"
+  pick "VM:" gcp-proxy gcp-t4
+  [ "$PICK" = "back" ] && return 0
+  _vm="$PICK"
+  resolve_vm "$_vm"
+
+  if ! command -v gcloud >/dev/null 2>&1; then
+    echo "gcloud not found — install first (dtk.sh install)"
+    exit 1
+  fi
+
+  case "$_mode" in
+    serial)        gcloud compute connect-to-serial-port "$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
+    ssh)           gcloud compute ssh root@"$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
+    rescue)        gcloud compute ssh "$INSTANCE" --zone="$ZONE" --project="$PROJECT" --command='sudo iptables -F INPUT; sudo iptables -P INPUT ACCEPT; sudo systemctl restart sshd 2>/dev/null || sudo systemctl restart ssh 2>/dev/null; echo done' ;;
+    reset)         gcloud compute instances reset "$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
+    kill-watchdog) gcloud compute ssh "$INSTANCE" --zone="$ZONE" --project="$PROJECT" --command='sudo systemctl stop watchdog-petter.timer watchdog-petter.service 2>/dev/null; sudo systemctl disable watchdog-petter.timer 2>/dev/null; echo done' ;;
+  esac
+}
+
+# ── D2) GIT CLONE ────────────────────────────────────────────────
+do_git_clone() {
+  _target="${1:-$HOME/git}"
+  mkdir -p "$_target"
+  echo "=== Cloning all repos to $_target ==="
+  echo "$REPOS" | while read -r _line; do
+    _name="${_line%%:*}"
+    _url="${_line#*:}"
+    if [ -d "$_target/$_name" ]; then
+      echo "  $_name — exists, pulling..."
+      git -C "$_target/$_name" pull --ff-only 2>&1 | head -1
+    else
+      echo "  $_name — cloning..."
+      git clone "$_url" "$_target/$_name" 2>&1 | tail -1
+    fi
+  done
+  echo "=== Done ==="
+}
+
+# ── D3) INSTALL ──────────────────────────────────────────────────
 install_dev_fedora() {
   echo "=== Fedora/RHEL: Full Dev Toolchain ==="
   dnf install -y --skip-unavailable \
@@ -647,8 +811,8 @@ setup_starship() {
   cat > "${HOME}/.config/starship.toml" << 'STAR'
 format = "$username$hostname$directory$git_branch$git_status$cmd_duration$line_break$character"
 [character]
-success_symbol = "[❯](green)"
-error_symbol = "[❯](red)"
+success_symbol = "[>](green)"
+error_symbol = "[>](red)"
 [directory]
 truncation_length = 3
 [git_branch]
@@ -715,10 +879,12 @@ do_install() {
     case "${_yn:-y}" in
       [Yy]*|"") PICK="$_detected" ;;
       *)
-        pick "Distro:" fedora arch debian nix ;;
+        pick "Distro:" fedora arch debian nix
+        [ "$PICK" = "back" ] && return 0 ;;
     esac
   else
     pick "Distro:" fedora arch debian nix
+    [ "$PICK" = "back" ] && return 0
   fi
   case "$PICK" in
     fedora) install_dev_fedora ;;
@@ -728,114 +894,246 @@ do_install() {
   esac
 }
 
-# ═══════════════════════════════════════════════════════════════════
-# 3) SSH
-# ═══════════════════════════════════════════════════════════════════
-
-do_ssh() {
-  pick "SSH Mode:" serial ssh rescue reset kill-watchdog
-  _mode="$PICK"
-  pick "VM:" gcp-proxy gcp-t4
-  _vm="$PICK"
-  resolve_vm "$_vm"
-
-  if ! command -v gcloud >/dev/null 2>&1; then
-    echo "gcloud not found — install first (dtk.sh install)"
-    exit 1
+# ── D4) COMMANDS ─────────────────────────────────────────────────
+do_commands() {
+  _idx="${1:-}"
+  if [ -z "$_idx" ]; then
+    echo "Commands (runs locally on this machine):"
+    echo "   1) flush-iptables"
+    echo "   2) restart-sshd"
+    echo "   3) restart-wg"
+    echo "   4) restart-docker"
+    echo "   5) stop-docker"
+    echo "   6) start-docker"
+    echo "   7) docker-ps"
+    echo "   8) wg-status"
+    echo "   9) iptables-show"
+    echo "  10) free-mem"
+    echo "  11) disk-usage"
+    echo "  12) kill-watchdog"
+    echo "  13) journal-silence"
+    echo "  14) fix-journal"
+    echo "  15) full-rescue"
+    printf "> "
+    read -r _idx
   fi
-
-  case "$_mode" in
-    serial)        gcloud compute connect-to-serial-port "$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
-    ssh)           gcloud compute ssh root@"$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
-    rescue)        gcloud compute ssh "$INSTANCE" --zone="$ZONE" --project="$PROJECT" --command='sudo iptables -F INPUT; sudo iptables -P INPUT ACCEPT; sudo systemctl restart sshd 2>/dev/null || sudo systemctl restart ssh 2>/dev/null; echo done' ;;
-    reset)         gcloud compute instances reset "$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
-    kill-watchdog) gcloud compute ssh "$INSTANCE" --zone="$ZONE" --project="$PROJECT" --command='sudo systemctl stop watchdog-petter.timer watchdog-petter.service 2>/dev/null; sudo systemctl disable watchdog-petter.timer 2>/dev/null; echo done' ;;
+  case "$_idx" in
+    1)  iptables -F INPUT; iptables -P INPUT ACCEPT; echo "iptables flushed" ;;
+    2)  systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null; echo "sshd restarted" ;;
+    3)  systemctl restart wg-quick@wg0; echo "wg restarted" ;;
+    4)  systemctl restart docker; echo "docker restarted" ;;
+    5)  systemctl stop docker; echo "docker stopped" ;;
+    6)  systemctl start docker; echo "docker started" ;;
+    7)  docker ps --format '{{.Names}}: {{.Status}}' | sort ;;
+    8)  wg show wg0 ;;
+    9)  iptables -L INPUT -n --line-numbers ;;
+    10) free -m ;;
+    11) df -h / /var /opt 2>/dev/null ;;
+    12) systemctl stop watchdog-petter.timer watchdog-petter.service 2>/dev/null
+        systemctl disable watchdog-petter.timer 2>/dev/null; echo "watchdog killed" ;;
+    13) echo 0 > /proc/sys/kernel/printk; dmesg -n 1; echo "journal silenced" ;;
+    14) echo 0 > /proc/sys/kernel/printk 2>/dev/null || true
+        dmesg -n 1 2>/dev/null || true
+        systemctl stop systemd-journald-audit.socket 2>/dev/null || true
+        mkdir -p /etc/sysctl.d
+        echo 'kernel.printk = 0 0 0 0' > /etc/sysctl.d/99-silence-console.conf 2>/dev/null || true
+        echo "journal spam silenced" ;;
+    15) iptables -F INPUT; iptables -P INPUT ACCEPT
+        systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null
+        systemctl restart wg-quick@wg0 2>/dev/null; echo "full rescue done" ;;
+    *)  echo "Invalid" ;;
   esac
 }
 
-# ═══════════════════════════════════════════════════════════════════
-# 4) GIT CLONE
-# ═══════════════════════════════════════════════════════════════════
-
-do_git_clone() {
-  _target="${1:-$HOME/git}"
-  mkdir -p "$_target"
-  echo "=== Cloning all repos to $_target ==="
-  echo "$REPOS" | while IFS=: read -r _name _url; do
-    _url="${_name#*:}"; _url="https:${_url}"  # reconstruct URL after IFS split
-    _name="${_name%%:*}"
-    # Fix: re-read properly
-    true
-  done
-  # Simpler approach: iterate lines
-  echo "$REPOS" | while read -r _line; do
-    _name="${_line%%:*}"
-    _url="${_line#*:}"
-    if [ -d "$_target/$_name" ]; then
-      echo "  $_name — exists, pulling..."
-      git -C "$_target/$_name" pull --ff-only 2>&1 | head -1
-    else
-      echo "  $_name — cloning..."
-      git clone "$_url" "$_target/$_name" 2>&1 | tail -1
-    fi
-  done
-  echo "=== Done ==="
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# 5) INFO — show installed tools
-# ═══════════════════════════════════════════════════════════════════
-
+# ── D5) INFO ─────────────────────────────────────────────────────
 do_info() { set +x 2>/dev/null
   show_banner
   echo "=== Installed Tools ==="
   for t in fish git node npm python3 rust cargo go docker podman gcloud oci aws \
-           terraform claude wrangler gh jq yq rg fd bat eza fzf zoxide tmux \
+           terraform claude wrangler gh jq yq rg fd bat eza fzf zoxide tmux ttyd \
            starship sops age nix rsync curl wget; do
     if command -v "$t" >/dev/null 2>&1; then
       _ver=$("$t" --version 2>/dev/null | head -1 || echo "ok")
-      printf "  ✓ %-12s %s\n" "$t" "$_ver"
+      printf "  + %-12s %s\n" "$t" "$_ver"
     else
-      printf "  ✗ %-12s not installed\n" "$t"
+      printf "  - %-12s not installed\n" "$t"
     fi
   done
-  echo ""
-  echo "=== Fish Aliases ==="
-  echo "  ls→eza  ll→eza -alF  cat→bat  grep→rg  find→fd  df→duf  du→ncdu"
-  echo "  cc→claude  py→python3  c→clear  h→history  ports→ss  myip→curl"
   echo ""
   echo "=== Repos ==="
   echo "$REPOS" | while read -r _line; do echo "  ${_line%%:*}"; done
 }
 
+# ── D6) ENGINES ──────────────────────────────────────────────────
+do_engines() { set +x 2>/dev/null
+  _git="${HOME:-/home/diego}/git"
+  _idx="${1:-}"
+  if [ -z "$_idx" ]; then
+    echo "Build Engines:"
+    echo "  1) nixos-host       ~/git/unix/aa_nixos-surface_host/build.sh"
+    echo "  2) home-desktop     ~/git/unix/ba_flakes_desktop/build.sh"
+    echo "  3) home-termux      ~/git/unix/bb_flakes_termux/build.sh"
+    echo "  4) cloud-service    ~/git/cloud/a_solutions/<service>/build.sh"
+    echo "  5) front-end        ~/git/front/1.ops/build_main.sh"
+    printf "> "
+    read -r _idx
+  fi
+  case "$_idx" in
+    1) sh "$_git/unix/aa_nixos-surface_host/build.sh" ;;
+    2) sh "$_git/unix/ba_flakes_desktop/build.sh" ;;
+    3) sh "$_git/unix/bb_flakes_termux/build.sh" ;;
+    4)
+      # List cloud services with build.sh
+      echo "Cloud services:"
+      _i=1; _services=""
+      for _bs in "$_git"/cloud/a_solutions/*/build.sh; do
+        [ -f "$_bs" ] || continue
+        _svc=$(basename "$(dirname "$_bs")")
+        printf "  %d) %s\n" "$_i" "$_svc"
+        _services="${_services}${_svc}
+"
+        _i=$((_i + 1))
+      done
+      printf "> "
+      read -r _sidx
+      _c=0
+      echo "$_services" | while read -r _s; do
+        [ -z "$_s" ] && continue
+        _c=$((_c + 1))
+        if [ "$_c" -eq "$_sidx" ]; then
+          sh "$_git/cloud/a_solutions/$_s/build.sh"
+          break
+        fi
+      done
+      ;;
+    5) sh "$_git/front/1.ops/build_main.sh" ;;
+    *) echo "Invalid" ;;
+  esac
+}
+
+# ── D) Others submenu ────────────────────────────────────────────
+do_others() {
+  _sub="${1:-}"
+  if [ -z "$_sub" ]; then
+    while true; do
+      show_menu_header
+      pick "Others:" ssh git-clone install commands info engines
+      [ "$PICK" = "back" ] && return 0
+      _sub="$PICK"
+      break
+    done
+  fi
+  case "$_sub" in
+    ssh)        do_ssh ;;
+    git-clone)  do_git_clone "${2:-$HOME/git}" ;;
+    install)    do_install ;;
+    commands)   do_commands "${2:-}" ;;
+    info)       do_info ;;
+    engines)    do_engines "${2:-}" ;;
+  esac
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# E) HELP
+# ═══════════════════════════════════════════════════════════════════
+
+do_help() { set +x 2>/dev/null
+  R='\033[0m'; C='\033[1;36m'; Y='\033[1;33m'; D='\033[0;90m'; W='\033[1;37m'
+  printf "\n${C}Diego's Toolkit (DTK)${R} — unified CLI\n\n"
+  printf "${Y}Usage:${R}\n"
+  printf "  dtk.sh                        ${D}# interactive menu${R}\n"
+  printf "  dtk.sh <command> [args]        ${D}# direct${R}\n\n"
+  printf "${Y}Main Menu:${R}\n"
+  printf "  ${W}a) aliases${R}      Toolchain list — all aliases/functions by category\n"
+  printf "  ${W}b) containers${R}   Pull & run dev environment container (cli/gui/tty)\n"
+  printf "  ${W}c) connect${R}      Cloud Connect dashboard (git/mounts/sync/servers)\n"
+  printf "  ${W}d) others${R}       SSH, git-clone, install, commands, info\n"
+  printf "  ${W}e) help${R}         This help\n\n"
+  printf "${Y}Direct Commands:${R}\n"
+  printf "  dtk.sh aliases [category]      ${D}# modern-cli|navigation|git|docker|...${R}\n"
+  printf "  dtk.sh containers [img] [prof] ${D}# deb-nix cli | deb-apt gui${R}\n"
+  printf "  dtk.sh connect                 ${D}# launch connect.sh${R}\n"
+  printf "  dtk.sh ssh                     ${D}# GCP serial/ssh/rescue${R}\n"
+  printf "  dtk.sh git-clone [path]        ${D}# clone all repos${R}\n"
+  printf "  dtk.sh install                 ${D}# install dev toolchain${R}\n"
+  printf "  dtk.sh commands [n]            ${D}# run quick command by number${R}\n"
+  printf "  dtk.sh info                    ${D}# show installed tools${R}\n"
+  printf "  dtk.sh engines                 ${D}# launch build engines${R}\n"
+  printf "  dtk.sh fix-journal             ${D}# silence journal spam${R}\n"
+  printf "  dtk.sh full-rescue             ${D}# flush iptables + restart sshd/wg${R}\n\n"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # ENTRY POINT — set -x starts here (after quiet setup)
 # ═══════════════════════════════════════════════════════════════════
-set -x
+_ALIAS_MAP="1:modern-cli 2:navigation 3:safety 4:python 5:system 6:git 7:docker 8:session 9:web-terminal a:misc b:functions"
 
+_resolve_shortcode() {
+  _code="$1"
+  _major=$(echo "$_code" | cut -c1)
+  _minor=$(echo "$_code" | cut -c2-)
+  case "$_major" in
+    1) # aliases
+      for _pair in $_ALIAS_MAP; do
+        _k="${_pair%%:*}"; _v="${_pair#*:}"
+        [ "$_k" = "$_minor" ] && { do_aliases "$_v"; return 0; }
+      done ;;
+    2) # containers
+      case "$_minor" in
+        1) do_docker_run deb-nix ;; 2) do_docker_run deb-apt ;;
+        3) do_docker_run deb-nix cli ;; 4) do_docker_run deb-nix gui ;; 5) do_docker_run deb-nix tty ;;
+        *) echo "Invalid shortcode: $_code" ;;
+      esac; return 0 ;;
+    3) # connect
+      do_connect; return 0 ;;
+    4) # others
+      case "$_minor" in
+        1) do_ssh ;; 2) do_git_clone ;; 3) do_install ;;
+        4) do_commands ;; 5) do_info ;; 6) do_engines ;;
+        *) echo "Invalid shortcode: $_code" ;;
+      esac; return 0 ;;
+  esac
+  return 1
+}
+
+set +x 2>/dev/null
 if [ $# -ge 1 ]; then
   case "$1" in
-    commands)       do_commands "${2:-}" ;;
-    fix-journal)    do_commands 14 ;;
-    full-rescue)    do_commands 15 ;;
+    # Shortcodes: 11-1b, 21-25, 31-34, 41-46
+    [1-4][0-9a-b]) _resolve_shortcode "$1" ;;
+    aliases)        do_aliases "${2:-}" ;;
     containers)     shift; do_docker_run "$@" ;;
     docker-run)     shift; do_docker_run "$@" ;;
     docker-start)   do_docker_run cli ;;
-    install)        do_install ;;
+    connect)        shift; do_connect "$@" ;;
+    others)         shift; do_others "$@" ;;
     ssh)            do_ssh ;;
     git-clone)      do_git_clone "${2:-$HOME/git}" ;;
+    install)        do_install ;;
+    commands)       do_commands "${2:-}" ;;
     info)           do_info ;;
-    *)              echo "Usage: $0 {commands|docker-run [cli|gui]|install|ssh|git-clone|info}"; exit 1 ;;
+    engines)        do_engines "${2:-}" ;;
+    fix-journal)    do_commands 14 ;;
+    full-rescue)    do_commands 15 ;;
+    help|--help|-h) do_help ;;
+    *)              do_help; exit 1 ;;
   esac
 else
-  show_banner
-  pick "What do you need?" commands containers install ssh git-clone info
-  case "$PICK" in
-    commands)       do_commands ;;
-    containers)     do_docker_run ;;
-    install)        do_install ;;
-    ssh)            do_ssh ;;
-    git-clone)      do_git_clone ;;
-    info)           do_info ;;
-  esac
+  set +x 2>/dev/null
+  while true; do
+    show_menu_header
+    printf "> "
+    read -r _input
+    case "$_input" in
+      1)  do_aliases ;;
+      2)  do_docker_run ;;
+      3)  do_connect ;;
+      4)  do_others ;;
+      5)  do_help ;;
+      q)  echo "Bye."; exit 0 ;;
+      # Shortcodes: 11-1b, 21-25, 31-34, 41-46
+      [1-4][0-9a-b]) _resolve_shortcode "$_input" ;;
+      *)  echo "Invalid — enter 1-5, shortcode (e.g. 16), or q to quit" ;;
+    esac
+  done
 fi
