@@ -183,8 +183,9 @@ pick() { set +x 2>/dev/null
 # ═══════════════════════════════════════════════════════════════════
 
 do_aliases() { set +x 2>/dev/null
-  R='\033[0m'; B='\033[1;34m'; C='\033[1;36m'; G='\033[1;32m'
-  Y='\033[1;33m'; M='\033[1;35m'; W='\033[1;37m'; D='\033[0;90m'
+  R='\033[0m'; C='\033[1;36m'; Y='\033[1;33m'; D='\033[0;90m'
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _ALIASES_JSON="$_SCRIPT_DIR/1-aliases/aliases.json"
 
   _sub="${1:-}"
   if [ -z "$_sub" ]; then
@@ -197,125 +198,36 @@ do_aliases() { set +x 2>/dev/null
     done
   fi
 
+  # Render a category from aliases.json
+  _render_category() {
+    _cat="$1"
+    _title="$2"
+    printf "\n${C}── %s ──${R}\n" "$_title"
+    # Handle nested objects (git has abbrs+functions, functions has search)
+    jq -r ".[\"$_cat\"] | paths(scalars) as \$p | \"\(\$p | join(\".\")) \(getpath(\$p))\"" "$_ALIASES_JSON" 2>/dev/null | while read -r _path _rest; do
+      _key="${_path##*.}"
+      _val="$_rest"
+      # Skip sub-object names, only print leaf values
+      printf "  ${Y}%-14s${R} %s\n" "$_key" "$_val"
+    done
+  }
+
   case "$_sub" in
-    modern-cli)
-      printf "\n${C}── Modern CLI Replacements ──${R}\n"
-      printf "  ${Y}ls${R}    eza --color=auto --icons\n"
-      printf "  ${Y}ll${R}    eza -alF --icons\n"
-      printf "  ${Y}la${R}    eza -A --icons\n"
-      printf "  ${Y}l${R}     eza -CF --icons\n"
-      printf "  ${Y}lh${R}    eza -lh --icons\n"
-      printf "  ${Y}lt${R}    eza --tree --level=2 --icons\n"
-      printf "  ${Y}cat${R}   bat --paging=never\n"
-      printf "  ${Y}grep${R}  rg (ripgrep)\n"
-      printf "  ${Y}find${R}  fd\n"
-      printf "  ${Y}df${R}    duf\n"
-      printf "  ${Y}du${R}    ncdu\n"
-      ;;
-    navigation)
-      printf "\n${C}── Navigation ──${R}\n"
-      printf "  ${Y}..${R}     cd ..\n"
-      printf "  ${Y}...${R}    cd ../..\n"
-      printf "  ${Y}....${R}   cd ../../..\n"
-      printf "  ${Y}mkcd${R}   mkdir + cd\n"
-      printf "  ${Y}mkd${R}    mkdir multiple + cd last\n"
-      ;;
-    safety)
-      printf "\n${C}── Safety Aliases ──${R}\n"
-      printf "  ${Y}rm${R}    rm -i (confirm before delete)\n"
-      printf "  ${Y}cp${R}    cp -i (confirm before overwrite)\n"
-      printf "  ${Y}mv${R}    mv -i (confirm before overwrite)\n"
-      ;;
-    python)
-      printf "\n${C}── Python ──${R}\n"
-      printf "  ${Y}py${R}      python3\n"
-      printf "  ${Y}python${R}  python3\n"
-      printf "  ${Y}pip${R}     pip3\n"
-      printf "  ${Y}ppy${R}     poetry run python3\n"
-      ;;
-    system)
-      printf "\n${C}── System ──${R}\n"
-      printf "  ${Y}free${R}     free -h\n"
-      printf "  ${Y}ports${R}    ss -tulanp\n"
-      printf "  ${Y}myip${R}    curl -s ifconfig.me\n"
-      printf "  ${Y}cpucap${R}  show CPU freq/capability\n"
-      printf "  ${Y}duh${R}     du -h --max-depth=1 | sort\n"
-      printf "  ${Y}localip${R} show local IPs\n"
-      ;;
-    git)
-      printf "\n${C}── Git Abbreviations (expand on space) ──${R}\n"
-      printf "  ${Y}gs${R}    git status -sb\n"
-      printf "  ${Y}ga${R}    git add\n"
-      printf "  ${Y}gaa${R}   git add --all\n"
-      printf "  ${Y}gc${R}    git commit\n"
-      printf "  ${Y}gcm${R}   git commit -m\n"
-      printf "  ${Y}gp${R}    git push\n"
-      printf "  ${Y}gl${R}    git log --oneline --graph -20\n"
-      printf "  ${Y}gd${R}    git diff\n"
-      printf "  ${Y}gco${R}   git checkout\n"
-      printf "  ${Y}gpl${R}   git pull\n"
-      printf "  ${Y}gcl${R}   git clone\n"
-      printf "\n${C}── Git Functions ──${R}\n"
-      printf "  ${Y}gcam${R}  git add --all + commit -m\n"
-      printf "  ${Y}gpsh${R}  git push origin (current branch)\n"
-      printf "  ${Y}gacp${R}  git add --all + commit + push\n"
-      ;;
-    docker)
-      printf "\n${C}── Docker Abbreviations ──${R}\n"
-      printf "  ${Y}dps${R}    docker ps\n"
-      printf "  ${Y}dpsa${R}   docker ps -a\n"
-      printf "  ${Y}dcu${R}    docker compose up\n"
-      printf "  ${Y}dcd${R}    docker compose down\n"
-      ;;
-    session)
-      printf "\n${C}── Session (Plasma 6) ──${R}\n"
-      printf "  ${Y}logout${R}    KDE logout\n"
-      printf "  ${Y}reboot${R}   KDE reboot\n"
-      printf "  ${Y}poweroff${R} KDE shutdown\n"
-      ;;
-    web-terminal)
-      printf "\n${C}── Web Terminal ──${R}\n"
-      printf "  ${Y}fish-e${R}       start web terminal (ttyd+tmux on WireGuard)\n"
-      printf "  ${Y}fish-e-stop${R}  stop all fish-e sessions\n"
-      ;;
-    misc)
-      printf "\n${C}── Misc ──${R}\n"
-      printf "  ${Y}c${R}       clear\n"
-      printf "  ${Y}cls${R}     clear\n"
-      printf "  ${Y}h${R}       history\n"
-      printf "  ${Y}hg${R}      history | grep\n"
-      printf "  ${Y}path${R}    show PATH entries\n"
-      printf "  ${Y}reload${R}  re-source fish config\n"
-      printf "  ${Y}welcome${R} show greeting screen\n"
-      printf "  ${Y}chrome_no_CORS${R} launch chromium without CORS\n"
-      ;;
-    functions)
-      printf "\n${C}── Functions ──${R}\n"
-      printf "  ${Y}ai-cli${R}     AI CLI launcher\n"
-      printf "  ${Y}hhelp${R}      flake inspector (config/tools/alias/envvar/profiles/grep)\n"
-      printf "  ${Y}extract${R}    extract any archive (tar/zip/7z/rar/deb)\n"
-      printf "  ${Y}backup${R}     backup file with timestamp\n"
-      printf "  ${Y}qfind${R}      quick find by pattern\n"
-      printf "  ${Y}serve${R}      start http-dev server\n"
-      printf "  ${Y}myhelp${R}     quick reference card\n"
-      printf "\n${C}── Search (fzf) ──${R}\n"
-      printf "  ${Y}Ctrl+T${R}   find file\n"
-      printf "  ${Y}Ctrl+R${R}   search history\n"
-      printf "  ${Y}Ctrl+P${R}   search commands\n"
-      printf "  ${Y}Alt+C${R}    cd to folder\n"
-      ;;
+    modern-cli)    _render_category "modern-cli" "Modern CLI Replacements" ;;
+    navigation)    _render_category "navigation" "Navigation" ;;
+    safety)        _render_category "safety" "Safety Aliases" ;;
+    python)        _render_category "python" "Python" ;;
+    system)        _render_category "system" "System" ;;
+    git)           _render_category "git" "Git" ;;
+    docker)        _render_category "docker" "Docker Abbreviations" ;;
+    session)       _render_category "session" "Session (Plasma 6)" ;;
+    web-terminal)  _render_category "web-terminal" "Web Terminal" ;;
+    misc)          _render_category "misc" "Misc" ;;
+    functions)     _render_category "functions" "Functions" ;;
     all)
-      do_aliases modern-cli
-      do_aliases navigation
-      do_aliases safety
-      do_aliases python
-      do_aliases system
-      do_aliases git
-      do_aliases docker
-      do_aliases session
-      do_aliases web-terminal
-      do_aliases misc
-      do_aliases functions
+      for _c in modern-cli navigation safety python system git docker session web-terminal misc functions; do
+        _render_category "$_c" "$_c"
+      done
       ;;
   esac
   printf "\n"
@@ -618,7 +530,7 @@ $_CMD"
 # ═══════════════════════════════════════════════════════════════════
 
 do_connect() {
-  _connect_sh="${HOME:-/home/diego}/git/tools/a-connect/connect.sh"
+  _connect_sh="${HOME:-/home/diego}/git/tools/3-connect/connect.sh"
   if [ -f "$_connect_sh" ]; then
     sh "$_connect_sh" "$@"
   else
