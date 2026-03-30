@@ -1,0 +1,35 @@
+#!/bin/sh
+# Others module — submenu dispatcher for 4-others/*
+set -eu
+
+OTHERS_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+_sub="${1:-}"
+if [ -z "$_sub" ]; then
+  echo "Others:"
+  echo "  1) ssh"
+  echo "  2) git-clone"
+  echo "  3) install"
+  echo "  4) commands"
+  echo "  5) info"
+  echo "  6) engines"
+  printf "> "
+  read -r _si
+  case "$_si" in
+    1) _sub="ssh" ;; 2) _sub="git-clone" ;; 3) _sub="install" ;;
+    4) _sub="commands" ;; 5) _sub="info" ;; 6) _sub="engines" ;;
+    b|B) exit 0 ;; *) echo "Invalid"; exit 1 ;;
+  esac
+fi
+
+shift 2>/dev/null || true
+
+case "$_sub" in
+  ssh)        sh "$OTHERS_DIR/1-ssh/ssh.sh" "$@" ;;
+  git-clone)  sh "$OTHERS_DIR/2-git-clone/git-clone.sh" "$@" ;;
+  install)    sh "$OTHERS_DIR/3-install/install.sh" "$@" ;;
+  commands)   sh "$OTHERS_DIR/4-commands/commands.sh" "$@" ;;
+  info)       sh "$OTHERS_DIR/5-info/info.sh" "$@" ;;
+  engines)    sh "$OTHERS_DIR/6-engines/engines.sh" "$@" ;;
+  *) echo "Unknown: $_sub"; exit 1 ;;
+esac

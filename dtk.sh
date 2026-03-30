@@ -12,7 +12,7 @@ _LOG_HOST=$(hostname -s 2>/dev/null || echo "?")
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') ${_LOG_USER}@${_LOG_HOST} === dtk.sh $* ===" >> "$LOGFILE"
 
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
-export PATH="/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:${HOME:-/root}/.nix-profile/bin:/run/current-system/sw/bin:$PATH"
+export PATH="/run/wrappers/bin:/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:${HOME:-/root}/.nix-profile/bin:/run/current-system/sw/bin:$PATH"
 
 # Stop systemd journal from flooding the terminal
 if [ "$(id -u)" = "0" ] 2>/dev/null; then
@@ -111,24 +111,30 @@ show_banner() { set +x 2>/dev/null
   printf '\n'
 }
 
+_BANNER_SHOWN=false
 show_menu_header() { set +x 2>/dev/null
   R='\033[0m'; C='\033[1;36m'; D='\033[0;90m'
-  show_banner
+  if [ "$_BANNER_SHOWN" = false ]; then
+    show_banner
+    _BANNER_SHOWN=true
+  else
+    printf "\n"
+  fi
 
   printf "  ${C}1) aliases${R}        ${C}2) containers${R}    ${C}3) connect${R}       ${C}4) others${R}        ${C}5) help${R}\n"
-  printf "  ${D}11 modern-cli${R}    ${D}21 deb-nix${R}       ${D}31 git${R}            ${D}41 ssh${R}            ${D}usage${R}\n"
-  printf "  ${D}12 navigation${R}    ${D}22 deb-apt${R}       ${D}32 mounts${R}         ${D}42 git-clone${R}      ${D}commands${R}\n"
-  printf "  ${D}13 safety${R}        ${D}23 cli${R}           ${D}33 sync${R}           ${D}43 install${R}        \n"
-  printf "  ${D}14 python${R}        ${D}24 gui${R}           ${D}34 servers${R}        ${D}44 commands${R}       \n"
-  printf "  ${D}15 system${R}        ${D}25 tty${R}                             ${D}45 info${R}           \n"
-  printf "  ${D}16 git${R}                                                ${D}46 engines${R}        \n"
+  printf "  ${D}11 modern-cli${R}    ${D}21 deb-nix-cli${R}   ${D}31 git${R}            ${D}41 ssh${R}            ${D}usage${R}\n"
+  printf "  ${D}12 navigation${R}    ${D}22 deb-nix-gui${R}   ${D}32 mounts${R}         ${D}42 git-clone${R}      ${D}commands${R}\n"
+  printf "  ${D}13 safety${R}        ${D}23 deb-nix-tty${R}   ${D}33 sync${R}           ${D}43 install${R}        \n"
+  printf "  ${D}14 python${R}        ${D}24 deb-apt-cli${R}   ${D}34 servers${R}        ${D}44 commands${R}       \n"
+  printf "  ${D}15 system${R}        ${D}25 deb-apt-gui${R}                    ${D}45 info${R}           \n"
+  printf "  ${D}16 git${R}           ${D}26 deb-apt-tty${R}                    ${D}46 engines${R}        \n"
   printf "  ${D}17 docker${R}                                                            \n"
   printf "  ${D}18 session${R}                                                           \n"
   printf "  ${D}19 web-terminal${R}                                                      \n"
   printf "  ${D}1a misc${R}                                                              \n"
   printf "  ${D}1b functions${R}                                                         \n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${D}(b)ack  (q)uit  1-5 menu  11-46 shortcode${R}\n"
+  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  11-46 shortcode${R}\n"
   printf "\n"
 }
 
@@ -140,19 +146,9 @@ detect_system
 
 PROJECT="diegonmarcos-infra-prod"
 
-resolve_vm() {
-  case "$1" in
-    gcp-proxy) INSTANCE="arch-1";          ZONE="us-central1-a" ;;
-    gcp-t4)    INSTANCE="ollama-spot-gpu"; ZONE="us-central1-a" ;;
-    *) echo "Unknown VM: $1 (available: gcp-proxy gcp-t4)"; exit 1 ;;
-  esac
-}
-
-REPOS="cloud:https://github.com/diegonmarcos/cloud.git
-cloud-data:https://github.com/diegonmarcos/cloud-data.git
-unix:https://github.com/diegonmarcos/unix.git
-front:https://github.com/diegonmarcos/front.git
-vault:https://github.com/diegonmarcos/vault.git"
+# Module paths — all logic lives in subfolders, dtk.sh is the orchestrator
+_DTK_DIR="$(cd "$(dirname "$0")" && pwd)"
+_OTHERS_DIR="$_DTK_DIR/4-others"
 
 # ═══════════════════════════════════════════════════════════════════
 # POSIX menu picker
@@ -169,6 +165,8 @@ pick() { set +x 2>/dev/null
   printf "> "
   read -r _idx
   case "$_idx" in b|B) PICK="back"; return 0 ;; q|Q) echo "Bye."; exit 0 ;; esac
+  # Global shortcodes: if input looks like a multi-digit shortcode, route it
+  case "$_idx" in [1-4][0-9a-b]*) _resolve_shortcode "$_idx"; PICK="back"; return 0 ;; esac
   _idx=$((_idx)) 2>/dev/null || { echo "Invalid"; return 1; }
   [ "$_idx" -ge 1 ] && [ "$_idx" -le $# ] || { echo "Invalid"; return 1; }
   _c=0
@@ -543,407 +541,18 @@ do_connect() {
 # ═══════════════════════════════════════════════════════════════════
 # D) OTHERS — ssh, git-clone, install, commands, info
 # ═══════════════════════════════════════════════════════════════════
+# D) OTHERS — all logic in 4-others/ modules, these are thin delegators
+# ═══════════════════════════════════════════════════════════════════
 
-# ── D1) SSH ──────────────────────────────────────────────────────
-do_ssh() {
-  show_menu_header
-  pick "SSH Mode:" serial ssh rescue reset kill-watchdog
-  [ "$PICK" = "back" ] && return 0
-  _mode="$PICK"
-  pick "VM:" gcp-proxy gcp-t4
-  [ "$PICK" = "back" ] && return 0
-  _vm="$PICK"
-  resolve_vm "$_vm"
+do_ssh()       { sh "$_OTHERS_DIR/1-ssh/ssh.sh" "$@"; }
 
-  if ! command -v gcloud >/dev/null 2>&1; then
-    echo "gcloud not found — install first (dtk.sh install)"
-    exit 1
-  fi
+do_git_clone() { sh "$_OTHERS_DIR/2-git-clone/git-clone.sh" "$@"; }
 
-  case "$_mode" in
-    serial)        gcloud compute connect-to-serial-port "$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
-    ssh)           gcloud compute ssh root@"$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
-    rescue)        gcloud compute ssh "$INSTANCE" --zone="$ZONE" --project="$PROJECT" --command='sudo iptables -F INPUT; sudo iptables -P INPUT ACCEPT; sudo systemctl restart sshd 2>/dev/null || sudo systemctl restart ssh 2>/dev/null; echo done' ;;
-    reset)         gcloud compute instances reset "$INSTANCE" --zone="$ZONE" --project="$PROJECT" ;;
-    kill-watchdog) gcloud compute ssh "$INSTANCE" --zone="$ZONE" --project="$PROJECT" --command='sudo systemctl stop watchdog-petter.timer watchdog-petter.service 2>/dev/null; sudo systemctl disable watchdog-petter.timer 2>/dev/null; echo done' ;;
-  esac
-}
-
-# ── D2) GIT CLONE ────────────────────────────────────────────────
-do_git_clone() {
-  _target="${1:-$HOME/git}"
-  mkdir -p "$_target"
-  echo "=== Cloning all repos to $_target ==="
-  echo "$REPOS" | while read -r _line; do
-    _name="${_line%%:*}"
-    _url="${_line#*:}"
-    if [ -d "$_target/$_name" ]; then
-      echo "  $_name — exists, pulling..."
-      git -C "$_target/$_name" pull --ff-only 2>&1 | head -1
-    else
-      echo "  $_name — cloning..."
-      git clone "$_url" "$_target/$_name" 2>&1 | tail -1
-    fi
-  done
-  echo "=== Done ==="
-}
-
-# ── D3) INSTALL ──────────────────────────────────────────────────
-install_dev_fedora() {
-  echo "=== Fedora/RHEL: Full Dev Toolchain ==="
-  dnf install -y --skip-unavailable \
-    fish git curl wget htop btop vim nano neovim \
-    gcc gcc-c++ make cmake rust cargo golang \
-    python3 python3-pip python3-virtualenv \
-    nodejs npm \
-    docker docker-compose \
-    jq ripgrep fd-find bat tree fzf zoxide duf ncdu \
-    rsync openssh-server wireguard-tools \
-    tmux screen strace lsof bind-utils net-tools iproute nmap ncat \
-    zip unzip p7zip tar gzip \
-    man-db less which file \
-    gnupg2 openssl \
-    sqlite sqlite-devel postgresql-devel \
-    gh rclone
-  echo "Installing extras (eza, starship, terraform)..."
-  command -v eza >/dev/null 2>&1 || cargo install eza 2>/dev/null || true
-  command -v starship >/dev/null 2>&1 || curl -sS https://starship.rs/install.sh | sh -s -- -y 2>/dev/null || true
-  if ! command -v terraform >/dev/null 2>&1; then
-    dnf config-manager addrepo --from-repofile=https://rpm.releases.hashicorp.com/fedora/hashicorp.repo 2>/dev/null || true
-    dnf install -y terraform 2>/dev/null || true
-  fi
-  command -v sops >/dev/null 2>&1 || { curl -sLo /usr/local/bin/sops https://github.com/getsops/sops/releases/latest/download/sops-v3.9.4.linux.amd64 && chmod +x /usr/local/bin/sops; } 2>/dev/null || true
-  command -v age >/dev/null 2>&1 || dnf install -y age 2>/dev/null || true
-  install_cloud_clis
-  install_extras
-}
-
-install_dev_arch() {
-  echo "=== Arch Linux: Full Dev Toolchain ==="
-  /usr/bin/pacman -Syu --noconfirm
-  /usr/bin/pacman -S --noconfirm --needed \
-    fish git curl wget htop btop vim nano neovim \
-    base-devel gcc make cmake rust cargo go \
-    python python-pip python-virtualenv \
-    nodejs npm yarn typescript \
-    docker docker-compose docker-buildx \
-    jq yq ripgrep fd bat eza tree fzf zoxide duf ncdu \
-    rsync openssh wireguard-tools \
-    tmux screen strace lsof bind-tools net-tools iproute2 nmap ncat \
-    zip unzip p7zip tar gzip \
-    man-db less which file \
-    sops age gnupg openssl \
-    sqlite postgresql-libs \
-    starship github-cli terraform \
-    rclone unison
-  install_cloud_clis
-  install_extras
-}
-
-install_dev_debian() {
-  echo "=== Debian/Ubuntu: Full Dev Toolchain ==="
-  apt-get update -qq
-  apt-get install -y -qq \
-    fish git curl wget htop vim nano neovim \
-    build-essential gcc make cmake rustc cargo golang \
-    python3 python3-pip python3-venv \
-    nodejs npm \
-    docker.io docker-compose docker-buildx-plugin \
-    jq ripgrep fd-find bat eza tree fzf duf ncdu \
-    rsync openssh-server wireguard-tools \
-    tmux screen strace lsof dnsutils net-tools iproute2 nmap ncat \
-    zip unzip p7zip-full tar gzip \
-    man-db less file \
-    sops age gnupg openssl \
-    sqlite3 libpq-dev \
-    gh terraform \
-    rclone
-  install_cloud_clis
-  install_extras
-}
-
-install_dev_nix() {
-  echo "=== Nix: Full Dev Toolchain ==="
-  if ! command -v nix >/dev/null 2>&1; then
-    echo "Installing Nix..."
-    curl -L https://nixos.org/nix/install | sh -s -- --daemon --yes
-    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh 2>/dev/null || true
-  fi
-  nix-env -iA \
-    nixpkgs.fish nixpkgs.git nixpkgs.curl nixpkgs.wget nixpkgs.htop nixpkgs.btop \
-    nixpkgs.neovim nixpkgs.gcc nixpkgs.gnumake nixpkgs.cmake \
-    nixpkgs.rustc nixpkgs.cargo nixpkgs.go \
-    nixpkgs.python3 nixpkgs.nodejs_22 nixpkgs.yarn nixpkgs.typescript \
-    nixpkgs.docker-compose \
-    nixpkgs.jq nixpkgs.yq-go nixpkgs.ripgrep nixpkgs.fd nixpkgs.bat nixpkgs.eza \
-    nixpkgs.tree nixpkgs.fzf nixpkgs.zoxide nixpkgs.duf nixpkgs.ncdu \
-    nixpkgs.rsync nixpkgs.wireguard-tools nixpkgs.openssh \
-    nixpkgs.tmux nixpkgs.strace nixpkgs.nmap \
-    nixpkgs.unzip nixpkgs.p7zip \
-    nixpkgs.sops nixpkgs.age nixpkgs.gnupg nixpkgs.openssl \
-    nixpkgs.sqlite nixpkgs.starship nixpkgs.gh nixpkgs.terraform \
-    nixpkgs.google-cloud-sdk nixpkgs.oci-cli nixpkgs.awscli2 \
-    nixpkgs.flarectl nixpkgs.cloudflared nixpkgs.rclone
-  install_extras
-}
-
-install_cloud_clis() {
-  if ! command -v gcloud >/dev/null 2>&1; then
-    echo "Installing Google Cloud SDK..."
-    curl -sL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=/opt 2>/dev/null || true
-    ln -sf /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud 2>/dev/null || true
-  fi
-  command -v oci >/dev/null 2>&1 || pip3 install oci-cli 2>/dev/null || pip install oci-cli 2>/dev/null || true
-  command -v aws >/dev/null 2>&1 || pip3 install awscli 2>/dev/null || true
-}
-
-install_extras() {
-  echo ""
-  echo "=== Extras: Claude Code, Wrangler, Fish config ==="
-  npm install -g @anthropic-ai/claude-code 2>/dev/null || true
-  npm install -g wrangler 2>/dev/null || true
-
-  if command -v fish >/dev/null 2>&1; then
-    FISH_PATH="$(command -v fish)"
-    grep -qxF "$FISH_PATH" /etc/shells 2>/dev/null || echo "$FISH_PATH" >> /etc/shells 2>/dev/null || true
-    chsh -s "$FISH_PATH" "$(logname 2>/dev/null || whoami)" 2>/dev/null || true
-    chsh -s "$FISH_PATH" root 2>/dev/null || true
-  fi
-
-  setup_fish_config
-  setup_starship
-  echo ""
-  echo "=== Install complete ==="
-}
-
-setup_starship() {
-  command -v starship >/dev/null 2>&1 || return 0
-  mkdir -p "${HOME}/.config"
-  [ -f "${HOME}/.config/starship.toml" ] && return 0
-  cat > "${HOME}/.config/starship.toml" << 'STAR'
-format = "$username$hostname$directory$git_branch$git_status$cmd_duration$line_break$character"
-[character]
-success_symbol = "[>](green)"
-error_symbol = "[>](red)"
-[directory]
-truncation_length = 3
-[git_branch]
-format = "[$branch]($style) "
-[cmd_duration]
-min_time = 2000
-STAR
-}
-
-setup_fish_config() {
-  FISH_DIR="${HOME}/.config/fish"
-  mkdir -p "$FISH_DIR"
-  cat > "$FISH_DIR/config.fish" << 'FISHCONF'
-if status is-interactive
-    alias ls="eza --color=auto --icons 2>/dev/null || command ls --color=auto"
-    alias ll="eza -alF --icons 2>/dev/null || command ls -alF"
-    alias la="eza -A --icons 2>/dev/null || command ls -A"
-    alias lt="eza --tree --level=2 --icons 2>/dev/null || tree -L 2"
-    alias cat="bat --paging=never 2>/dev/null || command cat"
-    alias grep="rg 2>/dev/null || command grep --color=auto"
-    alias find="fd 2>/dev/null || command find"
-    alias df="duf 2>/dev/null || command df -h"
-    alias du="ncdu 2>/dev/null || command du -sh"
-    alias ..="cd .."; alias ...="cd ../.."; alias ....="cd ../../.."
-    alias rm="rm -i"; alias cp="cp -i"; alias mv="mv -i"
-    abbr -a gs "git status -sb"
-    abbr -a ga "git add"; abbr -a gaa "git add --all"
-    abbr -a gc "git commit"; abbr -a gcm "git commit -m"
-    abbr -a gp "git push"; abbr -a gpl "git pull"
-    abbr -a gl "git log --oneline --graph --decorate -20"
-    abbr -a gd "git diff"; abbr -a gco "git checkout"
-    abbr -a dps "docker ps"; abbr -a dpsa "docker ps -a"
-    abbr -a dcu "docker compose up"; abbr -a dcd "docker compose down"
-    abbr -a dcl "docker compose logs -f"
-    alias c="clear"; alias h="history"
-    alias ports="ss -tulanp"; alias myip="curl -s ifconfig.me"
-    alias py="python3"; alias cc="claude"
-    alias reload="source ~/.config/fish/config.fish"
-    fish_add_path -m ~/.cargo/bin ~/.npm-global/bin ~/go/bin ~/.local/bin ~/.nix-profile/bin
-    if command -q starship; starship init fish | source; end
-    if command -q zoxide; zoxide init fish | source; end
-end
-FISHCONF
-  echo "Fish config written to $FISH_DIR/config.fish"
-}
-
-detect_distro() {
-  case "$SYS_PKG" in
-    dnf)    echo "fedora" ;;
-    pacman) echo "arch" ;;
-    apt)    echo "debian" ;;
-    nix)    echo "nix" ;;
-    brew)   echo "macos" ;;
-    *)      echo "" ;;
-  esac
-}
-
-do_install() {
-  _detected=$(detect_distro)
-  if [ -n "$_detected" ]; then
-    echo "Detected: $_detected"
-    printf "Use $_detected? [Y/n] "
-    read -r _yn
-    case "${_yn:-y}" in
-      [Yy]*|"") PICK="$_detected" ;;
-      *)
-        pick "Distro:" fedora arch debian nix
-        [ "$PICK" = "back" ] && return 0 ;;
-    esac
-  else
-    pick "Distro:" fedora arch debian nix
-    [ "$PICK" = "back" ] && return 0
-  fi
-  case "$PICK" in
-    fedora) install_dev_fedora ;;
-    arch)   install_dev_arch ;;
-    debian) install_dev_debian ;;
-    nix)    install_dev_nix ;;
-  esac
-}
-
-# ── D4) COMMANDS ─────────────────────────────────────────────────
-do_commands() {
-  _idx="${1:-}"
-  if [ -z "$_idx" ]; then
-    echo "Commands (runs locally on this machine):"
-    echo "   1) flush-iptables"
-    echo "   2) restart-sshd"
-    echo "   3) restart-wg"
-    echo "   4) restart-docker"
-    echo "   5) stop-docker"
-    echo "   6) start-docker"
-    echo "   7) docker-ps"
-    echo "   8) wg-status"
-    echo "   9) iptables-show"
-    echo "  10) free-mem"
-    echo "  11) disk-usage"
-    echo "  12) kill-watchdog"
-    echo "  13) journal-silence"
-    echo "  14) fix-journal"
-    echo "  15) full-rescue"
-    printf "> "
-    read -r _idx
-  fi
-  case "$_idx" in
-    1)  iptables -F INPUT; iptables -P INPUT ACCEPT; echo "iptables flushed" ;;
-    2)  systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null; echo "sshd restarted" ;;
-    3)  systemctl restart wg-quick@wg0; echo "wg restarted" ;;
-    4)  systemctl restart docker; echo "docker restarted" ;;
-    5)  systemctl stop docker; echo "docker stopped" ;;
-    6)  systemctl start docker; echo "docker started" ;;
-    7)  docker ps --format '{{.Names}}: {{.Status}}' | sort ;;
-    8)  wg show wg0 ;;
-    9)  iptables -L INPUT -n --line-numbers ;;
-    10) free -m ;;
-    11) df -h / /var /opt 2>/dev/null ;;
-    12) systemctl stop watchdog-petter.timer watchdog-petter.service 2>/dev/null
-        systemctl disable watchdog-petter.timer 2>/dev/null; echo "watchdog killed" ;;
-    13) echo 0 > /proc/sys/kernel/printk; dmesg -n 1; echo "journal silenced" ;;
-    14) echo 0 > /proc/sys/kernel/printk 2>/dev/null || true
-        dmesg -n 1 2>/dev/null || true
-        systemctl stop systemd-journald-audit.socket 2>/dev/null || true
-        mkdir -p /etc/sysctl.d
-        echo 'kernel.printk = 0 0 0 0' > /etc/sysctl.d/99-silence-console.conf 2>/dev/null || true
-        echo "journal spam silenced" ;;
-    15) iptables -F INPUT; iptables -P INPUT ACCEPT
-        systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null
-        systemctl restart wg-quick@wg0 2>/dev/null; echo "full rescue done" ;;
-    *)  echo "Invalid" ;;
-  esac
-}
-
-# ── D5) INFO ─────────────────────────────────────────────────────
-do_info() { set +x 2>/dev/null
-  show_banner
-  echo "=== Installed Tools ==="
-  for t in fish git node npm python3 rust cargo go docker podman gcloud oci aws \
-           terraform claude wrangler gh jq yq rg fd bat eza fzf zoxide tmux ttyd \
-           starship sops age nix rsync curl wget; do
-    if command -v "$t" >/dev/null 2>&1; then
-      _ver=$("$t" --version 2>/dev/null | head -1 || echo "ok")
-      printf "  + %-12s %s\n" "$t" "$_ver"
-    else
-      printf "  - %-12s not installed\n" "$t"
-    fi
-  done
-  echo ""
-  echo "=== Repos ==="
-  echo "$REPOS" | while read -r _line; do echo "  ${_line%%:*}"; done
-}
-
-# ── D6) ENGINES ──────────────────────────────────────────────────
-do_engines() { set +x 2>/dev/null
-  _git="${HOME:-/home/diego}/git"
-  _idx="${1:-}"
-  if [ -z "$_idx" ]; then
-    echo "Build Engines:"
-    echo "  1) nixos-host       ~/git/unix/aa_nixos-surface_host/build.sh"
-    echo "  2) home-desktop     ~/git/unix/ba_flakes_desktop/build.sh"
-    echo "  3) home-termux      ~/git/unix/bb_flakes_termux/build.sh"
-    echo "  4) cloud-service    ~/git/cloud/a_solutions/<service>/build.sh"
-    echo "  5) front-end        ~/git/front/1.ops/build_main.sh"
-    printf "> "
-    read -r _idx
-  fi
-  case "$_idx" in
-    1) sh "$_git/unix/aa_nixos-surface_host/build.sh" ;;
-    2) sh "$_git/unix/ba_flakes_desktop/build.sh" ;;
-    3) sh "$_git/unix/bb_flakes_termux/build.sh" ;;
-    4)
-      # List cloud services with build.sh
-      echo "Cloud services:"
-      _i=1; _services=""
-      for _bs in "$_git"/cloud/a_solutions/*/build.sh; do
-        [ -f "$_bs" ] || continue
-        _svc=$(basename "$(dirname "$_bs")")
-        printf "  %d) %s\n" "$_i" "$_svc"
-        _services="${_services}${_svc}
-"
-        _i=$((_i + 1))
-      done
-      printf "> "
-      read -r _sidx
-      _c=0
-      echo "$_services" | while read -r _s; do
-        [ -z "$_s" ] && continue
-        _c=$((_c + 1))
-        if [ "$_c" -eq "$_sidx" ]; then
-          sh "$_git/cloud/a_solutions/$_s/build.sh"
-          break
-        fi
-      done
-      ;;
-    5) sh "$_git/front/1.ops/build_main.sh" ;;
-    *) echo "Invalid" ;;
-  esac
-}
-
-# ── D) Others submenu ────────────────────────────────────────────
-do_others() {
-  _sub="${1:-}"
-  if [ -z "$_sub" ]; then
-    while true; do
-      show_menu_header
-      pick "Others:" ssh git-clone install commands info engines
-      [ "$PICK" = "back" ] && return 0
-      _sub="$PICK"
-      break
-    done
-  fi
-  case "$_sub" in
-    ssh)        do_ssh ;;
-    git-clone)  do_git_clone "${2:-$HOME/git}" ;;
-    install)    do_install ;;
-    commands)   do_commands "${2:-}" ;;
-    info)       do_info ;;
-    engines)    do_engines "${2:-}" ;;
-  esac
-}
+do_install()   { sh "$_OTHERS_DIR/3-install/install.sh" "$@"; }
+do_commands()  { sh "$_OTHERS_DIR/4-commands/commands.sh" "$@"; }
+do_info()      { sh "$_OTHERS_DIR/5-info/info.sh" "$@"; }
+do_engines()   { sh "$_OTHERS_DIR/6-engines/engines.sh" "$@"; }
+do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
 
 # ═══════════════════════════════════════════════════════════════════
 # E) HELP
@@ -983,25 +592,28 @@ _ALIAS_MAP="1:modern-cli 2:navigation 3:safety 4:python 5:system 6:git 7:docker 
 _resolve_shortcode() {
   _code="$1"
   _major=$(echo "$_code" | cut -c1)
-  _minor=$(echo "$_code" | cut -c2-)
+  _minor=$(echo "$_code" | cut -c2)
+  _rest=$(echo "$_code" | cut -c3-)
   case "$_major" in
     1) # aliases
+      _alias_key="$_minor$_rest"
       for _pair in $_ALIAS_MAP; do
         _k="${_pair%%:*}"; _v="${_pair#*:}"
-        [ "$_k" = "$_minor" ] && { do_aliases "$_v"; return 0; }
+        [ "$_k" = "$_alias_key" ] && { do_aliases "$_v"; return 0; }
       done ;;
-    2) # containers
+    2) # containers — delegate to 2-containers/containers.sh
+      _containers_sh="$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh"
       case "$_minor" in
-        1) do_docker_run deb-nix ;; 2) do_docker_run deb-apt ;;
-        3) do_docker_run deb-nix cli ;; 4) do_docker_run deb-nix gui ;; 5) do_docker_run deb-nix tty ;;
+        1) sh "$_containers_sh" 1 ;; 2) sh "$_containers_sh" 2 ;; 3) sh "$_containers_sh" 3 ;;
+        4) sh "$_containers_sh" 4 ;; 5) sh "$_containers_sh" 5 ;; 6) sh "$_containers_sh" 6 ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # connect
-      do_connect; return 0 ;;
-    4) # others
+      do_connect "$_minor$_rest"; return 0 ;;
+    4) # others — 2-digit = submenu, 3+ digit = submenu + item
       case "$_minor" in
         1) do_ssh ;; 2) do_git_clone ;; 3) do_install ;;
-        4) do_commands ;; 5) do_info ;; 6) do_engines ;;
+        4) do_commands "$_rest" ;; 5) do_info ;; 6) do_engines "$_rest" ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
   esac
@@ -1011,12 +623,12 @@ _resolve_shortcode() {
 set +x 2>/dev/null
 if [ $# -ge 1 ]; then
   case "$1" in
-    # Shortcodes: 11-1b, 21-25, 31-34, 41-46
-    [1-4][0-9a-b]) _resolve_shortcode "$1" ;;
+    # Shortcodes: 2+ digits (e.g. 16, 44, 448, 4415)
+    [1-4][0-9a-b]*) _resolve_shortcode "$1" ;;
     aliases)        do_aliases "${2:-}" ;;
-    containers)     shift; do_docker_run "$@" ;;
-    docker-run)     shift; do_docker_run "$@" ;;
-    docker-start)   do_docker_run cli ;;
+    containers)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" "$@" ;;
+    docker-run)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" "$@" ;;
+    docker-start)   sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" deb-nix cli ;;
     connect)        shift; do_connect "$@" ;;
     others)         shift; do_others "$@" ;;
     ssh)            do_ssh ;;
@@ -1038,14 +650,16 @@ else
     read -r _input
     case "$_input" in
       1)  do_aliases ;;
-      2)  do_docker_run ;;
+      2)  sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" ;;
       3)  do_connect ;;
       4)  do_others ;;
       5)  do_help ;;
+      b|back) continue ;;
+      r|refresh) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all && git -C "$_repo_dir" reset --hard origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD) && echo "Updated to $(git -C "$_repo_dir" log --oneline -1)" ;;
       q)  echo "Bye."; exit 0 ;;
-      # Shortcodes: 11-1b, 21-25, 31-34, 41-46
-      [1-4][0-9a-b]) _resolve_shortcode "$_input" ;;
-      *)  echo "Invalid — enter 1-5, shortcode (e.g. 16), or q to quit" ;;
+      # Shortcodes: 2+ digits — route through resolver
+      [1-4][0-9a-b]*) _resolve_shortcode "$_input" ;;
+      *)  echo "Invalid — enter 1-5, shortcode (e.g. 16, 448), b/q/r" ;;
     esac
   done
 fi
