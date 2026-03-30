@@ -85,12 +85,12 @@ tools/
 │   │   ├── nix-hm-termux/
 │   │   └── nix-os-desktop/
 │   ├── surface-trackpad-reset.sh
-│   └── z-others/             Legacy scripts (archive)
+│   └── z-others/             Local-only scripts (not in DTK menu)
+│       ├── hooks/            Git hooks (core.hooksPath)
+│       ├── a-sync/           Legacy sync engine
+│       └── b-scripts/        Legacy utility scripts
 │
 ├── 5-help/                   Help resources
-│
-├── hooks/                    Git hooks (core.hooksPath = hooks)
-│   └── pre-commit
 │
 ├── cloud-data/               Cloud data submodule
 └── front-data/               Front data submodule
