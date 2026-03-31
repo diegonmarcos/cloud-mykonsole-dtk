@@ -11,7 +11,7 @@
 #   ./connect.sh <command>    # CLI mode
 #   ./connect.sh --help       # Show help
 
-set -euo pipefail
+set -eu
 
 # =============================================================================
 # CONFIGURATION
