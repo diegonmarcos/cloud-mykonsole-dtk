@@ -59,8 +59,8 @@ run_command() {
   _cmd="$1"
   echo "  Executing: $_cmd"
   echo "────────────────────────────────────────"
-  # Run with sudo, capture both stdout+stderr, limit output
-  _output=$(eval "$SUDO sh -c '$_cmd'" 2>&1) || true
+  # Run with sudo + full PATH (docker may be in nix store or /usr/local/bin)
+  _output=$($SUDO sh -c "export PATH=\"/run/wrappers/bin:/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:\$HOME/.nix-profile/bin:/run/current-system/sw/bin:\$PATH\"; $_cmd" 2>&1) || true
   echo "$_output"
   echo "────────────────────────────────────────"
   # Post output back
