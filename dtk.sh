@@ -607,12 +607,15 @@ _resolve_shortcode() {
       _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
       _containers_sh="$_dtk_dir/2-containers/containers.sh"
       case "$_minor$_rest" in
-        # 21x = deb containers
+        # 21 = deb submenu, 21x = specific
+        1) sh "$_containers_sh" ;;
         1a) sh "$_containers_sh" 1 ;; 1b) sh "$_containers_sh" 2 ;; 1c) sh "$_containers_sh" 3 ;;
         1d) sh "$_containers_sh" 4 ;; 1e) sh "$_containers_sh" 5 ;; 1f) sh "$_containers_sh" 6 ;;
-        # 22x = nixos containers
+        # 22 = nixos submenu, 22x = specific
+        2) echo "22a nixos-hm-cli  22b nixos-hm-gui  22c nixos-hm-tty" ;;
         2a) sh "$_containers_sh" 7 ;; 2b) sh "$_containers_sh" 8 ;; 2c) sh "$_containers_sh" 9 ;;
-        # 23x = shell config
+        # 23 = shell submenu, 23x = specific
+        3) echo "23a fish-config" ;;
         3a) sh "$_dtk_dir/2-containers/fish-config.sh" ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
