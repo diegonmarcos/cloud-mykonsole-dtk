@@ -98,6 +98,15 @@ case "$cmd" in
   vm-docker-exec)
     rexec "$vm" 'sudo docker ps --format "{{.Names}}" && echo "---" && read -p "Container: " c && sudo docker exec -it "$c" sh'
     ;;
+  vm-dashboard)
+    SESSION="dash-${vm}"
+    tmux kill-session -t "$SESSION" 2>/dev/null || true
+    tmux new-session -d -s "$SESSION" -n "$vm" "ssh $vm -t sudo docker stats"
+    tmux split-window -t "$SESSION" -v -p 30 "ssh $vm -t htop"
+    tmux select-pane -t "$SESSION:0.0"
+    tmux set-option -t "$SESSION" mouse on
+    tmux attach-session -t "$SESSION"
+    ;;
 
   # ── VM cloud control (oci/gcloud per-VM) ─────────────────────────────
   # OCI VM map: ssh_alias → instance_id from cloud-data (no API calls for lookup)
@@ -152,8 +161,27 @@ case "$cmd" in
     done
     ;;
   all-htop|all-journalctl-f)
-    echo "ERROR: '$cmd' is interactive — use per-VM commands instead"
+    echo "ERROR: '$cmd' is interactive — use per-VM commands or vm-dashboard instead"
     exit 1
+    ;;
+  all-dashboard)
+    SESSION="dash-all"
+    tmux kill-session -t "$SESSION" 2>/dev/null || true
+    ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
+    FIRST=true
+    for v in $ALL_VMS; do
+      if $FIRST; then
+        tmux new-session -d -s "$SESSION" -n "$v" "ssh $v -t 'sudo docker stats || echo No docker; sleep 999'"
+        FIRST=false
+      else
+        tmux new-window -t "$SESSION" -n "$v" "ssh $v -t 'sudo docker stats || echo No docker; sleep 999'"
+      fi
+      tmux split-window -t "$SESSION" -v -p 30 "ssh $v -t htop"
+      tmux select-pane -t 0
+    done
+    tmux set-option -t "$SESSION" mouse on
+    tmux select-window -t "$SESSION:0"
+    tmux attach-session -t "$SESSION"
     ;;
   all-script-push)
     ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
