@@ -25,4 +25,4 @@ $SUDO systemctl restart dropbear 2>/dev/null && echo "  dropbear restarted" || e
 
 echo ""
 echo "Listening ports:"
-ss -tlnp 2>/dev/null | grep -E ":22 |:2200 " || echo "  (none)"
+$SUDO ss -tlnp 2>/dev/null | grep -E ":22 |:2200 " || echo "  (none)"
