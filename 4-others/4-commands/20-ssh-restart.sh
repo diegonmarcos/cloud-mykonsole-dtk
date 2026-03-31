@@ -71,8 +71,17 @@ if [ -n "$SSHD_PIDS" ]; then
   REMAINING=$(pgrep -x sshd 2>/dev/null | wc -l || echo 0)
   if [ "$REMAINING" -gt 0 ]; then
     echo "  WARNING: $REMAINING processes survived SIGKILL (D-state zombie)"
-    echo "  These are stuck in kernel — only a reboot can fix them"
-    echo "  Attempting to start a new sshd on a different PID anyway..."
+    echo "  Removing protection drop-in + rebooting (only way to clear D-state)..."
+    # Remove the protection.conf that causes MemoryMin deadlock
+    for svc in sshd ssh; do
+      DDIR="/etc/systemd/system/${svc}.service.d"
+      [ -f "$DDIR/protection.conf" ] && $SUDO rm -f "$DDIR/protection.conf" && echo "  Removed $DDIR/protection.conf"
+    done
+    $SUDO systemctl daemon-reload
+    echo "  Rebooting in 3 seconds..."
+    sleep 3
+    $SUDO reboot
+    exit 0
   else
     echo "  All sshd processes killed"
   fi
