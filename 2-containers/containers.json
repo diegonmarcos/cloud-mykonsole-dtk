@@ -1,8 +1,8 @@
 {
   "images": {
-    "deb-nix": "ghcr.io/diegonmarcos/diego-deb-nix:latest",
-    "deb-apt": "ghcr.io/diegonmarcos/diego-deb-apt:latest",
-    "nixos-hm": "ghcr.io/diegonmarcos/diego-nixos-hm:latest"
+    "deb-nix": "ghcr.io/diegonmarcos/user-dev-x86-deb-nix-hm:latest",
+    "deb-apt": "ghcr.io/diegonmarcos/user-dev-x86-deb-apt:latest",
+    "nixos-hm": "ghcr.io/diegonmarcos/user-dev-x86-nixos-nix-hm:latest"
   },
   "profiles": {
     "cli": {
