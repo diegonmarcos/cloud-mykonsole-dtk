@@ -131,7 +131,7 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}17 docker${R}        ${D}27 nixos-hm-cli${R}                                            \n"
   printf "  ${D}18 session${R}       ${D}28 nixos-hm-gui${R}                                            \n"
   printf "  ${D}19 web-terminal${R}  ${D}29 nixos-hm-tty${R}                                            \n"
-  printf "  ${D}1a misc${R}                                                              \n"
+  printf "  ${D}1a misc${R}          ${D}30 fish-config${R}                                            \n"
   printf "  ${D}1b functions${R}                                                         \n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  11-46 shortcode${R}\n"
@@ -607,6 +607,7 @@ _resolve_shortcode() {
         1) sh "$_containers_sh" 1 ;; 2) sh "$_containers_sh" 2 ;; 3) sh "$_containers_sh" 3 ;;
         4) sh "$_containers_sh" 4 ;; 5) sh "$_containers_sh" 5 ;; 6) sh "$_containers_sh" 6 ;;
         7) sh "$_containers_sh" 7 ;; 8) sh "$_containers_sh" 8 ;; 9) sh "$_containers_sh" 9 ;;
+        0) sh "$(cd "$(dirname "$0")" && pwd)/2-containers/fish-config.sh" ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # connect
