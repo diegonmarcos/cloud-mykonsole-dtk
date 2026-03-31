@@ -128,15 +128,16 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}14 python${R}        ${D}  21c nix-tty${R}     ${D}34 servers${R}        ${D}44 commands${R}       \n"
   printf "  ${D}15 system${R}        ${D}  21d apt-cli${R}                      ${D}45 info${R}           \n"
   printf "  ${D}16 git${R}           ${D}  21e apt-gui${R}                      ${D}46 engines${R}        \n"
-  printf "  ${D}17 docker${R}        ${D}  21f apt-tty${R}                                          \n"
+  printf "  ${D}17 docker${R}        ${D}  21f apt-tty${R}                      ${D}47 webhooks${R}       \n"
   printf "  ${D}18 session${R}       ${D}22 nixos${R}                                               \n"
   printf "  ${D}19 web-terminal${R}  ${D}  22a hm-cli${R}                                           \n"
   printf "  ${D}1a misc${R}          ${D}  22b hm-gui${R}                                           \n"
   printf "  ${D}1b functions${R}     ${D}  22c hm-tty${R}                                           \n"
   printf "  ${D}                 23 shell${R}                                               \n"
-  printf "  ${D}                   23a fish${R}                                             \n"
+  printf "  ${D}                   23a fish+tools${R}  ${D}(sudo, installs all CLI tools)${R}    \n"
+  printf "  ${D}                   23b fish${R}        ${D}(no sudo, config only)${R}            \n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  11-46 shortcode${R}\n"
+  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  11-47 shortcode${R}\n"
   printf "\n"
 }
 
@@ -554,6 +555,7 @@ do_install()   { sh "$_OTHERS_DIR/3-install/install.sh" "$@"; }
 do_commands()  { sh "$_OTHERS_DIR/4-commands/commands.sh" "$@"; }
 do_info()      { sh "$_OTHERS_DIR/5-info/info.sh" "$@"; }
 do_engines()   { sh "$_OTHERS_DIR/6-engines/engines.sh" "$@"; }
+do_webhooks()  { sh "$_OTHERS_DIR/7-webhooks/webhooks.sh" "$@"; }
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -625,6 +627,7 @@ _resolve_shortcode() {
       case "$_minor" in
         1) do_ssh ;; 2) do_git_clone ;; 3) do_install ;;
         4) do_commands "$_rest" ;; 5) do_info ;; 6) do_engines "$_rest" ;;
+        7) sh "$_OTHERS_DIR/7-webhooks/webhooks.sh" $_rest ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
   esac
