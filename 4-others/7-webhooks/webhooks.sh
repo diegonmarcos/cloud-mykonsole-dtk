@@ -59,8 +59,13 @@ run_command() {
   _cmd="$1"
   echo "  Executing: $_cmd"
   echo "────────────────────────────────────────"
-  # Run with sudo + full PATH (docker may be in nix store or /usr/local/bin)
-  _output=$($SUDO sh -c "export PATH=\"/run/wrappers/bin:/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:\$HOME/.nix-profile/bin:/run/current-system/sw/bin:\$PATH\"; $_cmd" 2>&1) || true
+  # Run with sudo -E to preserve PATH, nix paths first to skip docker-capped wrappers
+  _FULL_PATH="/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin"
+  if [ -n "$SUDO" ]; then
+    _output=$(PATH="$_FULL_PATH" $SUDO -E sh -c "$_cmd" 2>&1) || true
+  else
+    _output=$(PATH="$_FULL_PATH" sh -c "$_cmd" 2>&1) || true
+  fi
   echo "$_output"
   echo "────────────────────────────────────────"
   # Post output back
