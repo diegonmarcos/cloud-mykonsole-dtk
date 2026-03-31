@@ -121,18 +121,20 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  printf "  ${C}1) aliases${R}        ${C}2) containers${R}    ${C}3) connect${R}       ${C}4) others${R}        ${C}5) help${R}\n"
-  printf "  ${D}11 modern-cli${R}    ${D}21 deb-nix-cli${R}   ${D}31 git${R}            ${D}41 ssh${R}            ${D}usage${R}\n"
-  printf "  ${D}12 navigation${R}    ${D}22 deb-nix-gui${R}   ${D}32 mounts${R}         ${D}42 git-clone${R}      ${D}commands${R}\n"
-  printf "  ${D}13 safety${R}        ${D}23 deb-nix-tty${R}   ${D}33 sync${R}           ${D}43 install${R}        \n"
-  printf "  ${D}14 python${R}        ${D}24 deb-apt-cli${R}   ${D}34 servers${R}        ${D}44 commands${R}       \n"
-  printf "  ${D}15 system${R}        ${D}25 deb-apt-gui${R}                    ${D}45 info${R}           \n"
-  printf "  ${D}16 git${R}           ${D}26 deb-apt-tty${R}                    ${D}46 engines${R}        \n"
-  printf "  ${D}17 docker${R}        ${D}27 nixos-hm-cli${R}                                            \n"
-  printf "  ${D}18 session${R}       ${D}28 nixos-hm-gui${R}                                            \n"
-  printf "  ${D}19 web-terminal${R}  ${D}29 nixos-hm-tty${R}                                            \n"
-  printf "  ${D}1a misc${R}          ${D}30 fish-config${R}                                            \n"
-  printf "  ${D}1b functions${R}                                                         \n"
+  printf "  ${C}1) aliases${R}        ${C}2) containers${R}       ${C}3) connect${R}       ${C}4) others${R}        ${C}5) help${R}\n"
+  printf "  ${D}11 modern-cli${R}    ${D}21 deb containers${R}   ${D}31 git${R}            ${D}41 ssh${R}            ${D}usage${R}\n"
+  printf "  ${D}12 navigation${R}      ${D}21a deb-nix-cli${R}   ${D}32 mounts${R}         ${D}42 git-clone${R}      ${D}commands${R}\n"
+  printf "  ${D}13 safety${R}          ${D}21b deb-nix-gui${R}   ${D}33 sync${R}           ${D}43 install${R}        \n"
+  printf "  ${D}14 python${R}          ${D}21c deb-nix-tty${R}   ${D}34 servers${R}        ${D}44 commands${R}       \n"
+  printf "  ${D}15 system${R}          ${D}21d deb-apt-cli${R}                    ${D}45 info${R}           \n"
+  printf "  ${D}16 git${R}             ${D}21e deb-apt-gui${R}                    ${D}46 engines${R}        \n"
+  printf "  ${D}17 docker${R}          ${D}21f deb-apt-tty${R}                                            \n"
+  printf "  ${D}18 session${R}       ${D}22 nixos containers${R}                                          \n"
+  printf "  ${D}19 web-terminal${R}   ${D}22a nixos-hm-cli${R}                                            \n"
+  printf "  ${D}1a misc${R}           ${D}22b nixos-hm-gui${R}                                            \n"
+  printf "  ${D}1b functions${R}      ${D}22c nixos-hm-tty${R}                                            \n"
+  printf "  ${D}                  23 shell config${R}                                             \n"
+  printf "  ${D}                    23a fish-config${R}                                           \n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  11-46 shortcode${R}\n"
   printf "\n"
@@ -601,13 +603,17 @@ _resolve_shortcode() {
         _k="${_pair%%:*}"; _v="${_pair#*:}"
         [ "$_k" = "$_alias_key" ] && { do_aliases "$_v"; return 0; }
       done ;;
-    2) # containers — delegate to 2-containers/containers.sh
-      _containers_sh="$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh"
-      case "$_minor" in
-        1) sh "$_containers_sh" 1 ;; 2) sh "$_containers_sh" 2 ;; 3) sh "$_containers_sh" 3 ;;
-        4) sh "$_containers_sh" 4 ;; 5) sh "$_containers_sh" 5 ;; 6) sh "$_containers_sh" 6 ;;
-        7) sh "$_containers_sh" 7 ;; 8) sh "$_containers_sh" 8 ;; 9) sh "$_containers_sh" 9 ;;
-        0) sh "$(cd "$(dirname "$0")" && pwd)/2-containers/fish-config.sh" ;;
+    2) # containers + shell config
+      _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
+      _containers_sh="$_dtk_dir/2-containers/containers.sh"
+      case "$_minor$_rest" in
+        # 21x = deb containers
+        1a) sh "$_containers_sh" 1 ;; 1b) sh "$_containers_sh" 2 ;; 1c) sh "$_containers_sh" 3 ;;
+        1d) sh "$_containers_sh" 4 ;; 1e) sh "$_containers_sh" 5 ;; 1f) sh "$_containers_sh" 6 ;;
+        # 22x = nixos containers
+        2a) sh "$_containers_sh" 7 ;; 2b) sh "$_containers_sh" 8 ;; 2c) sh "$_containers_sh" 9 ;;
+        # 23x = shell config
+        3a) sh "$_dtk_dir/2-containers/fish-config.sh" ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # connect
