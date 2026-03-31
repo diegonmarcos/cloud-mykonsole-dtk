@@ -14,7 +14,12 @@
 #   post  — post a manual message to the output topic
 set -eu
 
-NTFY_BASE="https://rss.diegonmarcos.com"
+# Use WG internal ntfy (bypasses Authelia auth), fallback to public
+NTFY_BASE="http://10.0.0.1:8090"
+# Test if WG ntfy is reachable, else fallback
+if ! curl -sf -o /dev/null -m 2 "$NTFY_BASE/v1/health" 2>/dev/null; then
+  NTFY_BASE="https://rss.diegonmarcos.com"
+fi
 VM_NAME=$(hostname -s 2>/dev/null || echo "unknown")
 CMD_TOPIC="dtk-cmd-${VM_NAME}"
 OUT_TOPIC="dtk-out-${VM_NAME}"
