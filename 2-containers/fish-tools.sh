@@ -1,6 +1,7 @@
 #!/bin/sh
 # 23a — Install Fish + ALL CLI tools from desktop flake + fetch configs
 # Requires: sudo access, package manager (apt/dnf/pacman/apk)
+# Tracks installed packages in ~/.dtk-installed.json
 set -eu
 
 SUDO="sudo"
@@ -8,6 +9,7 @@ SUDO="sudo"
 FISH_DIR="${HOME}/.config/fish"
 STARSHIP_DIR="${HOME}/.config"
 RAW="https://raw.githubusercontent.com/diegonmarcos/unix/main/ba_flakes_desktop/src/modules/programs/shells/fish"
+MANIFEST="${HOME}/.dtk-installed.json"
 
 echo "=== Fish Shell + Tools Setup (23a) ==="
 
@@ -32,21 +34,32 @@ fi
 echo "[OK] Package manager: $_PM"
 
 # ═══════════════════════════════════════════════════════════════════
-# DEPENDENCY SOLVER — install tool, skip gracefully if unavailable
+# INSTALL MANIFEST — tracks what we installed in JSON
 # ═══════════════════════════════════════════════════════════════════
 
-_ok=0; _skip=0; _fail=0
+_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+_HOST=$(hostname -s 2>/dev/null || echo "unknown")
+_INSTALLED_LIST=""
+_SKIPPED_LIST=""
+_EXISTED_LIST=""
+_ok=0; _skip=0; _existed=0
 
 _install() {
-    _cmd="$1"; _pkg="${2:-$1}"
+    _cmd="$1"; _pkg="${2:-$1}"; _cat="${3:-misc}"
     if command -v "$_cmd" >/dev/null 2>&1; then
-        _ok=$((_ok + 1))
+        _existed=$((_existed + 1))
+        _EXISTED_LIST="${_EXISTED_LIST}    {\"cmd\": \"$_cmd\", \"pkg\": \"$_pkg\", \"category\": \"$_cat\"},
+"
         return 0
     fi
     if $_PM_INSTALL "$_pkg" >/dev/null 2>&1; then
         echo "[+] $_cmd"; _ok=$((_ok + 1))
+        _INSTALLED_LIST="${_INSTALLED_LIST}    {\"cmd\": \"$_cmd\", \"pkg\": \"$_pkg\", \"category\": \"$_cat\"},
+"
     else
         echo "[!] $_cmd ($_pkg not in $_PM repos)"; _skip=$((_skip + 1))
+        _SKIPPED_LIST="${_SKIPPED_LIST}    {\"cmd\": \"$_cmd\", \"pkg\": \"$_pkg\", \"category\": \"$_cat\"},
+"
     fi
 }
 
@@ -56,119 +69,200 @@ _install() {
 
 echo ""
 echo "── Step 1: Fish Shell ──"
-_install fish fish
+_install fish fish shell
 
 # ═══════════════════════════════════════════════════════════════════
 # STEP 2: Install ALL CLI tools from desktop flake profiles
+# (excludes heavy packages: llvm, jdk, gcloud, awscli, azure-cli,
+#  ansible, R, octave, postgresql-server, mysql, prometheus, grafana,
+#  valgrind, wireshark, torch/scipy ML stack, pandoc, graphviz, istioctl)
 # ═══════════════════════════════════════════════════════════════════
 
 echo ""
 echo "── Step 2: CLI Tools ──"
 $_PM_UPDATE >/dev/null 2>&1 || true
 
-# Profile 1: Shell & Core
+# ── Profile 1: Shell & Core ──────────────────────────────────────
 echo "[*] Shell & Core utilities..."
-_install eza eza
-_install bat bat
-_install fd fd-find
-_install rg ripgrep
-_install fzf fzf
-_install zoxide zoxide
-_install yazi yazi
-_install btop btop
-_install ncdu ncdu
-_install duf duf
-_install tree tree
-_install jq jq
-_install yq yq
-_install rsync rsync
-_install rclone rclone
-_install curl curl
-_install wget wget
-_install htop htop
-_install less less
-_install bc bc
-_install unzip unzip
-_install zip zip
-_install 7z p7zip-full
-_install neofetch neofetch
-_install lshw lshw
-_install lspci pciutils
-_install lsusb usbutils
-_install socat socat
-_install ttyd ttyd
-_install gh gh
-_install tmux tmux
-_install xclip xclip
+_install eza eza shell
+_install bat bat shell
+_install fd fd-find shell
+_install rg ripgrep shell
+_install fzf fzf shell
+_install zoxide zoxide shell
+_install yazi yazi shell
+_install btop btop shell
+_install multitail multitail shell
+_install ncdu ncdu shell
+_install duf duf shell
+_install tree tree shell
+_install jq jq shell
+_install yq yq shell
+_install rsync rsync shell
+_install rclone rclone shell
+_install curl curl shell
+_install wget wget shell
+_install htop htop shell
+_install less less shell
+_install bc bc shell
+_install unzip unzip shell
+_install zip zip shell
+_install 7z p7zip-full shell
+_install neofetch neofetch shell
+_install lshw lshw shell
+_install lspci pciutils shell
+_install lsusb usbutils shell
+_install socat socat shell
+_install ttyd ttyd shell
+_install gh gh shell
+_install tmux tmux shell
+_install xclip xclip shell
+_install wl-copy wl-clipboard shell
+_install file file shell
+_install patch patch shell
+_install diff diffutils shell
+_install ss iproute2 shell
+_install dig dnsutils shell
+_install ssh openssh-client shell
 
-# Profile 2: Dev Languages
+# ── Profile 2: Dev Languages ─────────────────────────────────────
 echo "[*] Development languages..."
-_install go golang
-_install node nodejs
-_install npm npm
-_install python3 python3
-_install pip3 python3-pip
-_install pipx pipx
-_install gcc gcc
-_install g++ g++
-_install ruby ruby
-_install java default-jdk
+_install go golang dev
+_install gopls gopls dev
+_install node nodejs dev
+_install npm npm dev
+_install pnpm pnpm dev
+_install yarn yarnpkg dev
+_install tsc typescript dev
+_install esbuild esbuild dev
+_install python3 python3 dev
+_install pip3 python3-pip dev
+_install pipx pipx dev
+_install uv uv dev
+_install gcc gcc dev
+_install g++ g++ dev
+_install ruby ruby dev
 
-# Profile 3: Build & Debug
+# ── Profile 3: Build & Debug ─────────────────────────────────────
 echo "[*] Build & debug tools..."
-_install cmake cmake
-_install ninja ninja-build
-_install make make
-_install gdb gdb
-_install strace strace
-_install shellcheck shellcheck
-_install shfmt shfmt
-_install pandoc pandoc
-_install git-lfs git-lfs
-_install delta git-delta
-_install direnv direnv
-_install just just
-_install watchexec watchexec
+_install cmake cmake build
+_install ninja ninja-build build
+_install make make build
+_install meson meson build
+_install automake automake build
+_install autoconf autoconf build
+_install libtool libtool build
+_install pkg-config pkg-config build
+_install gdb gdb build
+_install strace strace build
+_install ltrace ltrace build
+_install shellcheck shellcheck build
+_install shfmt shfmt build
+_install git-lfs git-lfs build
+_install delta git-delta build
+_install diff-so-fancy diff-so-fancy build
+_install direnv direnv build
+_install just just build
+_install watchexec watchexec build
+_install act act build
+_install cppcheck cppcheck build
+_install doxygen doxygen build
 
-# Profile 4: Containers & Cloud
+# ── Profile 4: Containers & Cloud ────────────────────────────────
 echo "[*] Containers & cloud..."
-_install docker docker.io
-_install kubectl kubectl
-_install helm helm
-_install terraform terraform
-_install sops sops
-_install age age
+_install docker docker.io cloud
+_install podman podman cloud
+_install buildah buildah cloud
+_install skopeo skopeo cloud
+_install dive dive cloud
+_install docker-compose docker-compose cloud
+_install kubectl kubectl cloud
+_install helm helm cloud
+_install k9s k9s cloud
+_install kubectx kubectx cloud
+_install stern stern cloud
+_install terraform terraform cloud
+_install cloudflared cloudflared cloud
+_install sops sops cloud
+_install age age cloud
 
-# Profile 5: Security & Networking
+# ── Profile 5: Security & Networking ─────────────────────────────
 echo "[*] Security & networking..."
-_install nmap nmap
-_install mtr mtr
-_install tcpdump tcpdump
-_install iftop iftop
-_install gnupg gpg
-_install openssl openssl
-_install httpie httpie
-_install wg wireguard-tools
+_install nmap nmap security
+_install nc netcat-openbsd security
+_install mtr mtr security
+_install tcpdump tcpdump security
+_install iftop iftop security
+_install nethogs nethogs security
+_install gpg gnupg security
+_install openssl openssl security
+_install pass pass security
+_install gopass gopass security
+_install ssh-audit ssh-audit security
+_install httpie httpie security
+_install wg wireguard-tools security
+_install openvpn openvpn security
+_install tor tor security
+_install torsocks torsocks security
+_install lynis lynis security
+_install hexyl hexyl security
+_install certbot certbot security
+_install binwalk binwalk security
 
-# Profile 6: Data
+# ── Profile 6: Data ──────────────────────────────────────────────
 echo "[*] Data tools..."
-_install sqlite3 sqlite3
-_install pgcli pgcli
-_install redis-cli redis-tools
+_install sqlite3 sqlite3 data
+_install pgcli pgcli data
+_install mycli mycli data
+_install litecli litecli data
+_install redis-cli redis-tools data
 
-# Prompt tools
+# ── Prompt & integrations ────────────────────────────────────────
 echo "[*] Prompt & integrations..."
-_install starship starship
+_install starship starship shell
 
 echo ""
-printf "[OK] %d installed  [!] %d skipped\n" "$_ok" "$_skip"
+printf "[OK] %d installed  [=] %d existed  [!] %d skipped\n" "$_ok" "$_existed" "$_skip"
 
 # ═══════════════════════════════════════════════════════════════════
-# STEP 3: Set fish as default shell
+# STEP 3: Write install manifest JSON
+# ═══════════════════════════════════════════════════════════════════
+
+# Strip trailing commas
+_INSTALLED_LIST=$(printf '%s' "$_INSTALLED_LIST" | sed '$ s/,$//')
+_SKIPPED_LIST=$(printf '%s' "$_SKIPPED_LIST" | sed '$ s/,$//')
+_EXISTED_LIST=$(printf '%s' "$_EXISTED_LIST" | sed '$ s/,$//')
+
+cat > "$MANIFEST" << MANIFEST_EOF
+{
+  "dtk_version": "23a",
+  "date": "$_DATE",
+  "host": "$_HOST",
+  "package_manager": "$_PM",
+  "counts": {
+    "installed": $_ok,
+    "existed": $_existed,
+    "skipped": $_skip
+  },
+  "installed": [
+$_INSTALLED_LIST
+  ],
+  "existed": [
+$_EXISTED_LIST
+  ],
+  "skipped": [
+$_SKIPPED_LIST
+  ]
+}
+MANIFEST_EOF
+echo "[OK] Manifest: $MANIFEST"
+
+# ═══════════════════════════════════════════════════════════════════
+# STEP 4: Set fish as default shell
 # ═══════════════════════════════════════════════════════════════════
 
 echo ""
-echo "── Step 3: Default shell ──"
+echo "── Step 4: Default shell ──"
 if command -v fish >/dev/null 2>&1; then
     FISH_PATH=$(command -v fish)
     grep -q "$FISH_PATH" /etc/shells 2>/dev/null || echo "$FISH_PATH" | $SUDO tee -a /etc/shells >/dev/null 2>&1 || true
@@ -179,7 +273,7 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════
-# STEP 4: Skip if HM-managed
+# STEP 5: Skip if HM-managed
 # ═══════════════════════════════════════════════════════════════════
 
 if [ -L "$FISH_DIR/config.fish" ] || ! mkdir -p "$FISH_DIR" 2>/dev/null || ! touch "$FISH_DIR/.test" 2>/dev/null; then
@@ -189,11 +283,11 @@ fi
 rm -f "$FISH_DIR/.test"
 
 # ═══════════════════════════════════════════════════════════════════
-# STEP 5: Generate config.fish with fallback aliases
+# STEP 6: Generate config.fish with fallback aliases
 # ═══════════════════════════════════════════════════════════════════
 
 echo ""
-echo "── Step 5: Fish config ──"
+echo "── Step 6: Fish config ──"
 mkdir -p "$FISH_DIR/functions" "$FISH_DIR/conf.d" "$FISH_DIR/completions"
 
 cat > "$FISH_DIR/config.fish" << 'FISHCONF'
@@ -267,7 +361,7 @@ FISHCONF
 echo "[OK] config.fish"
 
 # ═══════════════════════════════════════════════════════════════════
-# STEP 6: Fetch functions from unix repo
+# STEP 7: Fetch functions from unix repo
 # ═══════════════════════════════════════════════════════════════════
 
 echo "[+] Fetching fish functions..."
@@ -286,7 +380,7 @@ for fn in fish_greeting ai-cli cloud-ai-cli gacp gcam gpsh git_current_branch \
 done
 
 # ═══════════════════════════════════════════════════════════════════
-# STEP 7: Starship config
+# STEP 8: Starship config
 # ═══════════════════════════════════════════════════════════════════
 
 mkdir -p "$STARSHIP_DIR"
@@ -309,6 +403,7 @@ echo "=== Done ==="
 echo "  ~/.config/fish/config.fish"
 echo "  ~/.config/fish/functions/ ($(ls "$FISH_DIR/functions/" 2>/dev/null | wc -l) files)"
 echo "  ~/.config/starship.toml"
-echo "  Tools: $_ok installed, $_skip skipped"
+echo "  ~/.dtk-installed.json (install manifest)"
+echo "  Tools: $_ok installed, $_existed existed, $_skip skipped"
 echo ""
 echo "Run: source ~/.config/fish/config.fish"
