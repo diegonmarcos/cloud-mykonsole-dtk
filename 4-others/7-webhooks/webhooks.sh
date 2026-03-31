@@ -14,15 +14,17 @@
 #   post  — post a manual message to the output topic
 set -eu
 
-# Use WG internal ntfy via Caddy .app route (no Authelia), fallback chain
+# ntfy internal access — no Authelia. Check health with JSON response (not HTML redirect)
 NTFY_BASE=""
-for _url in "http://ntfy.app" "http://10.0.0.1:8090" "https://rss.diegonmarcos.com"; do
-  if curl -sf -o /dev/null -m 2 "$_url/v1/health" 2>/dev/null; then
-    NTFY_BASE="$_url"
-    break
-  fi
+for _url in "http://localhost:8090" "http://127.0.0.1:8090" "http://10.0.0.1:8090"; do
+  _resp=$(curl -sf -m 2 "$_url/v1/health" 2>/dev/null || echo "")
+  case "$_resp" in *healthy*) NTFY_BASE="$_url"; break ;; esac
 done
-[ -z "$NTFY_BASE" ] && NTFY_BASE="http://ntfy.app"
+if [ -z "$NTFY_BASE" ]; then
+  echo "  ERROR: ntfy not reachable on any internal address"
+  echo "  Tried: localhost:8090, 127.0.0.1:8090, 10.0.0.1:8090"
+  exit 1
+fi
 VM_NAME=$(hostname -s 2>/dev/null || echo "unknown")
 CMD_TOPIC="dtk-cmd-${VM_NAME}"
 OUT_TOPIC="dtk-out-${VM_NAME}"
