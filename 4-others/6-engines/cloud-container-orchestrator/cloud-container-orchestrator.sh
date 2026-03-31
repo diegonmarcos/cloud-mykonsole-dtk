@@ -180,7 +180,7 @@ case "$cmd" in
       tmux select-pane -t 0
     done
     tmux set-option -t "$SESSION" mouse on
-    tmux select-window -t "$SESSION:0"
+    tmux select-window -t "$SESSION:gcp-proxy"
     tmux attach-session -t "$SESSION"
     ;;
   all-script-push)
