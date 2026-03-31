@@ -142,6 +142,19 @@ case "$cmd" in
   vm-gcloud-serial) show gcloud compute connect-to-serial-port "$vm" --zone=us-central1-a ;;
 
   # ── Orchestration commands (run on ALL VMs) ─────────────────────────
+  # Interactive commands need special handling in orchestration
+  all-docker-stats)
+    ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
+    for v in $ALL_VMS; do
+      printf '\033[1;36m══ %s ══\033[0m\n' "$v"
+      rexec "$v" sudo docker stats --no-stream 2>&1 || printf '\033[0;31m  [FAILED]\033[0m\n'
+      echo
+    done
+    ;;
+  all-htop|all-journalctl-f)
+    echo "ERROR: '$cmd' is interactive — use per-VM commands instead"
+    exit 1
+    ;;
   all-script-push)
     ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
     RAW_URL="https://raw.githubusercontent.com/diegonmarcos/tools/main/4-others/6-engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
