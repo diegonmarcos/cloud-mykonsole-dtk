@@ -168,19 +168,26 @@ case "$cmd" in
     SESSION="dash-stats"
     tmux kill-session -t "$SESSION" 2>/dev/null || true
     ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
-    FIRST=true
-    for v in $ALL_VMS; do
-      if $FIRST; then
-        tmux new-session -d -s "$SESSION" -n "$v" "ssh $v -t 'sudo docker stats || echo No docker; sleep 999'"
-        FIRST=false
+    CORE_VMS="gcp-proxy oci-mail oci-analytics oci-apps"
+    # Tab 0: consolidated — 4 core VMs in quadrant layout
+    FIRST_CORE=true
+    for v in $CORE_VMS; do
+      if $FIRST_CORE; then
+        tmux new-session -d -s "$SESSION" -n "consolidated" "ssh $v -t 'watch -n2 sudo docker stats --no-stream || sleep 999'"
+        FIRST_CORE=false
       else
-        tmux new-window -t "$SESSION" -n "$v" "ssh $v -t 'sudo docker stats || echo No docker; sleep 999'"
+        tmux split-window -t "$SESSION:consolidated" "ssh $v -t 'watch -n2 sudo docker stats --no-stream || sleep 999'"
       fi
+    done
+    tmux select-layout -t "$SESSION:consolidated" tiled
+    # Per-VM tabs: docker stats + htop split
+    for v in $ALL_VMS; do
+      tmux new-window -t "$SESSION" -n "$v" "ssh $v -t 'sudo docker stats || echo No docker; sleep 999'"
       tmux split-window -t "$SESSION" -v -p 30 "ssh $v -t htop"
       tmux select-pane -t 0
     done
     tmux set-option -t "$SESSION" mouse on
-    tmux select-window -t "$SESSION:gcp-proxy"
+    tmux select-window -t "$SESSION:consolidated"
     tmux attach-session -t "$SESSION"
     ;;
   all-dashboard-journal)
