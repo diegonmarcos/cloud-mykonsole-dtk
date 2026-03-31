@@ -14,12 +14,15 @@
 #   post  — post a manual message to the output topic
 set -eu
 
-# Use WG internal ntfy (bypasses Authelia auth), fallback to public
-NTFY_BASE="http://10.0.0.1:8090"
-# Test if WG ntfy is reachable, else fallback
-if ! curl -sf -o /dev/null -m 2 "$NTFY_BASE/v1/health" 2>/dev/null; then
-  NTFY_BASE="https://rss.diegonmarcos.com"
-fi
+# Use WG internal ntfy via Caddy .app route (no Authelia), fallback chain
+NTFY_BASE=""
+for _url in "http://ntfy.app" "http://10.0.0.1:8090" "https://rss.diegonmarcos.com"; do
+  if curl -sf -o /dev/null -m 2 "$_url/v1/health" 2>/dev/null; then
+    NTFY_BASE="$_url"
+    break
+  fi
+done
+[ -z "$NTFY_BASE" ] && NTFY_BASE="http://ntfy.app"
 VM_NAME=$(hostname -s 2>/dev/null || echo "unknown")
 CMD_TOPIC="dtk-cmd-${VM_NAME}"
 OUT_TOPIC="dtk-out-${VM_NAME}"
