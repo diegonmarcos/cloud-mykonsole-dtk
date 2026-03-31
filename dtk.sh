@@ -530,7 +530,7 @@ $_CMD"
 # ═══════════════════════════════════════════════════════════════════
 
 do_connect() {
-  _connect_sh="${HOME:-/home/diego}/git/tools/3-connect/connect.sh"
+  _connect_sh="$(cd "$(dirname "$0")" && pwd)/3-connect/connect.sh"
   if [ -f "$_connect_sh" ]; then
     sh "$_connect_sh" "$@"
   else

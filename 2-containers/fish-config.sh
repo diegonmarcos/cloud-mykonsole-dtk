@@ -3,10 +3,10 @@
 # Source: unix/ba_flakes_desktop/src/modules/programs/shells/
 set -eu
 
-UNIX_REPO="${HOME:-/home/diego}/git/unix"
+UNIX_REPO="${HOME}/git/unix"
 FISH_SRC="$UNIX_REPO/ba_flakes_desktop/src/modules/programs/shells"
-FISH_DIR="${HOME:-/home/diego}/.config/fish"
-STARSHIP_DIR="${HOME:-/home/diego}/.config"
+FISH_DIR="${HOME}/.config/fish"
+STARSHIP_DIR="${HOME}/.config"
 
 echo "=== Fish Config Installer ==="
 echo "Source: $FISH_SRC"
