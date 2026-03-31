@@ -62,6 +62,25 @@ done
 $SUDO systemctl daemon-reload
 echo "  systemd reloaded"
 
+# ── Phase 2b: Remove ALL docker wrappers ─────────────────────────
+echo ""
+echo "── Phase 2b: Remove docker wrappers ──"
+for _w in /usr/local/bin/docker /usr/local/bin/docker-real /usr/local/bin/docker-capped /usr/local/bin/docker-compose-capped /usr/local/bin/docker-buildx-capped; do
+  [ -f "$_w" ] && $SUDO rm -f "$_w" && echo "  Removed: $_w"
+done
+# Remove stale FIFO/RR/protection drop-ins
+for svc_dir in /etc/systemd/system/*.service.d; do
+  [ -d "$svc_dir" ] || continue
+  for stale in "$svc_dir/protection.conf" "$svc_dir/bouncer.conf" "$svc_dir/slice-assignment.conf" "$svc_dir/cpu-cap.conf" "$svc_dir/memory-cap.conf"; do
+    [ -f "$stale" ] && $SUDO rm -f "$stale" && echo "  Removed: $stale"
+  done
+done
+# Remove stale container-init.service
+[ -f /etc/systemd/system/container-init.service ] && $SUDO rm -f /etc/systemd/system/container-init.service && echo "  Removed: container-init.service"
+# Clear shell hash table
+hash -r 2>/dev/null || true
+echo "  Done"
+
 # ── Phase 3: Fix WG IP ───────────────────────────────────────────
 echo ""
 echo "── Phase 3: Fix WireGuard IP ──"
@@ -137,7 +156,33 @@ else
   echo "  Dropbear not installed"
 fi
 
-# ── Phase 6: Verify ──────────────────────────────────────────────
+# ── Phase 6: Start Docker + all containers ──────────────────────
+echo ""
+echo "── Phase 6: Start Docker + containers ──"
+if ! $SUDO docker info >/dev/null 2>&1; then
+  echo "  Starting Docker daemon..."
+  $SUDO systemctl start docker 2>/dev/null || true
+  sleep 5
+  if $SUDO docker info >/dev/null 2>&1; then
+    echo "  Docker started"
+  else
+    echo "  ERROR: Docker failed to start"
+  fi
+else
+  echo "  Docker already running"
+fi
+# Start all existing containers (lightweight docker start, no compose Go binary)
+STOPPED=$($SUDO docker ps -aq --filter "status=exited" --filter "status=created" 2>/dev/null || true)
+if [ -n "$STOPPED" ]; then
+  echo "  Starting $(echo "$STOPPED" | wc -l) stopped containers..."
+  echo "$STOPPED" | xargs $SUDO docker start 2>/dev/null || true
+  sleep 3
+fi
+RUNNING=$($SUDO docker ps --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
+TOTAL=$($SUDO docker ps -a --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
+echo "  Containers: $RUNNING/$TOTAL running"
+
+# ── Phase 7: Verify ──────────────────────────────────────────────
 echo ""
 echo "── Phase 6: Verify ──"
 echo "  WG:"
@@ -151,4 +196,4 @@ grep -E 'Memory|OOM' /etc/systemd/system/sshd.service.d/*.conf 2>/dev/null | hea
 echo "  Memory:"
 free -m 2>/dev/null | head -2
 echo ""
-echo "  Done. Try SSH from another machine now."
+echo "── Phase 7: Verify ──"
