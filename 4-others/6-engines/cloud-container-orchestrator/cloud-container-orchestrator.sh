@@ -164,8 +164,8 @@ case "$cmd" in
     echo "ERROR: '$cmd' is interactive — use per-VM commands or vm-dashboard instead"
     exit 1
     ;;
-  all-dashboard)
-    SESSION="dash-all"
+  all-dashboard-stats)
+    SESSION="dash-stats"
     tmux kill-session -t "$SESSION" 2>/dev/null || true
     ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
     FIRST=true
@@ -175,6 +175,25 @@ case "$cmd" in
         FIRST=false
       else
         tmux new-window -t "$SESSION" -n "$v" "ssh $v -t 'sudo docker stats || echo No docker; sleep 999'"
+      fi
+      tmux split-window -t "$SESSION" -v -p 30 "ssh $v -t htop"
+      tmux select-pane -t 0
+    done
+    tmux set-option -t "$SESSION" mouse on
+    tmux select-window -t "$SESSION:gcp-proxy"
+    tmux attach-session -t "$SESSION"
+    ;;
+  all-dashboard-journal)
+    SESSION="dash-journal"
+    tmux kill-session -t "$SESSION" 2>/dev/null || true
+    ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
+    FIRST=true
+    for v in $ALL_VMS; do
+      if $FIRST; then
+        tmux new-session -d -s "$SESSION" -n "$v" "ssh $v -t 'sudo journalctl -f'"
+        FIRST=false
+      else
+        tmux new-window -t "$SESSION" -n "$v" "ssh $v -t 'sudo journalctl -f'"
       fi
       tmux split-window -t "$SESSION" -v -p 30 "ssh $v -t htop"
       tmux select-pane -t 0
