@@ -640,6 +640,7 @@ if [ $# -ge 1 ]; then
     engines)        do_engines "${2:-}" ;;
     fix-journal)    do_commands 14 ;;
     full-rescue)    do_commands 15 ;;
+    refresh|r|pull) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all && git -C "$_repo_dir" reset --hard "origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD)" && echo "Updated to $(git -C "$_repo_dir" log --oneline -1)" ;;
     help|--help|-h) do_help ;;
     *)              do_help; exit 1 ;;
   esac
