@@ -121,23 +121,29 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  printf "  ${C}1) aliases/tools${R}  ${C}2) containers${R}    ${C}3) dashboards${R}    ${C}4) others${R}        ${C}5) help${R}\n"
-  printf "  ${D}11 aliases${R}        ${D}21 deb${R}            ${D}local${R}              ${D}41 ssh${R}            ${D}usage${R}\n"
-  printf "  ${D}12 tools${R}          ${D}  21a nix-cli${R}     ${D}31 btop${R}            ${D}42 git-clone${R}      ${D}commands${R}\n"
-  printf "  ${D}  12a table${R}       ${D}  21b nix-gui${R}     ${D}32 journal-dash${R}    ${D}43 install${R}\n"
-  printf "  ${D}  12b help${R}        ${D}  21c nix-tty${R}     ${D}  32a transport${R}    ${D}44 commands${R}\n"
-  printf "                    ${D}  21d apt-cli${R}     ${D}  32b priority${R}     ${D}45 info${R}\n"
-  printf "                    ${D}  21e apt-gui${R}     ${D}  32c unit${R}         ${D}46 engines${R}\n"
-  printf "                    ${D}  21f apt-tty${R}     ${D}remote${R}             ${D}47 webhooks${R}\n"
-  printf "                    ${D}22 nixos${R}          ${D}33 connect${R}\n"
-  printf "                    ${D}  22a hm-cli${R}      ${D}34 btop-dash${R}\n"
-  printf "                    ${D}  22b hm-gui${R}      ${D}35 journal-dash${R}\n"
-  printf "                    ${D}  22c hm-tty${R}\n"
-  printf "                    ${D}23 shell${R}\n"
-  printf "                    ${D}  23a fish+tools${R}\n"
-  printf "                    ${D}  23b fish${R}\n"
+  printf "  ${C}1) aliases/tools${R}  ${C}2) containers${R}    ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) help/others${R}\n"
+  printf "  ${D}10 aliases${R}        ${D}20 deb${R}            ${D}local${R}              ${D}40 quick-cmds${R}    ${D}50 help${R}\n"
+  printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 btop${R}            ${D}  40a gcp-proxy${R}  ${D}51 others${R}\n"
+  printf "  ${D}  11a table${R}       ${D}  20b nix-gui${R}     ${D}31 journal-dash${R}    ${D}  40b oci-mail${R}   ${D}  51a commands${R}\n"
+  printf "  ${D}  11b help${R}        ${D}  20c nix-tty${R}     ${D}  31a transport${R}    ${D}  40c oci-analy${R}  ${D}  51b webhooks${R}\n"
+  printf "  ${D}12 info${R}           ${D}  20d apt-cli${R}     ${D}  31b priority${R}     ${D}  40d oci-apps${R}\n"
+  printf "  ${D}  12a info${R}        ${D}  20e apt-gui${R}     ${D}  31c unit${R}         ${D}  40e gcp-t4${R}\n"
+  printf "  ${D}  12b engines${R}     ${D}  20f apt-tty${R}     ${D}32 connect${R}         ${D}  40f orchestrate${R}\n"
+  printf "                    ${D}21 nixos${R}          ${D}remote${R}             ${D}  40g local${R}\n"
+  printf "                    ${D}  21a hm-cli${R}      ${D}33 btop-dash${R}      ${D}  40h desktop${R}\n"
+  printf "                    ${D}  21b hm-gui${R}      ${D}34 journal-dash${R}   ${D}  40i vps-cloud${R}\n"
+  printf "                    ${D}  21c hm-tty${R}                        ${D}  40j gh-actions${R}\n"
+  printf "                    ${D}22 shell${R}                             ${D}  40k gh-repos${R}\n"
+  printf "                    ${D}  22a fish+tools${R}                     ${D}  40l gh-registry${R}\n"
+  printf "                    ${D}  22b fish${R}                           ${D}41 ssh${R}\n"
+  printf "                    ${D}  22c gcl-https${R}                      ${D}  41a gcp-proxy${R}\n"
+  printf "                    ${D}  22d gcl-ssh${R}                        ${D}  41b oci-mail${R}\n"
+  printf "                                                              ${D}  41c oci-analy${R}\n"
+  printf "                                                              ${D}  41d oci-apps${R}\n"
+  printf "                                                              ${D}  41e gcp-t4${R}\n"
+  printf "                                                              ${D}  41f github${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  11-47 shortcode${R}\n"
+  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-51 shortcode${R}\n"
   printf "\n"
 }
 
@@ -169,7 +175,7 @@ pick() { set +x 2>/dev/null
   read -r _idx
   case "$_idx" in b|B) PICK="back"; return 0 ;; q|Q) echo "Bye."; exit 0 ;; esac
   # Global shortcodes: if input looks like a multi-digit shortcode, route it
-  case "$_idx" in [1-4][0-9a-b]*) _resolve_shortcode "$_idx"; PICK="back"; return 0 ;; esac
+  case "$_idx" in [1-5][0-9a-f]*) _resolve_shortcode "$_idx"; PICK="back"; return 0 ;; esac
   _idx=$((_idx)) 2>/dev/null || { echo "Invalid"; return 1; }
   [ "$_idx" -ge 1 ] && [ "$_idx" -le $# ] || { echo "Invalid"; return 1; }
   _c=0
@@ -574,6 +580,42 @@ $_CMD"
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# GIT CLONE — public (HTTPS) and private (SSH)
+# ═══════════════════════════════════════════════════════════════════
+
+_gcl_repos() {
+  _proto="$1"  # https or ssh
+  _target="${HOME:-/root}/git"
+  mkdir -p "$_target"
+
+  # Public repos (HTTPS or SSH)
+  _public="unix cloud cloud-data tools front"
+  # Private repos (SSH only, fail silent on HTTPS)
+  _private="vault notes"
+
+  printf "\n\033[1;36m── git clone (%s) ──\033[0m\n" "$_proto"
+
+  for _name in $_public $_private; do
+    case "$_proto" in
+      https) _url="https://github.com/diegonmarcos/${_name}.git" ;;
+      ssh)   _url="git@github.com:diegonmarcos/${_name}.git" ;;
+    esac
+
+    if [ -d "$_target/$_name" ]; then
+      printf "  \033[1;33m%-14s\033[0m exists, pulling... "  "$_name"
+      git -C "$_target/$_name" pull --ff-only 2>&1 | head -1
+    else
+      printf "  \033[1;32m%-14s\033[0m cloning... " "$_name"
+      git clone "$_url" "$_target/$_name" 2>/dev/null && echo "done" || echo "skipped (no access)"
+    fi
+  done
+  printf "\n"
+}
+
+do_gcl_https() { _gcl_repos https; }
+do_gcl_ssh()   { _gcl_repos ssh; }
+
+# ═══════════════════════════════════════════════════════════════════
 # C) CONNECT — unified dashboard (git/mounts/sync/servers)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -745,6 +787,101 @@ do_remote_journal() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# QUICK COMMANDS — delegates to cloud-container-orchestrator.sh
+# ═══════════════════════════════════════════════════════════════════
+
+_QC="bash ${HOME:-/root}/git/tools/4-others/6-engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
+
+do_qc_vm() {
+  _vm="${1:-}"
+  R='\033[0m'; C='\033[1;36m'; Y='\033[1;33m'; D='\033[0;90m'
+  if [ -z "$_vm" ]; then
+    show_menu_header
+    pick "VM:" gcp-proxy oci-mail oci-analytics oci-apps gcp-t4
+    [ "$PICK" = "back" ] && return 0
+    _vm="$PICK"
+  fi
+  printf "\n${C}── VM: $_vm ──${R}\n"
+  pick "Command:" htop journalctl-f journal-docker journal-sshd journal-wg journal-kernel journal-errors systemctl-status systemctl-list docker-start docker-stop docker-ps docker-stats docker-exec dashboard
+  [ "$PICK" = "back" ] && return 0
+  case "$PICK" in
+    dashboard) $_QC vm-dashboard "$_vm" ;;
+    *)         $_QC "vm-$PICK" "$_vm" ;;
+  esac
+}
+
+do_qc_ssh() {
+  _vm="${1:-}"
+  if [ -z "$_vm" ]; then
+    show_menu_header
+    pick "SSH to:" gcp-proxy oci-mail oci-analytics oci-apps gcp-t4
+    [ "$PICK" = "back" ] && return 0
+    _vm="$PICK"
+  fi
+  printf "\n\033[1;36m── SSH: $_vm ──\033[0m\n"
+  ssh "$_vm"
+}
+
+do_qc_orchestrate() {
+  R='\033[0m'; C='\033[1;36m'
+  printf "\n${C}── Orchestration (all VMs) ──${R}\n"
+  pick "Command:" mode-ssh mode-dropbear mode-serial mode-status htop journalctl-f journal-docker journal-sshd journal-wg journal-kernel journal-errors systemctl-status systemctl-list docker-start docker-stop docker-ps docker-stats dashboard-stats dashboard-journal script-push
+  [ "$PICK" = "back" ] && return 0
+  case "$PICK" in
+    mode-*) $_QC "$PICK" ;;
+    *)      $_QC "all-$PICK" ;;
+  esac
+}
+
+do_qc_local() {
+  R='\033[0m'; C='\033[1;36m'
+  printf "\n${C}── Local ──${R}\n"
+  pick "Command:" htop journalctl-f journal-docker journal-sshd journal-wg journal-kernel journal-errors systemctl-status systemctl-list docker-start docker-stop docker-ps docker-stats docker-exec
+  [ "$PICK" = "back" ] && return 0
+  $_QC "local-$PICK"
+}
+
+do_qc_desktop() {
+  R='\033[0m'; C='\033[1;36m'
+  printf "\n${C}── Desktop ──${R}\n"
+  pick "Command:" htop hm-switch nixos-switch git-status-all wg-status docker-ps-local free-mem disk-usage
+  [ "$PICK" = "back" ] && return 0
+  case "$PICK" in
+    htop) $_QC desktop-htop ;;
+    *)    $_QC "$PICK" ;;
+  esac
+}
+
+do_qc_vps() {
+  _cat="${1:-}"
+  R='\033[0m'; C='\033[1;36m'
+  printf "\n${C}── VPS / Cloud ──${R}\n"
+  if [ -z "$_cat" ]; then
+    pick "Category:" cloud gh-actions gh-repos gh-registry
+    [ "$PICK" = "back" ] && return 0
+    _cat="$PICK"
+  fi
+  case "$_cat" in
+    cloud)
+      pick "Cloud:" oci-list oci-details oci-vnics gcloud-list gcloud-details gcloud-billing
+      [ "$PICK" = "back" ] && return 0
+      $_QC "$PICK" ;;
+    gh-actions)
+      pick "GH Actions:" runs-cloud failed-cloud log-cloud workflows runs-unix runs-front
+      [ "$PICK" = "back" ] && return 0
+      $_QC "gha-$PICK" ;;
+    gh-repos)
+      pick "GH Repos:" status list prs issues commits
+      [ "$PICK" = "back" ] && return 0
+      $_QC "gh-${PICK}" ;;
+    gh-registry)
+      pick "GHCR:" list versions count inspect latest visibility
+      [ "$PICK" = "back" ] && return 0
+      $_QC "ghcr-$PICK" ;;
+  esac
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # D) OTHERS — ssh, git-clone, install, commands, info
 # ═══════════════════════════════════════════════════════════════════
 # D) OTHERS — all logic in 4-others/ modules, these are thin delegators
@@ -775,8 +912,8 @@ do_help() { set +x 2>/dev/null
   printf "  ${W}a) aliases${R}      Toolchain list — all aliases/functions by category\n"
   printf "  ${W}b) containers${R}   Pull & run dev environment container (cli/gui/tty)\n"
   printf "  ${W}c) dashboards${R}   Local & remote monitoring dashboards\n"
-  printf "  ${W}d) others${R}       SSH, git-clone, install, commands, info\n"
-  printf "  ${W}e) help${R}         This help\n\n"
+  printf "  ${W}d) commands${R}     SSH, git-clone, install, commands, info\n"
+  printf "  ${W}e) help/others${R}  This help & other utilities\n\n"
   printf "${Y}Direct Commands:${R}\n"
   printf "  dtk.sh aliases                  ${D}# all shell aliases (3-column)${R}\n"
   printf "  dtk.sh tools                    ${D}# all installed CLI tools (5-column)${R}\n"
@@ -807,38 +944,50 @@ _resolve_shortcode() {
   case "$_major" in
     1) # aliases/tools
       case "$_minor$_rest" in
-        1) do_aliases ;; 2) do_tools ;; 2a) do_tools ;; 2b) do_tools_help ;; *) do_aliases; do_tools ;;
+        0) do_aliases ;; 1) do_tools ;; 1a) do_tools ;; 1b) do_tools_help ;;
+        2) do_info ;; 2a) do_info ;; 2b) do_engines ;;
+        *) do_aliases; do_tools ;;
       esac; return 0 ;;
     2) # containers + shell config
       _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
       _containers_sh="$_dtk_dir/2-containers/containers.sh"
       case "$_minor$_rest" in
-        # 21 = deb submenu, 21x = specific
-        1) sh "$_containers_sh" ;;
-        1a) sh "$_containers_sh" 1 ;; 1b) sh "$_containers_sh" 2 ;; 1c) sh "$_containers_sh" 3 ;;
-        1d) sh "$_containers_sh" 4 ;; 1e) sh "$_containers_sh" 5 ;; 1f) sh "$_containers_sh" 6 ;;
-        # 22 = nixos submenu, 22x = specific
-        2) echo "22a nixos-hm-cli  22b nixos-hm-gui  22c nixos-hm-tty" ;;
-        2a) sh "$_containers_sh" 7 ;; 2b) sh "$_containers_sh" 8 ;; 2c) sh "$_containers_sh" 9 ;;
-        # 23 = shell submenu, 23x = specific
-        3) echo "23a fish+tools (sudo)  23b fish (no sudo)" ;;
-        3a) sh "$_dtk_dir/2-containers/fish-tools.sh" ;;
-        3b) sh "$_dtk_dir/2-containers/fish-shell.sh" ;;
+        0) sh "$_containers_sh" ;;
+        0a) sh "$_containers_sh" 1 ;; 0b) sh "$_containers_sh" 2 ;; 0c) sh "$_containers_sh" 3 ;;
+        0d) sh "$_containers_sh" 4 ;; 0e) sh "$_containers_sh" 5 ;; 0f) sh "$_containers_sh" 6 ;;
+        1) echo "21a hm-cli  21b hm-gui  21c hm-tty" ;;
+        1a) sh "$_containers_sh" 7 ;; 1b) sh "$_containers_sh" 8 ;; 1c) sh "$_containers_sh" 9 ;;
+        2) echo "22a fish+tools  22b fish  22c gcl-https  22d gcl-ssh" ;;
+        2a) sh "$_dtk_dir/2-containers/fish-tools.sh" ;;
+        2b) sh "$_dtk_dir/2-containers/fish-shell.sh" ;;
+        2c) do_gcl_https ;; 2d) do_gcl_ssh ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # dashboards
       case "$_minor$_rest" in
-        1) do_local_btop ;;
-        2) do_journal_dash ;; 2a) do_journal_dash transport ;; 2b) do_journal_dash priority ;; 2c) do_journal_dash unit ;;
-        3) do_connect ;; 4) do_batch_htop ;; 5) do_remote_journal ;;
+        0) do_local_btop ;;
+        1) do_journal_dash ;; 1a) do_journal_dash transport ;; 1b) do_journal_dash priority ;; 1c) do_journal_dash unit ;;
+        2) do_connect ;;
+        3) do_batch_htop ;; 4) do_remote_journal ;;
         *) do_connect "$_minor$_rest" ;;
       esac; return 0 ;;
-    4) # others — 2-digit = submenu, 3+ digit = submenu + item
-      case "$_minor" in
-        1) do_ssh ;; 2) do_git_clone ;; 3) do_install ;;
-        4) do_commands "$_rest" ;; 5) do_info ;; 6) do_engines "$_rest" ;;
-        7) sh "$_OTHERS_DIR/7-webhooks/webhooks.sh" $_rest ;;
+    4) # quick-cmds + ssh
+      case "$_minor$_rest" in
+        # 40 quick-cmds (mirrors Konsole Quick Commands folders)
+        0) do_qc_vm ;;
+        0a) do_qc_vm gcp-proxy ;; 0b) do_qc_vm oci-mail ;; 0c) do_qc_vm oci-analytics ;; 0d) do_qc_vm oci-apps ;; 0e) do_qc_vm gcp-t4 ;;
+        0f) do_qc_orchestrate ;; 0g) do_qc_local ;; 0h) do_qc_desktop ;;
+        0i) do_qc_vps cloud ;; 0j) do_qc_vps gh-actions ;; 0k) do_qc_vps gh-repos ;; 0l) do_qc_vps gh-registry ;;
+        # 41 ssh (mirrors Konsole SSH Manager folders)
+        1) do_qc_ssh ;;
+        1a) do_qc_ssh gcp-proxy ;; 1b) do_qc_ssh oci-mail ;; 1c) do_qc_ssh oci-analytics ;; 1d) do_qc_ssh oci-apps ;; 1e) do_qc_ssh gcp-t4 ;;
+        1f) ssh github.com ;;
         *) echo "Invalid shortcode: $_code" ;;
+      esac; return 0 ;;
+    5) # help/others
+      case "$_minor$_rest" in
+        0) do_help ;; 1) do_others ;; 1a) do_commands "$_rest" ;; 1b) sh "$_OTHERS_DIR/7-webhooks/webhooks.sh" $_rest ;;
+        *) do_help ;;
       esac; return 0 ;;
   esac
   return 1
@@ -848,10 +997,13 @@ set +x 2>/dev/null
 if [ $# -ge 1 ]; then
   case "$1" in
     # Shortcodes: 2+ digits (e.g. 16, 44, 448, 4415)
-    [1-4][0-9a-b]*) _resolve_shortcode "$1" ;;
+    [1-5][0-9a-f]*) _resolve_shortcode "$1" ;;
     aliases)        do_aliases ;;
     tools)          do_tools ;;
     tools-help)     do_tools_help ;;
+    gcl-https)      do_gcl_https ;;
+    gcl-ssh)        do_gcl_ssh ;;
+    git-clone)      do_gcl_https ;;
     btop)           do_local_btop ;;
     batch-htop|btop-dash) do_batch_htop ;;
     journal-dash)   do_journal_dash "${2:-}" ;;
@@ -865,7 +1017,7 @@ if [ $# -ge 1 ]; then
     connect)        shift; do_connect "$@" ;;
     others)         shift; do_others "$@" ;;
     ssh)            do_ssh ;;
-    git-clone)      do_git_clone "${2:-$HOME/git}" ;;
+    git-clone-old)  do_git_clone "${2:-$HOME/git}" ;;
     install)        do_install ;;
     commands)       do_commands "${2:-}" ;;
     info)           do_info ;;
@@ -886,13 +1038,13 @@ else
       1)  do_aliases; do_tools ;;
       2)  sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" ;;
       3)  do_connect ;;
-      4)  do_others ;;
+      4)  printf "\n  40 vm  41 orchestrate  42 desktop  43 vps/cloud\n\n" ;;
       5)  do_help ;;
       b|back) continue ;;
       r|refresh) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all && git -C "$_repo_dir" reset --hard origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD) && echo "Updated to $(git -C "$_repo_dir" log --oneline -1)" ;;
       q)  echo "Bye."; exit 0 ;;
       # Shortcodes: 2+ digits — route through resolver
-      [1-4][0-9a-b]*) _resolve_shortcode "$_input" ;;
+      [1-5][0-9a-f]*) _resolve_shortcode "$_input" ;;
       *)  echo "Invalid — enter 1-5, shortcode (e.g. 16, 448), b/q/r" ;;
     esac
   done
