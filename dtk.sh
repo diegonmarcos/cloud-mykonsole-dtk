@@ -123,9 +123,9 @@ show_menu_header() { set +x 2>/dev/null
 
   printf "  ${C}1) aliases/tools${R}  ${C}2) containers${R}    ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) help/others${R}\n"
   printf "  ${D}10 aliases${R}        ${D}20 deb${R}            ${D}local${R}              ${D}40 quick-cmds${R}    ${D}50 help${R}\n"
-  printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 btop${R}            ${D}  40a gcp-proxy${R}  ${D}51 others${R}\n"
-  printf "  ${D}  11a table${R}       ${D}  20b nix-gui${R}     ${D}31 journal-dash${R}    ${D}  40b oci-mail${R}   ${D}  51a commands${R}\n"
-  printf "  ${D}  11b help${R}        ${D}  20c nix-tty${R}     ${D}  31a transport${R}    ${D}  40c oci-analy${R}  ${D}  51b webhooks${R}\n"
+  printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 btop${R}            ${D}  40a gcp-proxy${R}  ${D}51 webhooks${R}\n"
+  printf "  ${D}  11a table${R}       ${D}  20b nix-gui${R}     ${D}31 journal-dash${R}    ${D}  40b oci-mail${R}   ${D}52 commands${R}\n"
+  printf "  ${D}  11b help${R}        ${D}  20c nix-tty${R}     ${D}  31a transport${R}    ${D}  40c oci-analy${R}\n"
   printf "  ${D}12 info${R}           ${D}  20d apt-cli${R}     ${D}  31b priority${R}     ${D}  40d oci-apps${R}\n"
   printf "  ${D}  12a info${R}        ${D}  20e apt-gui${R}     ${D}  31c unit${R}         ${D}  40e gcp-t4${R}\n"
   printf "  ${D}  12b engines${R}     ${D}  20f apt-tty${R}     ${D}  31d watch-n35${R}    ${D}  40f orchestrate${R}\n"
@@ -957,6 +957,88 @@ do_qc_vps() {
 # D) OTHERS — all logic in 5-help-others/ modules, these are thin delegators
 # ═══════════════════════════════════════════════════════════════════
 
+do_all_commands() { set +x 2>/dev/null
+  R='\033[0m'; C='\033[1;36m'; Y='\033[1;33m'; D='\033[0;90m'
+  printf "\n${C}── All DTK Commands ──${R}\n"
+  # Two-column: shortcode + description
+  _cmds="
+10|aliases (3-col)
+11|tools (5-col compact)
+11a|tools table (5-col)
+11b|tools help (1-col+desc)
+12|info
+12a|info (installed tools)
+12b|engines (build scripts)
+20|deb containers
+20a|deb nix-cli
+20b|deb nix-gui
+20c|deb nix-tty
+20d|deb apt-cli
+20e|deb apt-gui
+20f|deb apt-tty
+21|nixos containers
+21a|nixos hm-cli
+21b|nixos hm-gui
+21c|nixos hm-tty
+22|shell setup
+22a|fish+tools (sudo)
+22b|fish (no sudo)
+22c|git clone (https)
+22d|git clone (ssh)
+22e|konsole quick-cmds install
+30|local btop
+31|journal-dash (picker)
+31a|journal transport (4-pane)
+31b|journal priority (8-pane)
+31c|journal unit (4-pane)
+31d|journal watch -n35
+32|connect dashboard
+33|remote btop-dash (4-pane)
+34|remote journal-dash (4-pane)
+35|remote docker-stats (4-pane)
+40|VM quick-cmds (picker)
+40a|VM gcp-proxy
+40b|VM oci-mail
+40c|VM oci-analytics
+40d|VM oci-apps
+40e|VM gcp-t4
+40f|orchestrate (all VMs)
+40g|local commands
+40h|desktop commands
+40i|vps cloud (oci/gcloud)
+40j|vps gh-actions
+40k|vps gh-repos
+40l|vps gh-registry
+41|SSH (picker)
+41a|SSH gcp-proxy
+41b|SSH oci-mail
+41c|SSH oci-analytics
+41d|SSH oci-apps
+41e|SSH gcp-t4
+41f|SSH github
+50|help
+51|webhooks
+52|commands (this list)
+"
+  echo "$_cmds" | awk -F'|' '
+    BEGIN { C="\033[1;36m"; Y="\033[1;33m"; R="\033[0m"; n=0 }
+    /\|/ { keys[n]=$1; vals[n]=$2; n++ }
+    END {
+      for (i=0; i<n; i+=2) {
+        gsub(/^ +/,"",keys[i]); gsub(/^ +/,"",vals[i])
+        left = sprintf("  " Y "%-6s" R "%-28s", keys[i], vals[i])
+        if (i+1 < n) {
+          gsub(/^ +/,"",keys[i+1]); gsub(/^ +/,"",vals[i+1])
+          printf "  " Y "%-6s" R "%-28s" Y "%-6s" R "%s\n", keys[i], vals[i], keys[i+1], vals[i+1]
+        } else {
+          printf "  " Y "%-6s" R "%s\n", keys[i], vals[i]
+        }
+      }
+      printf "\n"
+    }
+  '
+}
+
 do_ssh()       { sh "$_OTHERS_DIR/ssh/ssh.sh" "$@"; }
 
 do_git_clone() { sh "$_OTHERS_DIR/git-clone/git-clone.sh" "$@"; }
@@ -1056,7 +1138,7 @@ _resolve_shortcode() {
       esac; return 0 ;;
     5) # help/others
       case "$_minor$_rest" in
-        0) do_help ;; 1) do_others ;; 1a) do_commands ;; 1b) sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;;
+        0) do_help ;; 1) sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;; 2) do_all_commands ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
