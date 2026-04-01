@@ -157,7 +157,8 @@ PROJECT="diegonmarcos-infra-prod"
 
 # Module paths — all logic lives in subfolders, dtk.sh is the orchestrator
 _DTK_DIR="$(cd "$(dirname "$0")" && pwd)"
-_OTHERS_DIR="$_DTK_DIR/4-others"
+_OTHERS_DIR="$_DTK_DIR/5-help-others"
+_ALIASES_DIR="$_DTK_DIR/1-aliases"
 
 # ═══════════════════════════════════════════════════════════════════
 # POSIX menu picker
@@ -620,7 +621,7 @@ do_gcl_ssh()   { _gcl_repos ssh; }
 # ═══════════════════════════════════════════════════════════════════
 
 do_connect() {
-  _connect_sh="$(cd "$(dirname "$0")" && pwd)/3-connect/connect.sh"
+  _connect_sh="$(cd "$(dirname "$0")" && pwd)/3-dashboards/connect.sh"
   if [ -f "$_connect_sh" ]; then
     sh "$_connect_sh" "$@"
   else
@@ -790,7 +791,7 @@ do_remote_journal() {
 # QUICK COMMANDS — delegates to cloud-container-orchestrator.sh
 # ═══════════════════════════════════════════════════════════════════
 
-_QC="bash ${HOME:-/root}/git/tools/4-others/6-engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
+_QC="bash ${HOME:-/root}/git/tools/1-aliases/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
 
 do_qc_vm() {
   _vm="${1:-}"
@@ -887,15 +888,15 @@ do_qc_vps() {
 # D) OTHERS — all logic in 4-others/ modules, these are thin delegators
 # ═══════════════════════════════════════════════════════════════════
 
-do_ssh()       { sh "$_OTHERS_DIR/1-ssh/ssh.sh" "$@"; }
+do_ssh()       { sh "$_OTHERS_DIR/ssh/ssh.sh" "$@"; }
 
-do_git_clone() { sh "$_OTHERS_DIR/2-git-clone/git-clone.sh" "$@"; }
+do_git_clone() { sh "$_OTHERS_DIR/git-clone/git-clone.sh" "$@"; }
 
-do_install()   { sh "$_OTHERS_DIR/3-install/install.sh" "$@"; }
-do_commands()  { sh "$_OTHERS_DIR/4-commands/commands.sh" "$@"; }
-do_info()      { sh "$_OTHERS_DIR/5-info/info.sh" "$@"; }
-do_engines()   { sh "$_OTHERS_DIR/6-engines/engines.sh" "$@"; }
-do_webhooks()  { sh "$_OTHERS_DIR/7-webhooks/webhooks.sh" "$@"; }
+do_install()   { sh "$_OTHERS_DIR/install/install.sh" "$@"; }
+do_commands()  { sh "$_OTHERS_DIR/commands/commands.sh" "$@"; }
+do_info()      { sh "$_ALIASES_DIR/info/info.sh" "$@"; }
+do_engines()   { sh "$_ALIASES_DIR/engines/engines.sh" "$@"; }
+do_webhooks()  { sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$@"; }
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -986,7 +987,7 @@ _resolve_shortcode() {
       esac; return 0 ;;
     5) # help/others
       case "$_minor$_rest" in
-        0) do_help ;; 1) do_others ;; 1a) do_commands "$_rest" ;; 1b) sh "$_OTHERS_DIR/7-webhooks/webhooks.sh" $_rest ;;
+        0) do_help ;; 1) do_others ;; 1a) do_commands "$_rest" ;; 1b) sh "$_OTHERS_DIR/webhooks/webhooks.sh" $_rest ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
