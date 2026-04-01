@@ -885,7 +885,7 @@ do_qc_vps() {
 # ═══════════════════════════════════════════════════════════════════
 # D) OTHERS — ssh, git-clone, install, commands, info
 # ═══════════════════════════════════════════════════════════════════
-# D) OTHERS — all logic in 4-others/ modules, these are thin delegators
+# D) OTHERS — all logic in 5-help-others/ modules, these are thin delegators
 # ═══════════════════════════════════════════════════════════════════
 
 do_ssh()       { sh "$_OTHERS_DIR/ssh/ssh.sh" "$@"; }

@@ -211,7 +211,7 @@ case "$cmd" in
     ;;
   all-script-push)
     ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
-    RAW_URL="https://raw.githubusercontent.com/diegonmarcos/tools/main/4-others/6-engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
+    RAW_URL="https://raw.githubusercontent.com/diegonmarcos/tools/main/1-aliases/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
     for v in $ALL_VMS; do
       printf '\033[1;36m══ %s ══\033[0m\n' "$v"
       ssh "$v" "mkdir -p ~/.local/share/konsole && curl -fsSL '$RAW_URL' -o ~/.local/share/konsole/cloud-container-orchestrator.sh && chmod +x ~/.local/share/konsole/cloud-container-orchestrator.sh && echo 'Done'" 2>&1 || printf '\033[0;31m  [FAILED]\033[0m\n'

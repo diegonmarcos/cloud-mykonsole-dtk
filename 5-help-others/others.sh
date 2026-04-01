@@ -1,5 +1,5 @@
 #!/bin/sh
-# Others module — submenu dispatcher for 4-others/*
+# Others module — submenu dispatcher for 5-help-others/*
 set -eu
 
 OTHERS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -27,12 +27,12 @@ fi
 shift 2>/dev/null || true
 
 case "$_sub" in
-  ssh)        sh "$OTHERS_DIR/1-ssh/ssh.sh" "$@" ;;
-  git-clone)  sh "$OTHERS_DIR/2-git-clone/git-clone.sh" "$@" ;;
-  install)    sh "$OTHERS_DIR/3-install/install.sh" "$@" ;;
-  commands)   sh "$OTHERS_DIR/4-commands/commands.sh" "$@" ;;
-  info)       sh "$OTHERS_DIR/5-info/info.sh" "$@" ;;
-  engines)    sh "$OTHERS_DIR/6-engines/engines.sh" "$@" ;;
-  webhooks)   sh "$OTHERS_DIR/7-webhooks/webhooks.sh" "$@" ;;
+  ssh)        sh "$OTHERS_DIR/ssh/ssh.sh" "$@" ;;
+  git-clone)  sh "$OTHERS_DIR/git-clone/git-clone.sh" "$@" ;;
+  install)    sh "$OTHERS_DIR/install/install.sh" "$@" ;;
+  commands)   sh "$OTHERS_DIR/commands/commands.sh" "$@" ;;
+  info)       sh "$(dirname "$OTHERS_DIR")/1-aliases/info/info.sh" "$@" ;;
+  engines)    sh "$(dirname "$OTHERS_DIR")/1-aliases/engines/engines.sh" "$@" ;;
+  webhooks)   sh "$OTHERS_DIR/webhooks/webhooks.sh" "$@" ;;
   *) echo "Unknown: $_sub"; exit 1 ;;
 esac
