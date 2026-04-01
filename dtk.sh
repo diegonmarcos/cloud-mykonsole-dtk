@@ -803,11 +803,19 @@ do_qc_vm() {
     _vm="$PICK"
   fi
   printf "\n${C}── VM: $_vm ──${R}\n"
-  pick "Command:" htop journalctl-f journal-docker journal-sshd journal-wg journal-kernel journal-errors systemctl-status systemctl-list docker-start docker-stop docker-ps docker-stats docker-exec dashboard
+  pick "Command:" \
+    htop journalctl-f \
+    journal-docker journal-sshd journal-wg journal-cinit journal-kernel journal-errors \
+    systemctl-status systemctl-list \
+    docker-start docker-stop docker-ps docker-stats docker-exec \
+    dashboard \
+    oci-start oci-stop oci-reset oci-serial \
+    gcloud-start gcloud-stop gcloud-reset gcloud-serial
   [ "$PICK" = "back" ] && return 0
   case "$PICK" in
-    dashboard) $_QC vm-dashboard "$_vm" ;;
-    *)         $_QC "vm-$PICK" "$_vm" ;;
+    dashboard)       $_QC vm-dashboard "$_vm" ;;
+    oci-*|gcloud-*)  $_QC "vm-$PICK" "$_vm" ;;
+    *)               $_QC "vm-$PICK" "$_vm" ;;
   esac
 }
 
@@ -826,7 +834,13 @@ do_qc_ssh() {
 do_qc_orchestrate() {
   R='\033[0m'; C='\033[1;36m'
   printf "\n${C}── Orchestration (all VMs) ──${R}\n"
-  pick "Command:" mode-ssh mode-dropbear mode-serial mode-status htop journalctl-f journal-docker journal-sshd journal-wg journal-kernel journal-errors systemctl-status systemctl-list docker-start docker-stop docker-ps docker-stats dashboard-stats dashboard-journal script-push
+  pick "Command:" \
+    mode-ssh mode-dropbear mode-serial mode-status \
+    htop journalctl-f \
+    journal-docker journal-sshd journal-wg journal-cinit journal-kernel journal-errors \
+    systemctl-status systemctl-list \
+    docker-start docker-stop docker-ps docker-stats \
+    dashboard-stats dashboard-journal script-push
   [ "$PICK" = "back" ] && return 0
   case "$PICK" in
     mode-*) $_QC "$PICK" ;;
@@ -837,7 +851,11 @@ do_qc_orchestrate() {
 do_qc_local() {
   R='\033[0m'; C='\033[1;36m'
   printf "\n${C}── Local ──${R}\n"
-  pick "Command:" htop journalctl-f journal-docker journal-sshd journal-wg journal-kernel journal-errors systemctl-status systemctl-list docker-start docker-stop docker-ps docker-stats docker-exec
+  pick "Command:" \
+    htop journalctl-f \
+    journal-docker journal-sshd journal-wg journal-cinit journal-kernel journal-errors \
+    systemctl-status systemctl-list \
+    docker-start docker-stop docker-ps docker-stats docker-exec
   [ "$PICK" = "back" ] && return 0
   $_QC "local-$PICK"
 }
@@ -845,12 +863,12 @@ do_qc_local() {
 do_qc_desktop() {
   R='\033[0m'; C='\033[1;36m'
   printf "\n${C}── Desktop ──${R}\n"
-  pick "Command:" htop hm-switch nixos-switch git-status-all wg-status docker-ps-local free-mem disk-usage
+  pick "Command:" \
+    tui dtk dtk-install dtk-docker dtk-git-clone dtk-info dtk-commands dtk-ssh \
+    desktop-htop hm-switch nixos-switch \
+    git-status-all wg-status docker-ps-local free-mem disk-usage konsole-script-push
   [ "$PICK" = "back" ] && return 0
-  case "$PICK" in
-    htop) $_QC desktop-htop ;;
-    *)    $_QC "$PICK" ;;
-  esac
+  $_QC "$PICK"
 }
 
 do_qc_vps() {
