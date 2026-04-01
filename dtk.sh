@@ -131,14 +131,15 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}  12b engines${R}     ${D}  20f apt-tty${R}     ${D}32 connect${R}         ${D}  40f orchestrate${R}\n"
   printf "                    ${D}21 nixos${R}          ${D}remote${R}             ${D}  40g local${R}\n"
   printf "                    ${D}  21a hm-cli${R}      ${D}33 btop-dash${R}      ${D}  40h desktop${R}\n"
-  printf "                    ${D}  21b hm-gui${R}      ${D}34 journal-dash${R}   ${D}  40i vps-cloud${R}\n"
-  printf "                    ${D}  21c hm-tty${R}                        ${D}  40j gh-actions${R}\n"
-  printf "                    ${D}22 shell${R}                             ${D}  40k gh-repos${R}\n"
-  printf "                    ${D}  22a fish+tools${R}                     ${D}  40l gh-registry${R}\n"
-  printf "                    ${D}  22b fish${R}                           ${D}41 ssh${R}\n"
-  printf "                    ${D}  22c gcl-https${R}                      ${D}  41a gcp-proxy${R}\n"
-  printf "                    ${D}  22d gcl-ssh${R}                        ${D}  41b oci-mail${R}\n"
-  printf "                    ${D}  22e konsole-cfg${R}                    ${D}  41c oci-analy${R}\n"
+  printf "                    ${D}  21b hm-gui${R}      ${D}34 journal-dash${R}\n"
+  printf "                    ${D}  21c hm-tty${R}      ${D}35 docker-stats${R}   ${D}  40i vps-cloud${R}\n"
+  printf "                    ${D}22 shell${R}                             ${D}  40j gh-actions${R}\n"
+  printf "                    ${D}  22a fish+tools${R}                     ${D}  40k gh-repos${R}\n"
+  printf "                    ${D}  22b fish${R}                           ${D}  40l gh-registry${R}\n"
+  printf "                    ${D}  22c gcl-https${R}                      ${D}41 ssh${R}\n"
+  printf "                    ${D}  22d gcl-ssh${R}                        ${D}  41a gcp-proxy${R}\n"
+  printf "                    ${D}  22e konsole-cfg${R}                    ${D}  41b oci-mail${R}\n"
+  printf "                                                              ${D}  41c oci-analy${R}\n"
   printf "                                                              ${D}  41d oci-apps${R}\n"
   printf "                                                              ${D}  41e gcp-t4${R}\n"
   printf "                                                              ${D}  41f github${R}\n"
@@ -783,6 +784,30 @@ _journal_dash_unit() {
   tmux attach-session -t "$_s"
 }
 
+do_docker_stats_dash() {
+  printf "\n\033[1;36m── remote docker-stats ──\033[0m\n"
+  printf "  4-pane: docker stats on all VMs\n\n"
+  _s="remote-docker-stats"
+  tmux kill-session -t "$_s" 2>/dev/null || true
+  _first=true
+  for _vm in gcp-proxy oci-mail oci-analytics oci-apps; do
+    _cmd="ssh $_vm -t 'docker stats 2>/dev/null || echo no docker'; read"
+    if $_first; then
+      tmux new-session -d -s "$_s" "$_cmd"
+      _first=false
+    else
+      tmux split-window -t "$_s" "$_cmd"
+    fi
+  done
+  tmux select-layout -t "$_s" tiled
+  _tmux_enable_titles "$_s"
+  _i=1; for _vm in gcp-proxy oci-mail oci-analytics oci-apps; do
+    tmux select-pane -t "$_s" -t $_i -T "$_vm / docker stats"
+    _i=$((_i + 1))
+  done
+  tmux attach-session -t "$_s"
+}
+
 do_remote_journal() {
   printf "\n\033[1;36m── remote journal-dash ──\033[0m\n"
   printf "  4-pane: journal -f on all VMs\n\n"
@@ -1007,7 +1032,7 @@ _resolve_shortcode() {
         0) do_local_btop ;;
         1) do_journal_dash ;; 1a) do_journal_dash transport ;; 1b) do_journal_dash priority ;; 1c) do_journal_dash unit ;;
         2) do_connect ;;
-        3) do_batch_htop ;; 4) do_remote_journal ;;
+        3) do_batch_htop ;; 4) do_remote_journal ;; 5) do_docker_stats_dash ;;
         *) do_connect "$_minor$_rest" ;;
       esac; return 0 ;;
     4) # quick-cmds + ssh
