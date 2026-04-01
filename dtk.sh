@@ -1138,7 +1138,7 @@ _resolve_shortcode() {
       esac; return 0 ;;
     5) # help/others
       case "$_minor$_rest" in
-        0) do_help ;; 1) sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;; 2) do_all_commands ;;
+        0) do_help ;; 1) sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;; 2) do_commands ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
