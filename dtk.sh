@@ -138,7 +138,7 @@ show_menu_header() { set +x 2>/dev/null
   printf "                    ${D}  22b fish${R}                           ${D}41 ssh${R}\n"
   printf "                    ${D}  22c gcl-https${R}                      ${D}  41a gcp-proxy${R}\n"
   printf "                    ${D}  22d gcl-ssh${R}                        ${D}  41b oci-mail${R}\n"
-  printf "                                                              ${D}  41c oci-analy${R}\n"
+  printf "                    ${D}  22e konsole-cfg${R}                    ${D}  41c oci-analy${R}\n"
   printf "                                                              ${D}  41d oci-apps${R}\n"
   printf "                                                              ${D}  41e gcp-t4${R}\n"
   printf "                                                              ${D}  41f github${R}\n"
@@ -616,6 +616,26 @@ _gcl_repos() {
 do_gcl_https() { _gcl_repos https; }
 do_gcl_ssh()   { _gcl_repos ssh; }
 
+do_konsole_cfg() {
+  _DTK="$(cd "$(dirname "$0")" && pwd)"
+  _src_qc="$_DTK/4-quick-cmds/konsolequickcommandsconfig"
+  _src_ssh="$_DTK/4-quick-cmds/konsolesshconfig"
+  _dst_qc="${HOME:-/root}/.config/konsolequickcommandsconfig"
+  _dst_ssh="${HOME:-/root}/.config/konsolesshconfig"
+
+  printf "\n\033[1;36m── Konsole Quick Commands + SSH Config ──\033[0m\n"
+
+  if [ ! -f "$_src_qc" ] || [ ! -f "$_src_ssh" ]; then
+    echo "  ERROR: asset files not found in $_DTK/4-quick-cmds/"
+    echo "  Run: git clone https://github.com/diegonmarcos/tools.git ~/git/tools"
+    return 1
+  fi
+
+  cp "$_src_qc" "$_dst_qc" && printf "  \033[1;32minstalled\033[0m %s\n" "$_dst_qc"
+  cp "$_src_ssh" "$_dst_ssh" && printf "  \033[1;32minstalled\033[0m %s\n" "$_dst_ssh"
+  printf "\n  Restart Konsole to pick up changes.\n\n"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # C) CONNECT — unified dashboard (git/mounts/sync/servers)
 # ═══════════════════════════════════════════════════════════════════
@@ -979,7 +999,7 @@ _resolve_shortcode() {
         2) echo "22a fish+tools  22b fish  22c gcl-https  22d gcl-ssh" ;;
         2a) sh "$_dtk_dir/2-containers/fish-tools.sh" ;;
         2b) sh "$_dtk_dir/2-containers/fish-shell.sh" ;;
-        2c) do_gcl_https ;; 2d) do_gcl_ssh ;;
+        2c) do_gcl_https ;; 2d) do_gcl_ssh ;; 2e) do_konsole_cfg ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # dashboards
