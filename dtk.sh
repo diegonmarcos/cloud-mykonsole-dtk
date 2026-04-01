@@ -123,22 +123,26 @@ show_menu_header() { set +x 2>/dev/null
 
   printf "  ${C}1) aliases/tools${R}  ${C}2) containers${R}    ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) help/others${R}\n"
   printf "  ${D}10 aliases${R}        ${D}20 deb${R}            ${D}local${R}              ${D}40 quick-cmds${R}    ${D}50 help${R}\n"
-  printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 btop${R}            ${D}  40a gcp-proxy${R}  ${D}51 webhooks${R}\n"
-  printf "  ${D}  11a table${R}       ${D}  20b nix-gui${R}     ${D}31 journal-dash${R}    ${D}  40b oci-mail${R}   ${D}52 commands${R}\n"
-  printf "  ${D}  11b help${R}        ${D}  20c nix-tty${R}     ${D}  31a transport${R}    ${D}  40c oci-analy${R}\n"
-  printf "  ${D}12 info${R}           ${D}  20d apt-cli${R}     ${D}  31b priority${R}     ${D}  40d oci-apps${R}\n"
-  printf "  ${D}  12a info${R}        ${D}  20e apt-gui${R}     ${D}  31c unit${R}         ${D}  40e gcp-t4${R}\n"
-  printf "  ${D}  12b engines${R}     ${D}  20f apt-tty${R}     ${D}  31d watch-n35${R}    ${D}  40f orchestrate${R}\n"
-  printf "                    ${D}21 nixos${R}          ${D}32 connect${R}         ${D}  40g local${R}\n"
-  printf "                    ${D}  21a hm-cli${R}      ${D}remote${R}             ${D}  40h desktop${R}\n"
-  printf "                    ${D}  21b hm-gui${R}      ${D}33 btop-dash${R}\n"
-  printf "                    ${D}  21c hm-tty${R}      ${D}34 journal-dash${R}\n"
-  printf "                    ${D}22 shell${R}           ${D}35 docker-stats${R}   ${D}  40i vps-cloud${R}\n"
-  printf "                    ${D}  22a fish+tools${R}                     ${D}  40j gh-actions${R}\n"
-  printf "                    ${D}  22b fish${R}                           ${D}  40k gh-repos${R}\n"
-  printf "                    ${D}  22c gcl-https${R}                      ${D}  40l gh-registry${R}\n"
-  printf "                    ${D}  22d gcl-ssh${R}                        ${D}41 ssh${R}\n"
-  printf "                    ${D}  22e konsole-cfg${R}                    ${D}  41a gcp-proxy${R}\n"
+  printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 monitors${R}        ${D}  40a gcp-proxy${R}  ${D}51 webhooks${R}\n"
+  printf "  ${D}  11a table${R}       ${D}  20b nix-gui${R}     ${D}  30a btop${R}          ${D}  40b oci-mail${R}   ${D}52 commands${R}\n"
+  printf "  ${D}  11b help${R}        ${D}  20c nix-tty${R}     ${D}  30b iotop${R}         ${D}  40c oci-analy${R}\n"
+  printf "  ${D}12 info${R}           ${D}  20d apt-cli${R}     ${D}31 sysstat${R}          ${D}  40d oci-apps${R}\n"
+  printf "  ${D}  12a info${R}        ${D}  20e apt-gui${R}     ${D}  31a iostat${R}        ${D}  40e gcp-t4${R}\n"
+  printf "  ${D}  12b engines${R}     ${D}  20f apt-tty${R}     ${D}  31b mpstat${R}        ${D}  40f orchestrate${R}\n"
+  printf "                    ${D}21 nixos${R}          ${D}  31c pidstat${R}       ${D}  40g local${R}\n"
+  printf "                    ${D}  21a hm-cli${R}      ${D}  31d sar${R}           ${D}  40h desktop${R}\n"
+  printf "                    ${D}  21b hm-gui${R}      ${D}32 journal-dash${R}\n"
+  printf "                    ${D}  21c hm-tty${R}      ${D}  32a transport${R}\n"
+  printf "                    ${D}22 shell${R}           ${D}  32b priority${R}     ${D}  40i vps-cloud${R}\n"
+  printf "                    ${D}  22a fish+tools${R}   ${D}  32c unit${R}         ${D}  40j gh-actions${R}\n"
+  printf "                    ${D}  22b fish${R}          ${D}  32d watch-n35${R}    ${D}  40k gh-repos${R}\n"
+  printf "                    ${D}  22c gcl-https${R}    ${D}33 connect${R}         ${D}  40l gh-registry${R}\n"
+  printf "                    ${D}  22d gcl-ssh${R}      ${D}remote${R}\n"
+  printf "                    ${D}  22e konsole-cfg${R}  ${D}34 btop-dash${R}\n"
+  printf "                                        ${D}35 journal-dash${R}\n"
+  printf "                                        ${D}36 docker-stats${R}\n"
+  printf "                                                              ${D}41 ssh${R}\n"
+  printf "                                                              ${D}  41a gcp-proxy${R}\n"
   printf "                                                              ${D}  41b oci-mail${R}\n"
   printf "                                                              ${D}  41c oci-analy${R}\n"
   printf "                                                              ${D}  41d oci-apps${R}\n"
@@ -653,6 +657,28 @@ do_connect() {
   fi
 }
 
+do_local_iotop() {
+  printf "\n\033[1;36m── iotop ──\033[0m\n\n"
+  sudo iotop 2>/dev/null || sudo iotop-c 2>/dev/null || { echo "iotop not found"; return 1; }
+}
+
+do_sysstat() {
+  _cmd="${1:-}"
+  if [ -z "$_cmd" ]; then
+    pick "sysstat:" iostat mpstat pidstat sar
+    [ "$PICK" = "back" ] && return 0
+    _cmd="$PICK"
+  fi
+  printf "\n\033[1;36m── %s ──\033[0m\n\n" "$_cmd"
+  case "$_cmd" in
+    iostat)  iostat -xz 2 5 2>/dev/null || echo "iostat not found (install sysstat)" ;;
+    mpstat)  mpstat -P ALL 2 5 2>/dev/null || echo "mpstat not found (install sysstat)" ;;
+    pidstat) pidstat -u -d 2 5 2>/dev/null || echo "pidstat not found (install sysstat)" ;;
+    sar)     sar -u -r -d 1 10 2>/dev/null || echo "sar not found (install sysstat)" ;;
+    *)       echo "Unknown: $_cmd" ;;
+  esac
+}
+
 do_local_btop() {
   printf "\n\033[1;36m── local btop ──\033[0m\n\n"
   _s="local-btop"
@@ -1117,10 +1143,14 @@ _resolve_shortcode() {
       esac; return 0 ;;
     3) # dashboards
       case "$_minor$_rest" in
-        0) do_local_btop ;;
-        1) do_journal_dash ;; 1a) do_journal_dash transport ;; 1b) do_journal_dash priority ;; 1c) do_journal_dash unit ;; 1d) do_journal_watch_n35 ;;
-        2) do_connect ;;
-        3) do_batch_htop ;; 4) do_remote_journal ;; 5) do_docker_stats_dash ;;
+        # local monitors
+        0) do_local_btop ;; 0a) do_local_btop ;; 0b) do_local_iotop ;;
+        # sysstat
+        1) do_sysstat ;; 1a) do_sysstat iostat ;; 1b) do_sysstat mpstat ;; 1c) do_sysstat pidstat ;; 1d) do_sysstat sar ;;
+        # journal
+        2) do_journal_dash ;; 2a) do_journal_dash transport ;; 2b) do_journal_dash priority ;; 2c) do_journal_dash unit ;; 2d) do_journal_watch_n35 ;;
+        # connect + remote
+        3) do_connect ;; 4) do_batch_htop ;; 5) do_remote_journal ;; 6) do_docker_stats_dash ;;
         *) do_connect "$_minor$_rest" ;;
       esac; return 0 ;;
     4) # quick-cmds + ssh
