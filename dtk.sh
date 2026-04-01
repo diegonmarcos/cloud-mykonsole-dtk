@@ -121,21 +121,21 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  printf "  ${C}1) aliases${R}        ${C}2) containers${R}    ${C}3) connect${R}       ${C}4) others${R}        ${C}5) help${R}\n"
-  printf "  ${D}11 modern-cli${R}    ${D}21 deb${R}            ${D}31 git${R}            ${D}41 ssh${R}            ${D}usage${R}\n"
-  printf "  ${D}12 navigation${R}    ${D}  21a nix-cli${R}     ${D}32 mounts${R}         ${D}42 git-clone${R}      ${D}commands${R}\n"
-  printf "  ${D}13 safety${R}        ${D}  21b nix-gui${R}     ${D}33 sync${R}           ${D}43 install${R}        \n"
-  printf "  ${D}14 python${R}        ${D}  21c nix-tty${R}     ${D}34 servers${R}        ${D}44 commands${R}       \n"
-  printf "  ${D}15 system${R}        ${D}  21d apt-cli${R}                      ${D}45 info${R}           \n"
-  printf "  ${D}16 git${R}           ${D}  21e apt-gui${R}                      ${D}46 engines${R}        \n"
-  printf "  ${D}17 docker${R}        ${D}  21f apt-tty${R}                      ${D}47 webhooks${R}       \n"
-  printf "  ${D}18 session${R}       ${D}22 nixos${R}                                               \n"
-  printf "  ${D}19 web-terminal${R}  ${D}  22a hm-cli${R}                                           \n"
-  printf "  ${D}1a misc${R}          ${D}  22b hm-gui${R}                                           \n"
-  printf "  ${D}1b functions${R}     ${D}  22c hm-tty${R}                                           \n"
-  printf "  ${D}                 23 shell${R}                                               \n"
-  printf "  ${D}                   23a fish+tools${R}  ${D}(sudo, installs all CLI tools)${R}    \n"
-  printf "  ${D}                   23b fish${R}        ${D}(no sudo, config only)${R}            \n"
+  printf "  ${C}1) aliases/tools${R}  ${C}2) containers${R}    ${C}3) dashboards${R}    ${C}4) others${R}        ${C}5) help${R}\n"
+  printf "  ${D}11 aliases${R}        ${D}21 deb${R}            ${D}local${R}              ${D}41 ssh${R}            ${D}usage${R}\n"
+  printf "  ${D}12 tools${R}          ${D}  21a nix-cli${R}     ${D}31 btop${R}            ${D}42 git-clone${R}      ${D}commands${R}\n"
+  printf "  ${D}  12a table${R}       ${D}  21b nix-gui${R}     ${D}32 journal-dash${R}    ${D}43 install${R}\n"
+  printf "  ${D}  12b help${R}        ${D}  21c nix-tty${R}     ${D}  32a transport${R}    ${D}44 commands${R}\n"
+  printf "                    ${D}  21d apt-cli${R}     ${D}  32b priority${R}     ${D}45 info${R}\n"
+  printf "                    ${D}  21e apt-gui${R}     ${D}  32c unit${R}         ${D}46 engines${R}\n"
+  printf "                    ${D}  21f apt-tty${R}     ${D}remote${R}             ${D}47 webhooks${R}\n"
+  printf "                    ${D}22 nixos${R}          ${D}33 connect${R}\n"
+  printf "                    ${D}  22a hm-cli${R}      ${D}34 btop-dash${R}\n"
+  printf "                    ${D}  22b hm-gui${R}      ${D}35 journal-dash${R}\n"
+  printf "                    ${D}  22c hm-tty${R}\n"
+  printf "                    ${D}23 shell${R}\n"
+  printf "                    ${D}  23a fish+tools${R}\n"
+  printf "                    ${D}  23b fish${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  11-47 shortcode${R}\n"
   printf "\n"
@@ -184,54 +184,101 @@ pick() { set +x 2>/dev/null
 # ═══════════════════════════════════════════════════════════════════
 
 do_aliases() { set +x 2>/dev/null
-  R='\033[0m'; C='\033[1;36m'; Y='\033[1;33m'; D='\033[0;90m'
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   _ALIASES_JSON="$_SCRIPT_DIR/1-aliases/aliases.json"
 
-  _sub="${1:-}"
-  if [ -z "$_sub" ]; then
-    while true; do
-      show_menu_header
-      pick "Alias category:" modern-cli navigation safety python system git docker session web-terminal misc functions all
-      [ "$PICK" = "back" ] && return 0
-      _sub="$PICK"
-      break
-    done
-  fi
+  # 3-column layout: key+val | key+val | key+val
+  jq -r '
+    to_entries[] |
+    .key as $cat |
+    "H:" + $cat,
+    (.value | paths(scalars) as $p | (.key = ($p | last) | .val = getpath($p)) |
+      "\(.key)|\(.val)")
+  ' "$_ALIASES_JSON" 2>/dev/null | awk -F'|' '
+    BEGIN {
+      C = "\033[1;36m"; Y = "\033[1;33m"; R = "\033[0m"
+      n = 0; COLS = 3; KW = 12; VW = 16
+    }
+    /^H:/ { sub(/^H:/, ""); lines[n] = "H|" $0; n++; next }
+    { if ($1 != "") { lines[n] = $1 "|" $2; n++ } }
+    END {
+      i = 0
+      while (i < n) {
+        if (substr(lines[i], 1, 2) == "H|") {
+          printf "  " C "── %s ──" R "\n", substr(lines[i], 3)
+          i++; continue
+        }
+        col = 0
+        while (col < COLS && i < n && substr(lines[i], 1, 2) != "H|") {
+          split(lines[i], a, "|"); k = a[1]; v = a[2]
+          if (k == "") { i++; continue }
+          if (length(v) > VW) v = substr(v, 1, VW-1) "…"
+          printf "  " Y "%-*s" R "%-*s", KW, k, VW, v
+          col++; i++
+        }
+        if (col > 0) printf "\n"
+      }
+      printf "\n"
+    }
+  '
+}
 
-  # Render a category from aliases.json
-  _render_category() {
-    _cat="$1"
-    _title="$2"
-    printf "\n${C}── %s ──${R}\n" "$_title"
-    # Handle nested objects (git has abbrs+functions, functions has search)
-    jq -r ".[\"$_cat\"] | paths(scalars) as \$p | \"\(\$p | join(\".\")) \(getpath(\$p))\"" "$_ALIASES_JSON" 2>/dev/null | while read -r _path _rest; do
-      _key="${_path##*.}"
-      _val="$_rest"
-      # Skip sub-object names, only print leaf values
-      printf "  ${Y}%-14s${R} %s\n" "$_key" "$_val"
-    done
-  }
+do_tools() { set +x 2>/dev/null
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _TOOLS_JSON="$_SCRIPT_DIR/1-aliases/tools.json"
 
-  case "$_sub" in
-    modern-cli)    _render_category "modern-cli" "Modern CLI Replacements" ;;
-    navigation)    _render_category "navigation" "Navigation" ;;
-    safety)        _render_category "safety" "Safety Aliases" ;;
-    python)        _render_category "python" "Python" ;;
-    system)        _render_category "system" "System" ;;
-    git)           _render_category "git" "Git" ;;
-    docker)        _render_category "docker" "Docker Abbreviations" ;;
-    session)       _render_category "session" "Session (Plasma 6)" ;;
-    web-terminal)  _render_category "web-terminal" "Web Terminal" ;;
-    misc)          _render_category "misc" "Misc" ;;
-    functions)     _render_category "functions" "Functions" ;;
-    all)
-      for _c in modern-cli navigation safety python system git docker session web-terminal misc functions; do
-        _render_category "$_c" "$_c"
-      done
-      ;;
-  esac
-  printf "\n"
+  # 5-column layout: tool names (keys only) by category
+  jq -r '
+    to_entries[] |
+    "H:" + .key,
+    (.value | keys_unsorted[])
+  ' "$_TOOLS_JSON" 2>/dev/null | awk '
+    BEGIN {
+      C = "\033[1;36m"; G = "\033[1;32m"; R = "\033[0m"; D = "\033[0;90m"
+      n = 0; COLS = 5; W = 16
+    }
+    /^H:/ { sub(/^H:/, ""); lines[n] = "H|" $0; n++; next }
+    { if ($0 != "") { lines[n] = $0; n++ } }
+    END {
+      i = 0
+      while (i < n) {
+        if (substr(lines[i], 1, 2) == "H|") {
+          printf "  " C "── %s ──" R "\n", substr(lines[i], 3)
+          i++; continue
+        }
+        col = 0
+        while (col < COLS && i < n && substr(lines[i], 1, 2) != "H|") {
+          t = lines[i]
+          if (length(t) > W-2) t = substr(t, 1, W-3) "…"
+          printf "  " G "%-*s" R, W-2, t
+          col++; i++
+        }
+        if (col > 0) printf "\n"
+      }
+      printf "\n"
+    }
+  '
+}
+
+do_tools_help() { set +x 2>/dev/null
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _TOOLS_JSON="$_SCRIPT_DIR/1-aliases/tools.json"
+
+  # 1-column: tool name + description, grouped by category
+  jq -r '
+    to_entries[] |
+    "H:" + .key,
+    (.value | to_entries[] | "\(.key)|\(.value)")
+  ' "$_TOOLS_JSON" 2>/dev/null | awk -F'|' '
+    BEGIN {
+      C = "\033[1;36m"; G = "\033[1;32m"; D = "\033[0;90m"; R = "\033[0m"
+    }
+    /^H:/ { sub(/^H:/, ""); printf "  " C "── %s ──" R "\n", $0; next }
+    {
+      if ($1 != "") printf "  " G "%-18s" R D "%s" R "\n", $1, $2
+    }
+    END { printf "\n" }
+  '
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -541,6 +588,162 @@ do_connect() {
   fi
 }
 
+do_local_btop() {
+  printf "\n\033[1;36m── local btop ──\033[0m\n\n"
+  _s="local-btop"
+  tmux kill-session -t "$_s" 2>/dev/null || true
+  tmux new-session -d -s "$_s" "btop 2>/dev/null || htop 2>/dev/null || top; read"
+  _tmux_enable_titles "$_s"
+  tmux select-pane -t "$_s" -t 1 -T "local / btop"
+  tmux attach-session -t "$_s"
+}
+
+do_batch_htop() {
+  printf "\n\033[1;36m── remote btop-dash ──\033[0m\n"
+  printf "  4-pane: htop on all VMs\n\n"
+  _s="remote-btop"
+  tmux kill-session -t "$_s" 2>/dev/null || true
+  _first=true
+  for _vm in gcp-proxy oci-mail oci-analytics oci-apps; do
+    if $_first; then
+      tmux new-session -d -s "$_s" "ssh $_vm -t 'btop 2>/dev/null || htop 2>/dev/null || top'; read"
+      _first=false
+    else
+      tmux split-window -t "$_s" "ssh $_vm -t 'btop 2>/dev/null || htop 2>/dev/null || top'; read"
+    fi
+  done
+  tmux select-layout -t "$_s" tiled
+  _tmux_enable_titles "$_s"
+  _i=1; for _vm in gcp-proxy oci-mail oci-analytics oci-apps; do
+    tmux select-pane -t "$_s" -t $_i -T "$_vm / ssh $_vm -t btop"
+    _i=$((_i + 1))
+  done
+  tmux attach-session -t "$_s"
+}
+
+do_journal_dash() {
+  _sub="${1:-}"
+  R='\033[0m'; C='\033[1;36m'; D='\033[0;90m'
+
+  if [ -z "$_sub" ]; then
+    show_menu_header
+    pick "Journal dashboard:" transport priority unit
+    [ "$PICK" = "back" ] && return 0
+    _sub="$PICK"
+  fi
+
+  case "$_sub" in
+    transport|t) _journal_dash_transport ;;
+    priority|p)  _journal_dash_priority ;;
+    unit|u)      _journal_dash_unit ;;
+    *)           echo "Unknown: $_sub (use: transport, priority, unit)" ;;
+  esac
+}
+
+# Helper: enable pane titles for a session
+_tmux_enable_titles() {
+  tmux set-option -t "$1" pane-border-status top
+  tmux set-option -t "$1" pane-border-format " #{pane_title} "
+}
+
+_journal_dash_transport() {
+  printf "\n\033[1;36m── journal-dash-transport ──\033[0m\n"
+  printf "  2x2: kernel | syslog | stdout | journal\n\n"
+  _s="jdash-transport"
+  tmux kill-session -t "$_s" 2>/dev/null || true
+  tmux new-session -d -s "$_s" \
+    "journalctl _TRANSPORT=kernel -f --no-pager -o short-iso; read"
+  tmux split-window -t "$_s" \
+    "journalctl _TRANSPORT=syslog -f --no-pager -o short-iso; read"
+  tmux split-window -t "$_s" \
+    "journalctl _TRANSPORT=stdout -f --no-pager -o short-iso; read"
+  tmux split-window -t "$_s" \
+    "journalctl _TRANSPORT=journal -f --no-pager -o short-iso; read"
+  tmux select-layout -t "$_s" tiled
+  _tmux_enable_titles "$_s"
+  _i=1; for _t in "kernel / _TRANSPORT=kernel" "syslog / _TRANSPORT=syslog" "stdout / _TRANSPORT=stdout" "journal / _TRANSPORT=journal"; do
+    tmux select-pane -t "$_s" -t $_i -T "$_t"; _i=$((_i + 1))
+  done
+  tmux attach-session -t "$_s"
+}
+
+_journal_dash_priority() {
+  printf "\n\033[1;36m── journal-dash-priority ──\033[0m\n"
+  printf "  8 panes: emerg(0) | alert(1) | crit(2) | err(3) | warn(4) | notice(5) | info(6) | debug(7)\n\n"
+  _s="jdash-priority"
+  tmux kill-session -t "$_s" 2>/dev/null || true
+  _names="emerg alert crit err warning notice info debug"
+  _i=0; _first=true
+  for _name in $_names; do
+    _cmd="journalctl -p $_i..$_i -f --no-pager -o short-iso; read"
+    if $_first; then
+      tmux new-session -d -s "$_s" "$_cmd"
+      _first=false
+    else
+      tmux split-window -t "$_s" "$_cmd"
+      tmux select-layout -t "$_s" tiled
+    fi
+    _i=$((_i + 1))
+  done
+  tmux select-layout -t "$_s" tiled
+  _tmux_enable_titles "$_s"
+  _i=1; _p=0
+  for _name in $_names; do
+    tmux select-pane -t "$_s" -t $_i -T "$_name / -p $_p..$_p"
+    _i=$((_i + 1)); _p=$((_p + 1))
+  done
+  tmux attach-session -t "$_s"
+}
+
+_journal_dash_unit() {
+  printf "\n\033[1;36m── journal-dash-unit ──\033[0m\n"
+  printf "  2x2: kernel+network+ssh+storage | system | docker | others\n\n"
+  _s="jdash-unit"
+  tmux kill-session -t "$_s" 2>/dev/null || true
+  tmux new-session -d -s "$_s" \
+    "journalctl -k -u NetworkManager -u wpa_supplicant -u sshd -u ssh -u rescue-ssh -u udisks2 -u fstrim -f --no-pager -o short-iso; read"
+  tmux split-window -t "$_s" \
+    "journalctl -u nix-daemon -u nix-gc -u earlyoom -u disk-watchdog -u systemd-logind -u systemd-timesyncd -u thermald -u polkit -f --no-pager -o short-iso; read"
+  tmux split-window -t "$_s" \
+    "journalctl -u docker -f --no-pager -o short-iso; read"
+  tmux split-window -t "$_s" \
+    "journalctl -f --no-pager -o short-iso _TRANSPORT=stdout; read"
+  tmux select-layout -t "$_s" tiled
+  _tmux_enable_titles "$_s"
+  _i=1; for _t in \
+    "kernel+net+ssh+storage / -k -u NetworkManager -u sshd ..." \
+    "system / -u nix-daemon -u earlyoom -u systemd-logind ..." \
+    "docker / -u docker" \
+    "others / _TRANSPORT=stdout"; do
+    tmux select-pane -t "$_s" -t $_i -T "$_t"; _i=$((_i + 1))
+  done
+  tmux attach-session -t "$_s"
+}
+
+do_remote_journal() {
+  printf "\n\033[1;36m── remote journal-dash ──\033[0m\n"
+  printf "  4-pane: journal -f on all VMs\n\n"
+  _s="remote-journal"
+  tmux kill-session -t "$_s" 2>/dev/null || true
+  _first=true
+  for _vm in gcp-proxy oci-mail oci-analytics oci-apps; do
+    _cmd="ssh $_vm -t 'journalctl -f --no-pager -o short-iso 2>/dev/null || tail -f /var/log/syslog 2>/dev/null || echo no journal'; read"
+    if $_first; then
+      tmux new-session -d -s "$_s" "$_cmd"
+      _first=false
+    else
+      tmux split-window -t "$_s" "$_cmd"
+    fi
+  done
+  tmux select-layout -t "$_s" tiled
+  _tmux_enable_titles "$_s"
+  _i=1; for _vm in gcp-proxy oci-mail oci-analytics oci-apps; do
+    tmux select-pane -t "$_s" -t $_i -T "$_vm / ssh $_vm journalctl -f"
+    _i=$((_i + 1))
+  done
+  tmux attach-session -t "$_s"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # D) OTHERS — ssh, git-clone, install, commands, info
 # ═══════════════════════════════════════════════════════════════════
@@ -571,13 +774,18 @@ do_help() { set +x 2>/dev/null
   printf "${Y}Main Menu:${R}\n"
   printf "  ${W}a) aliases${R}      Toolchain list — all aliases/functions by category\n"
   printf "  ${W}b) containers${R}   Pull & run dev environment container (cli/gui/tty)\n"
-  printf "  ${W}c) connect${R}      Cloud Connect dashboard (git/mounts/sync/servers)\n"
+  printf "  ${W}c) dashboards${R}   Local & remote monitoring dashboards\n"
   printf "  ${W}d) others${R}       SSH, git-clone, install, commands, info\n"
   printf "  ${W}e) help${R}         This help\n\n"
   printf "${Y}Direct Commands:${R}\n"
-  printf "  dtk.sh aliases [category]      ${D}# modern-cli|navigation|git|docker|...${R}\n"
+  printf "  dtk.sh aliases                  ${D}# all shell aliases (3-column)${R}\n"
+  printf "  dtk.sh tools                    ${D}# all installed CLI tools (5-column)${R}\n"
   printf "  dtk.sh containers [img] [prof] ${D}# deb-nix cli | deb-apt gui${R}\n"
-  printf "  dtk.sh connect                 ${D}# launch connect.sh${R}\n"
+  printf "  dtk.sh btop                    ${D}# local btop (tmux)${R}\n"
+  printf "  dtk.sh journal-dash [t|p|u]   ${D}# local journal (transport/priority/unit)${R}\n"
+  printf "  dtk.sh connect                 ${D}# cloud connect dashboard${R}\n"
+  printf "  dtk.sh btop-dash              ${D}# htop on all VMs (tmux 2x2)${R}\n"
+  printf "  dtk.sh remote-journal         ${D}# journal on all VMs (tmux 2x2)${R}\n"
   printf "  dtk.sh ssh                     ${D}# GCP serial/ssh/rescue${R}\n"
   printf "  dtk.sh git-clone [path]        ${D}# clone all repos${R}\n"
   printf "  dtk.sh install                 ${D}# install dev toolchain${R}\n"
@@ -591,20 +799,16 @@ do_help() { set +x 2>/dev/null
 # ═══════════════════════════════════════════════════════════════════
 # ENTRY POINT — set -x starts here (after quiet setup)
 # ═══════════════════════════════════════════════════════════════════
-_ALIAS_MAP="1:modern-cli 2:navigation 3:safety 4:python 5:system 6:git 7:docker 8:session 9:web-terminal a:misc b:functions"
-
 _resolve_shortcode() {
   _code="$1"
   _major=$(echo "$_code" | cut -c1)
   _minor=$(echo "$_code" | cut -c2)
   _rest=$(echo "$_code" | cut -c3-)
   case "$_major" in
-    1) # aliases
-      _alias_key="$_minor$_rest"
-      for _pair in $_ALIAS_MAP; do
-        _k="${_pair%%:*}"; _v="${_pair#*:}"
-        [ "$_k" = "$_alias_key" ] && { do_aliases "$_v"; return 0; }
-      done ;;
+    1) # aliases/tools
+      case "$_minor$_rest" in
+        1) do_aliases ;; 2) do_tools ;; 2a) do_tools ;; 2b) do_tools_help ;; *) do_aliases; do_tools ;;
+      esac; return 0 ;;
     2) # containers + shell config
       _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
       _containers_sh="$_dtk_dir/2-containers/containers.sh"
@@ -622,8 +826,13 @@ _resolve_shortcode() {
         3b) sh "$_dtk_dir/2-containers/fish-shell.sh" ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
-    3) # connect
-      do_connect "$_minor$_rest"; return 0 ;;
+    3) # dashboards
+      case "$_minor$_rest" in
+        1) do_local_btop ;;
+        2) do_journal_dash ;; 2a) do_journal_dash transport ;; 2b) do_journal_dash priority ;; 2c) do_journal_dash unit ;;
+        3) do_connect ;; 4) do_batch_htop ;; 5) do_remote_journal ;;
+        *) do_connect "$_minor$_rest" ;;
+      esac; return 0 ;;
     4) # others — 2-digit = submenu, 3+ digit = submenu + item
       case "$_minor" in
         1) do_ssh ;; 2) do_git_clone ;; 3) do_install ;;
@@ -640,7 +849,16 @@ if [ $# -ge 1 ]; then
   case "$1" in
     # Shortcodes: 2+ digits (e.g. 16, 44, 448, 4415)
     [1-4][0-9a-b]*) _resolve_shortcode "$1" ;;
-    aliases)        do_aliases "${2:-}" ;;
+    aliases)        do_aliases ;;
+    tools)          do_tools ;;
+    tools-help)     do_tools_help ;;
+    btop)           do_local_btop ;;
+    batch-htop|btop-dash) do_batch_htop ;;
+    journal-dash)   do_journal_dash "${2:-}" ;;
+    journal-transport) do_journal_dash transport ;;
+    journal-priority)  do_journal_dash priority ;;
+    journal-unit)      do_journal_dash unit ;;
+    remote-journal) do_remote_journal ;;
     containers)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" "$@" ;;
     docker-run)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" "$@" ;;
     docker-start)   sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" deb-nix cli ;;
@@ -665,7 +883,7 @@ else
     printf "> "
     read -r _input
     case "$_input" in
-      1)  do_aliases ;;
+      1)  do_aliases; do_tools ;;
       2)  sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" ;;
       3)  do_connect ;;
       4)  do_others ;;
