@@ -126,7 +126,7 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 monitors${R}        ${D}  40a gcp-proxy${R}  ${D}51 webhooks${R}\n"
   printf "  ${D}  11a table${R}       ${D}  20b nix-gui${R}     ${D}  30a btop${R}          ${D}  40b oci-mail${R}   ${D}52 commands${R}\n"
   printf "  ${D}  11b help${R}        ${D}  20c nix-tty${R}     ${D}  30b iotop${R}         ${D}  40c oci-analy${R}\n"
-  printf "  ${D}12 info${R}           ${D}  20d apt-cli${R}     ${D}31 sysstat${R}          ${D}  40d oci-apps${R}\n"
+  printf "  ${D}12 info${R}           ${D}  20d apt-cli${R}     ${D}  30c top-batch${R}     ${D}  40d oci-apps${R}\n"
   printf "  ${D}  12a info${R}        ${D}  20e apt-gui${R}     ${D}  31a iostat${R}        ${D}  40e gcp-t4${R}\n"
   printf "  ${D}  12b engines${R}     ${D}  20f apt-tty${R}     ${D}  31b mpstat${R}        ${D}  40f orchestrate${R}\n"
   printf "                    ${D}21 nixos${R}          ${D}  31c pidstat${R}       ${D}  40g local${R}\n"
@@ -657,6 +657,11 @@ do_connect() {
   fi
 }
 
+do_top_batch() {
+  printf "\n\033[1;36m── top (batch mode) ──\033[0m\n\n"
+  top -b -n 1 | head -40
+}
+
 do_local_iotop() {
   printf "\n\033[1;36m── iotop ──\033[0m\n\n"
   sudo iotop 2>/dev/null || sudo iotop-c 2>/dev/null || { echo "iotop not found"; return 1; }
@@ -1144,7 +1149,7 @@ _resolve_shortcode() {
     3) # dashboards
       case "$_minor$_rest" in
         # local monitors
-        0) do_local_btop ;; 0a) do_local_btop ;; 0b) do_local_iotop ;;
+        0) do_local_btop ;; 0a) do_local_btop ;; 0b) do_local_iotop ;; 0c) do_top_batch ;;
         # sysstat
         1) do_sysstat ;; 1a) do_sysstat iostat ;; 1b) do_sysstat mpstat ;; 1c) do_sysstat pidstat ;; 1d) do_sysstat sar ;;
         # journal
