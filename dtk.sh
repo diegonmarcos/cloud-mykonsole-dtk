@@ -121,7 +121,6 @@ show_banner() { set +x 2>/dev/null
 
   _ip=$(ip -4 route get 1 2>/dev/null | awk '{print $7; exit}' || echo "?")
 
-  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${G}system${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   # Col widths: label=6 val=15 | label=6 val=22 | label=6 val=17 | label=6 val=11 | label=6 val=*
