@@ -224,10 +224,15 @@ pick() { set +x 2>/dev/null
   printf "> "
   read -r _idx
   case "$_idx" in b|B) PICK="back"; return 0 ;; q|Q) echo "Bye."; exit 0 ;; esac
-  # Global shortcodes: if input looks like a multi-digit shortcode, route it
-  case "$_idx" in [1-5][0-9a-f]*) _resolve_shortcode "$_idx"; PICK="back"; return 0 ;; esac
-  _idx=$((_idx)) 2>/dev/null || { echo "Invalid"; return 1; }
-  [ "$_idx" -ge 1 ] && [ "$_idx" -le $# ] || { echo "Invalid"; return 1; }
+  # Try as menu item first, then as global shortcode
+  _num=$((_idx)) 2>/dev/null || _num=0
+  if [ "$_num" -ge 1 ] 2>/dev/null && [ "$_num" -le $# ] 2>/dev/null; then
+    _idx=$_num
+  else
+    # Global shortcodes: if input looks like a multi-digit shortcode, route it
+    case "$_idx" in [1-5][0-9a-f]*) _resolve_shortcode "$_idx"; PICK="back"; return 0 ;; esac
+    echo "Invalid"; return 1
+  fi
   _c=0
   for _item in "$@"; do
     _c=$((_c + 1))
