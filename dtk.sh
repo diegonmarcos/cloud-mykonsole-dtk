@@ -119,16 +119,12 @@ show_banner() { set +x 2>/dev/null
   _procs=$(ps aux 2>/dev/null | wc -l || echo "?")
   _shell=$(basename "${SHELL:-sh}" 2>/dev/null)
 
-  _T=$(printf '\t')
-  _nix_s="off"; [ "$SYS_HAS_NIX" = true ] && _nix_s="ON"
-  _docker_s="off"; [ "$SYS_HAS_DOCKER" = true ] && _docker_s="ON"
   _ip=$(ip -4 route get 1 2>/dev/null | awk '{print $7; exit}' || echo "?")
-  printf '%s\n' \
-    "host $SYS_HOSTNAME${_T}os $SYS_DISTRO${_T}uptime $_uptime${_T}load $_load${_T}users $_users" \
-    "arch $SYS_ARCH${_T}kernel $_kern${_T}disk $_disk${_T}swap $_swap${_T}procs $_procs" \
-    "cpu ${SYS_CPUS} cores${_T}ram ${_mem_used}/${SYS_RAM_MB}MB${_T}ip $_ip${_T}wg0 $_wg_ip${_T}shell $_shell" \
-    "pkg $SYS_PKG${_T}init $SYS_INIT${_T}nix $_nix_s${_T}docker $_docker_s${_T}containers $_containers" \
-  | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
+
+  printf "  ${Y}host${R}  ${W}%-13s${R} ${Y}os${R}     ${W}%-21s${R} ${Y}uptime${R} ${W}%-16s${R} ${Y}load${R}   ${W}%-10s${R} ${Y}users${R} ${W}%s${R}\n" "$SYS_HOSTNAME" "$SYS_DISTRO" "$_uptime" "$_load" "$_users"
+  printf "  ${Y}arch${R}  ${W}%-13s${R} ${Y}kernel${R} ${W}%-21s${R} ${Y}disk${R}   ${W}%-16s${R} ${Y}swap${R}   ${W}%-10s${R} ${Y}procs${R} ${W}%s${R}\n" "$SYS_ARCH" "$_kern" "$_disk" "$_swap" "$_procs"
+  printf "  ${Y}cpu${R}   ${W}%-13s${R} ${Y}ram${R}    ${W}%-21s${R} ${Y}ip${R}     ${W}%-16s${R} ${Y}wg0${R}    ${W}%-10s${R} ${Y}shell${R} ${W}%s${R}\n" "${SYS_CPUS} cores" "${_mem_used}/${SYS_RAM_MB}MB" "$_ip" "$_wg_ip" "$_shell"
+  printf "  ${Y}nix${R}   $nix_icon%-8s ${Y}docker${R} $docker_icon%-16s ${Y}init${R}   ${W}%-16s${R} ${Y}pkg${R}    ${W}%-10s${R} ${Y}cont.${R} ${W}%s${R}\n" "" "" "$SYS_INIT" "$SYS_PKG" "$_containers"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '\n'
 }
