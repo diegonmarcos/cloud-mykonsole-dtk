@@ -121,30 +121,28 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  printf "  ${C}1) cmds-local${R}  ${C}2) setups${R}         ${C}3) dashboards${R}    ${C}4) cmds-cloud${R}    ${C}5) infos${R}\n"
+  printf "  ${C}1) cmds-local${R}    ${C}2) cmds-cloud${R}    ${C}3) dashboards${R}    ${C}4) setups${R}         ${C}5) infos${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${D}10 aliases${R}        ${D}20 deb${R}            ${D}local${R}              ${D}40 quick-cmds${R}    ${D}50 help${R}\n"
-  printf "  ${D}11 webhooks${R}      ${D}  20a nix-cli${R}     ${D}30 monitors${R}        ${D}  40a gcp-proxy${R}  ${D}51 tools${R}\n"
-  printf "  ${D}12 commands${R}      ${D}  20b nix-gui${R}     ${D}  30a btop${R}          ${D}  40b oci-mail${R}   ${D}  51a table${R}\n"
-  printf "  ${D}  (120-1225)${R}    ${D}  20c nix-tty${R}     ${D}  30b iotop${R}         ${D}  40c oci-analy${R}  ${D}  51b help${R}\n"
-  printf "                    ${D}  20d apt-cli${R}     ${D}  30c top-batch${R}     ${D}  40d oci-apps${R}   ${D}52 info${R}\n"
-  printf "                    ${D}  20e apt-gui${R}     ${D}31 sysstat${R}          ${D}  40e gcp-t4${R}     ${D}  52a info${R}\n"
-  printf "                    ${D}  20f apt-tty${R}     ${D}  31a iostat${R}        ${D}  40f orchestrate${R} ${D}  52b engines${R}\n"
-  printf "                    ${D}21 nixos${R}          ${D}  31b mpstat${R}        ${D}  40g local${R}\n"
-  printf "                    ${D}  21a hm-cli${R}      ${D}  31c pidstat${R}       ${D}  40h desktop${R}\n"
-  printf "                    ${D}  21b hm-gui${R}      ${D}  31d sar${R}\n"
-  printf "                    ${D}  21c hm-tty${R}      ${D}32 journal-dash${R}\n"
-  printf "                    ${D}22 shell${R}           ${D}  32a transport${R}    ${D}  40i vps-cloud${R}\n"
-  printf "                    ${D}  22a fish+tools${R}   ${D}  32b priority${R}     ${D}  40j gh-actions${R}\n"
-  printf "                    ${D}  22b fish${R}          ${D}  32c unit${R}         ${D}  40k gh-repos${R}\n"
-  printf "                    ${D}  22c konsole-cfg${R} ${D}  32d watch-n35${R}    ${D}  40l gh-registry${R}\n"
-  printf "                    ${D}23 git${R}            ${D}33 connect${R}         ${D}41 ssh${R}\n"
-  printf "                    ${D}  23a gcl-https${R}   ${D}remote${R}             ${D}  41a gcp-proxy${R}\n"
-  printf "                    ${D}  23b gcl-ssh${R}     ${D}34 btop-dash${R}      ${D}  41b oci-mail${R}\n"
-  printf "                                        ${D}35 journal-dash${R}   ${D}  41c oci-analy${R}\n"
-  printf "                                        ${D}36 docker-stats${R}   ${D}  41d oci-apps${R}\n"
-  printf "                                                              ${D}  41e gcp-t4${R}\n"
-  printf "                                                              ${D}  41f github${R}\n"
+  printf "  ${D}10 aliases${R}        ${D}20 quick-cmds${R}    ${D}local${R}              ${D}40 deb${R}            ${D}50 help${R}\n"
+  printf "  ${D}11 webhooks${R}      ${D}  20a gcp-proxy${R}  ${D}30 monitors${R}        ${D}  40a nix-cli${R}    ${D}51 tools${R}\n"
+  printf "  ${D}12 commands${R}      ${D}  20b oci-mail${R}   ${D}  30a btop${R}          ${D}  40b nix-gui${R}   ${D}  51a table${R}\n"
+  printf "  ${D}  (120-1225)${R}    ${D}  20c oci-analy${R}  ${D}  30b iotop${R}         ${D}  40c nix-tty${R}   ${D}  51b help${R}\n"
+  printf "                    ${D}  20d oci-apps${R}   ${D}  30c top-batch${R}     ${D}  40d apt-cli${R}   ${D}52 info${R}\n"
+  printf "                    ${D}  20e gcp-t4${R}     ${D}31 sysstat${R}          ${D}  40e apt-gui${R}   ${D}  52a info${R}\n"
+  printf "                    ${D}  20f orchestrate${R}${D}  31a iostat${R}        ${D}  40f apt-tty${R}   ${D}  52b engines${R}\n"
+  printf "                    ${D}  20g local${R}      ${D}  31b mpstat${R}        ${D}41 nixos${R}\n"
+  printf "                    ${D}  20h desktop${R}    ${D}  31c pidstat${R}       ${D}  41a hm-cli${R}\n"
+  printf "                    ${D}  20i vps-cloud${R}  ${D}  31d sar${R}           ${D}  41b hm-gui${R}\n"
+  printf "                    ${D}  20j gh-actions${R} ${D}32 journal-dash${R}    ${D}  41c hm-tty${R}\n"
+  printf "                    ${D}  20k gh-repos${R}   ${D}  32a transport${R}    ${D}42 shell${R}\n"
+  printf "                    ${D}  20l gh-registry${R}${D}  32b priority${R}     ${D}  42a fish+tools${R}\n"
+  printf "                    ${D}21 ssh${R}           ${D}  32c unit${R}         ${D}  42b fish${R}\n"
+  printf "                    ${D}  21a gcp-proxy${R}  ${D}  32d watch-n35${R}    ${D}  42c konsole-cfg${R}\n"
+  printf "                    ${D}  21b oci-mail${R}   ${D}33 connect${R}         ${D}43 git${R}\n"
+  printf "                    ${D}  21c oci-analy${R}  ${D}remote${R}             ${D}  43a gcl-https${R}\n"
+  printf "                    ${D}  21d oci-apps${R}   ${D}34 btop-dash${R}      ${D}  43b gcl-ssh${R}\n"
+  printf "                    ${D}  21e gcp-t4${R}     ${D}35 journal-dash${R}\n"
+  printf "                    ${D}  21f github${R}     ${D}36 docker-stats${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}12) commands:${R}\n"
   printf "  ${D}120 fish-install  125 stop-docker  1210 free-mem     1215 full-rescue  1220 ssh-restart${R}\n"
@@ -1137,21 +1135,15 @@ _resolve_shortcode() {
           if [ -n "$_rest" ]; then do_commands "$_rest"; else do_commands; fi ;;
         *) do_aliases ;;
       esac; return 0 ;;
-    2) # containers + shell config
-      _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
-      _containers_sh="$_dtk_dir/2-setups/containers.sh"
+    2) # cmds-cloud (quick-cmds + ssh)
       case "$_minor$_rest" in
-        0) sh "$_containers_sh" ;;
-        0a) sh "$_containers_sh" 1 ;; 0b) sh "$_containers_sh" 2 ;; 0c) sh "$_containers_sh" 3 ;;
-        0d) sh "$_containers_sh" 4 ;; 0e) sh "$_containers_sh" 5 ;; 0f) sh "$_containers_sh" 6 ;;
-        1) echo "21a hm-cli  21b hm-gui  21c hm-tty" ;;
-        1a) sh "$_containers_sh" 7 ;; 1b) sh "$_containers_sh" 8 ;; 1c) sh "$_containers_sh" 9 ;;
-        2) echo "22a fish+tools  22b fish  22c konsole-cfg" ;;
-        2a) sh "$_dtk_dir/2-setups/fish-tools.sh" ;;
-        2b) sh "$_dtk_dir/2-setups/fish-shell.sh" ;;
-        2c) do_konsole_cfg ;;
-        3) echo "23a gcl-https  23b gcl-ssh" ;;
-        3a) do_gcl_https ;; 3b) do_gcl_ssh ;;
+        0) do_qc_vm ;;
+        0a) do_qc_vm gcp-proxy ;; 0b) do_qc_vm oci-mail ;; 0c) do_qc_vm oci-analytics ;; 0d) do_qc_vm oci-apps ;; 0e) do_qc_vm gcp-t4 ;;
+        0f) do_qc_orchestrate ;; 0g) do_qc_local ;; 0h) do_qc_desktop ;;
+        0i) do_qc_vps cloud ;; 0j) do_qc_vps gh-actions ;; 0k) do_qc_vps gh-repos ;; 0l) do_qc_vps gh-registry ;;
+        1) do_qc_ssh ;;
+        1a) do_qc_ssh gcp-proxy ;; 1b) do_qc_ssh oci-mail ;; 1c) do_qc_ssh oci-analytics ;; 1d) do_qc_ssh oci-apps ;; 1e) do_qc_ssh gcp-t4 ;;
+        1f) ssh github.com ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # dashboards
@@ -1166,17 +1158,21 @@ _resolve_shortcode() {
         3) do_connect ;; 4) do_batch_htop ;; 5) do_remote_journal ;; 6) do_docker_stats_dash ;;
         *) do_connect "$_minor$_rest" ;;
       esac; return 0 ;;
-    4) # quick-cmds + ssh
+    4) # setups (containers + shell + git)
+      _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
+      _containers_sh="$_dtk_dir/2-setups/containers.sh"
       case "$_minor$_rest" in
-        # 40 quick-cmds (mirrors Konsole Quick Commands folders)
-        0) do_qc_vm ;;
-        0a) do_qc_vm gcp-proxy ;; 0b) do_qc_vm oci-mail ;; 0c) do_qc_vm oci-analytics ;; 0d) do_qc_vm oci-apps ;; 0e) do_qc_vm gcp-t4 ;;
-        0f) do_qc_orchestrate ;; 0g) do_qc_local ;; 0h) do_qc_desktop ;;
-        0i) do_qc_vps cloud ;; 0j) do_qc_vps gh-actions ;; 0k) do_qc_vps gh-repos ;; 0l) do_qc_vps gh-registry ;;
-        # 41 ssh (mirrors Konsole SSH Manager folders)
-        1) do_qc_ssh ;;
-        1a) do_qc_ssh gcp-proxy ;; 1b) do_qc_ssh oci-mail ;; 1c) do_qc_ssh oci-analytics ;; 1d) do_qc_ssh oci-apps ;; 1e) do_qc_ssh gcp-t4 ;;
-        1f) ssh github.com ;;
+        0) sh "$_containers_sh" ;;
+        0a) sh "$_containers_sh" 1 ;; 0b) sh "$_containers_sh" 2 ;; 0c) sh "$_containers_sh" 3 ;;
+        0d) sh "$_containers_sh" 4 ;; 0e) sh "$_containers_sh" 5 ;; 0f) sh "$_containers_sh" 6 ;;
+        1) echo "41a hm-cli  41b hm-gui  41c hm-tty" ;;
+        1a) sh "$_containers_sh" 7 ;; 1b) sh "$_containers_sh" 8 ;; 1c) sh "$_containers_sh" 9 ;;
+        2) echo "42a fish+tools  42b fish  42c konsole-cfg" ;;
+        2a) sh "$_dtk_dir/2-setups/fish-tools.sh" ;;
+        2b) sh "$_dtk_dir/2-setups/fish-shell.sh" ;;
+        2c) do_konsole_cfg ;;
+        3) echo "43a gcl-https  43b gcl-ssh" ;;
+        3a) do_gcl_https ;; 3b) do_gcl_ssh ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     5) # infos
@@ -1232,9 +1228,9 @@ else
     read -r _input
     case "$_input" in
       1)  do_aliases; do_tools ;;
-      2)  sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" ;;
+      2)  printf "\n  20 quick-cmds  21 ssh\n\n" ;;
       3)  do_connect ;;
-      4)  printf "\n  40 vm  41 orchestrate  42 desktop  43 vps/cloud\n\n" ;;
+      4)  sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" ;;
       5)  do_help ;;
       b|back) continue ;;
       r|refresh) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all && git -C "$_repo_dir" reset --hard origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD) && echo "Updated to $(git -C "$_repo_dir" log --oneline -1)" ;;
