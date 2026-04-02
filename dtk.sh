@@ -5,11 +5,22 @@
 # OS-agnostic POSIX: NixOS, Arch, Debian, Fedora, macOS, Termux
 set -eu
 
-# Logging — verbose trace to screen + log file
+# Logging — all activity to dtk.log, verbose trace via set -x
 LOGFILE="${HOME:-/tmp}/dtk.log"
 _LOG_USER=$(whoami 2>/dev/null || echo "?")
 _LOG_HOST=$(hostname -s 2>/dev/null || echo "?")
-echo "=== $(date '+%Y-%m-%d %H:%M:%S') ${_LOG_USER}@${_LOG_HOST} === dtk.sh $* ===" >> "$LOGFILE"
+_LOG_TS() { date '+%Y-%m-%d %H:%M:%S'; }
+
+# Redirect set -x trace to log file (fd 9), keep stdout/stderr for user
+exec 9>>"$LOGFILE"
+BASH_XTRACEFD=9 2>/dev/null || true  # bash only, harmless on sh
+export PS4='+ $(_LOG_TS) '
+
+_log() { printf "[%s] %s\n" "$(_LOG_TS)" "$*" >> "$LOGFILE"; }
+_log "════════ dtk.sh $* ════════ ${_LOG_USER}@${_LOG_HOST} ════════"
+
+# Enable verbose trace to log file
+set -x
 
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
 export PATH="/run/wrappers/bin:/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:${HOME:-/root}/.nix-profile/bin:/run/current-system/sw/bin:$PATH"
@@ -223,7 +234,7 @@ pick() { set +x 2>/dev/null
   done
   printf "> "
   read -r _idx
-  case "$_idx" in b|B) PICK="back"; return 0 ;; q|Q) echo "Bye."; exit 0 ;; esac
+  case "$_idx" in b|B) PICK="back"; _log "pick: back"; set -x 2>/dev/null; return 0 ;; q|Q) _log "pick: quit"; echo "Bye."; exit 0 ;; esac
   # Try as menu item first, then as global shortcode
   _num=$((_idx)) 2>/dev/null || _num=0
   if [ "$_num" -ge 1 ] 2>/dev/null && [ "$_num" -le $# ] 2>/dev/null; then
@@ -236,7 +247,7 @@ pick() { set +x 2>/dev/null
   _c=0
   for _item in "$@"; do
     _c=$((_c + 1))
-    [ "$_c" -eq "$_idx" ] && PICK="$_item" && return 0
+    [ "$_c" -eq "$_idx" ] && PICK="$_item" && _log "pick: $_label → $_item" && set -x 2>/dev/null && return 0
   done
 }
 
@@ -1273,6 +1284,7 @@ do_help() { set +x 2>/dev/null
 # ═══════════════════════════════════════════════════════════════════
 _resolve_shortcode() {
   _code="$1"
+  _log "shortcode: $_code"
   _major=$(echo "$_code" | cut -c1)
   _minor=$(echo "$_code" | cut -c2)
   _rest=$(echo "$_code" | cut -c3-)
