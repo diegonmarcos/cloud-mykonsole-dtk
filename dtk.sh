@@ -159,14 +159,14 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '%s\n' \
     "10 aliases${_T}20 quick-cmds${_T}local${_T}40 deb${_T}50 help" \
-    "11 webhooks${_T}  20a gcp-proxy${_T}30 monitors${_T}  40a nix-cli${_T}51 tools" \
-    "12 commands${_T}  20b oci-mail${_T}  30a btop${_T}  40b nix-gui${_T}  51a table" \
-    "  (120-1225)${_T}  20c oci-analy${_T}  30b iotop${_T}  40c nix-tty${_T}  51b help" \
-    "${_T}  20d oci-apps${_T}  30c top-batch${_T}  40d apt-cli${_T}52 sys-info" \
-    "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  52a sys-info" \
-    "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  52b sys-net-res" \
-    "${_T}  20g local${_T}  31b mpstat${_T}41 nixos${_T}  52c sys-paths" \
-    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}  52d sys-envs" \
+    "11 webhooks${_T}  20a gcp-proxy${_T}30 monitors${_T}  40a nix-cli${_T}51 infos" \
+    "12 commands${_T}  20b oci-mail${_T}  30a btop${_T}  40b nix-gui${_T}  51a sys-info" \
+    "  (120-1225)${_T}  20c oci-analy${_T}  30b iotop${_T}  40c nix-tty${_T}  51b sys-net-res" \
+    "${_T}  20d oci-apps${_T}  30c top-batch${_T}  40d apt-cli${_T}  51c sys-paths" \
+    "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  51d sys-envs" \
+    "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  51e tools-table" \
+    "${_T}  20g local${_T}  31b mpstat${_T}41 nixos${_T}  51f tools-help" \
+    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}" \
     "${_T}  20i vps-cloud${_T}  31d sar${_T}  41b hm-gui${_T}" \
     "${_T}  20j gh-actions${_T}32 journal-dash${_T}  41c hm-tty${_T}" \
     "${_T}  20k gh-repos${_T}  32a transport${_T}42 shell${_T}" \
@@ -1122,11 +1122,13 @@ do_commands()  { sh "$_OTHERS_DIR/commands/commands.sh" "$@"; }
 do_info()      { sh "$_INFOS_DIR/info/info.sh" "$@"; }
 
 do_sys_info_menu() {
-  printf "\n\033[1;36m── 52) system info ──\033[0m\n"
-  printf "  52a sys-info        Static system identity\n"
-  printf "  52b sys-net-resource Dynamic network + resources\n"
-  printf "  52c sys-paths       Flake & engine paths\n"
-  printf "  52d sys-envs        Environment variables\n\n"
+  printf "\n\033[1;36m── 51) infos ──\033[0m\n"
+  printf "  51a sys-info         Static system identity\n"
+  printf "  51b sys-net-resource Dynamic network + resources\n"
+  printf "  51c sys-paths        Flake & engine paths\n"
+  printf "  51d sys-envs         Environment variables\n"
+  printf "  51e tools-table      Installed tools (5-col)\n"
+  printf "  51f tools-help       Installed tools (with descriptions)\n\n"
 }
 
 do_sys_info() { set +x 2>/dev/null
@@ -1319,8 +1321,8 @@ _resolve_shortcode() {
       esac; return 0 ;;
     5) # infos
       case "$_minor$_rest" in
-        0) do_help ;; 1) do_tools ;; 1a) do_tools ;; 1b) do_tools_help ;;
-        2) do_sys_info_menu ;; 2a) do_sys_info ;; 2b) do_sys_net_resource ;; 2c) do_sys_paths ;; 2d) do_sys_envs ;;
+        0) do_help ;;
+        1) do_sys_info_menu ;; 1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
