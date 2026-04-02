@@ -137,10 +137,10 @@ show_menu_header() { set +x 2>/dev/null
   printf "                    ${D}22 shell${R}           ${D}  32a transport${R}    ${D}  40i vps-cloud${R}\n"
   printf "                    ${D}  22a fish+tools${R}   ${D}  32b priority${R}     ${D}  40j gh-actions${R}\n"
   printf "                    ${D}  22b fish${R}          ${D}  32c unit${R}         ${D}  40k gh-repos${R}\n"
-  printf "                    ${D}  22c gcl-https${R}    ${D}  32d watch-n35${R}    ${D}  40l gh-registry${R}\n"
-  printf "                    ${D}  22d gcl-ssh${R}      ${D}33 connect${R}         ${D}41 ssh${R}\n"
-  printf "                    ${D}  22e konsole-cfg${R}  ${D}remote${R}             ${D}  41a gcp-proxy${R}\n"
-  printf "                                        ${D}34 btop-dash${R}      ${D}  41b oci-mail${R}\n"
+  printf "                    ${D}  22c konsole-cfg${R} ${D}  32d watch-n35${R}    ${D}  40l gh-registry${R}\n"
+  printf "                    ${D}23 git${R}            ${D}33 connect${R}         ${D}41 ssh${R}\n"
+  printf "                    ${D}  23a gcl-https${R}   ${D}remote${R}             ${D}  41a gcp-proxy${R}\n"
+  printf "                    ${D}  23b gcl-ssh${R}     ${D}34 btop-dash${R}      ${D}  41b oci-mail${R}\n"
   printf "                                        ${D}35 journal-dash${R}   ${D}  41c oci-analy${R}\n"
   printf "                                        ${D}36 docker-stats${R}   ${D}  41d oci-apps${R}\n"
   printf "                                                              ${D}  41e gcp-t4${R}\n"
@@ -168,9 +168,10 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}22  shell                             41e gcp-t4${R}\n"
   printf "  ${D}22a fish+tools                        41f github${R}\n"
   printf "  ${D}22b fish${R}\n"
-  printf "  ${D}22c gcl-https${R}\n"
-  printf "  ${D}22d gcl-ssh${R}\n"
-  printf "  ${D}22e konsole-cfg${R}\n"
+  printf "  ${D}22c konsole-cfg${R}\n"
+  printf "  ${D}23  git${R}\n"
+  printf "  ${D}23a gcl-https${R}\n"
+  printf "  ${D}23b gcl-ssh${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-52 shortcode${R}\n"
   printf "\n"
@@ -1163,10 +1164,12 @@ _resolve_shortcode() {
         0d) sh "$_containers_sh" 4 ;; 0e) sh "$_containers_sh" 5 ;; 0f) sh "$_containers_sh" 6 ;;
         1) echo "21a hm-cli  21b hm-gui  21c hm-tty" ;;
         1a) sh "$_containers_sh" 7 ;; 1b) sh "$_containers_sh" 8 ;; 1c) sh "$_containers_sh" 9 ;;
-        2) echo "22a fish+tools  22b fish  22c gcl-https  22d gcl-ssh" ;;
+        2) echo "22a fish+tools  22b fish  22c konsole-cfg" ;;
         2a) sh "$_dtk_dir/2-setups/fish-tools.sh" ;;
         2b) sh "$_dtk_dir/2-setups/fish-shell.sh" ;;
-        2c) do_gcl_https ;; 2d) do_gcl_ssh ;; 2e) do_konsole_cfg ;;
+        2c) do_konsole_cfg ;;
+        3) echo "23a gcl-https  23b gcl-ssh" ;;
+        3a) do_gcl_https ;; 3b) do_gcl_ssh ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # dashboards
