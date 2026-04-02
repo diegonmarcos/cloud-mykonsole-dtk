@@ -27,6 +27,18 @@ _log "════════ dtk.sh $* ════════ ${_LOG_USER}@$
 set -x
 set -x
 
+# Elevate to root if not already (preserves env for nix/docker paths)
+if [ "$(id -u)" != "0" ] 2>/dev/null; then
+  _SUDO=""
+  for p in /run/wrappers/bin/sudo /usr/bin/sudo /usr/local/bin/sudo; do
+    [ -x "$p" ] && _SUDO="$p" && break
+  done
+  if [ -n "$_SUDO" ]; then
+    _log "elevating to root via $_SUDO"
+    exec $_SUDO -E "$0" "$@"
+  fi
+fi
+
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
 export PATH="/run/wrappers/bin:/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:${HOME:-/root}/.nix-profile/bin:/run/current-system/sw/bin:$PATH"
 
