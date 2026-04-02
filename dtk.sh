@@ -102,11 +102,14 @@ show_banner() { set +x 2>/dev/null
   printf "${C}  ██████╔╝${B}   ██║   ${M}██║  ██╗${R}\n"
   printf "${C}  ╚═════╝ ${B}   ╚═╝   ${M}╚═╝  ╚═╝${R}\n"
   printf '\n'
-  printf "  ${Y}host${R}  ${W}%-20s${R}  ${Y}os${R}  ${W}%s${R}\n" "$SYS_HOSTNAME" "$SYS_DISTRO"
-  printf "  ${Y}arch${R}  ${W}%-20s${R}  ${Y}kernel${R}  ${W}%s${R}\n" "$SYS_ARCH" "$_kern"
-  printf "  ${Y}cpu${R}   ${W}%-20s${R}  ${Y}ram${R}  ${W}%sMB${R}\n" "${SYS_CPUS} cores" "$SYS_RAM_MB"
-  printf "  ${Y}pkg${R}   ${W}%-20s${R}  ${Y}init${R}  ${W}%s${R}\n" "$SYS_PKG" "$SYS_INIT"
-  printf "  ${Y}nix${R}   $nix_icon                     ${Y}docker${R}  $docker_icon\n"
+  _T=$(printf '\t')
+  printf '%s\n' \
+    "host ${SYS_HOSTNAME}${_T}os ${SYS_DISTRO}" \
+    "arch ${SYS_ARCH}${_T}kernel ${_kern}" \
+    "cpu ${SYS_CPUS} cores${_T}ram ${SYS_RAM_MB}MB" \
+    "pkg ${SYS_PKG}${_T}init ${SYS_INIT}" \
+    "nix $([ "$SYS_HAS_NIX" = true ] && echo ON || echo off)${_T}docker $([ "$SYS_HAS_DOCKER" = true ] && echo ON || echo off)" \
+  | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '\n'
 }
