@@ -121,36 +121,43 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  printf "  ${C}1) cmds-local${R}    ${C}2) cmds-cloud${R}    ${C}3) dashboards${R}    ${C}4) setups${R}         ${C}5) infos${R}\n"
+  # Menu tree — auto-aligned via column -t
+  _T=$(printf '\t')
+  printf "1) cmds-local${_T}2) cmds-cloud${_T}3) dashboards${_T}4) setups${_T}5) infos\n" | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${C}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${D}10 aliases${R}      ${D}20 quick-cmds${R}    ${D}local${R}             ${D}40 deb${R}           ${D}50 help${R}\n"
-  printf "  ${D}11 webhooks${R}    ${D}  20a gcp-proxy${R}  ${D}30 monitors${R}       ${D}  40a nix-cli${R}   ${D}51 tools${R}\n"
-  printf "  ${D}12 commands${R}    ${D}  20b oci-mail${R}   ${D}  30a btop${R}         ${D}  40b nix-gui${R}  ${D}  51a table${R}\n"
-  printf "  ${D}  (120-1225)${R}  ${D}  20c oci-analy${R}  ${D}  30b iotop${R}        ${D}  40c nix-tty${R}  ${D}  51b help${R}\n"
-  printf "                  ${D}  20d oci-apps${R}   ${D}  30c top-batch${R}    ${D}  40d apt-cli${R}  ${D}52 info${R}\n"
-  printf "                  ${D}  20e gcp-t4${R}     ${D}31 sysstat${R}         ${D}  40e apt-gui${R}  ${D}  52a info${R}\n"
-  printf "                  ${D}  20f orch.${R}       ${D}  31a iostat${R}       ${D}  40f apt-tty${R}  ${D}  52b engines${R}\n"
-  printf "                  ${D}  20g local${R}      ${D}  31b mpstat${R}       ${D}41 nixos${R}\n"
-  printf "                  ${D}  20h desktop${R}    ${D}  31c pidstat${R}      ${D}  41a hm-cli${R}\n"
-  printf "                  ${D}  20i vps-cloud${R}  ${D}  31d sar${R}          ${D}  41b hm-gui${R}\n"
-  printf "                  ${D}  20j gh-actions${R} ${D}32 journal-dash${R}   ${D}  41c hm-tty${R}\n"
-  printf "                  ${D}  20k gh-repos${R}   ${D}  32a transport${R}   ${D}42 shell${R}\n"
-  printf "                  ${D}  20l gh-reg.${R}    ${D}  32b priority${R}    ${D}  42a fish+tools${R}\n"
-  printf "                  ${D}21 ssh${R}           ${D}  32c unit${R}        ${D}  42b fish${R}\n"
-  printf "                  ${D}  21a gcp-proxy${R}  ${D}  32d watch-n35${R}   ${D}  42c konsole-cfg${R}\n"
-  printf "                  ${D}  21b oci-mail${R}   ${D}33 connect${R}        ${D}43 git${R}\n"
-  printf "                  ${D}  21c oci-analy${R}  ${D}remote${R}            ${D}  43a gcl-https${R}\n"
-  printf "                  ${D}  21d oci-apps${R}   ${D}34 btop-dash${R}      ${D}  43b gcl-ssh${R}\n"
-  printf "                  ${D}  21e gcp-t4${R}     ${D}35 journal-dash${R}\n"
-  printf "                  ${D}  21f github${R}     ${D}36 docker-stats${R}\n"
+  printf '%s\n' \
+    "10 aliases${_T}20 quick-cmds${_T}local${_T}40 deb${_T}50 help" \
+    "11 webhooks${_T}  20a gcp-proxy${_T}30 monitors${_T}  40a nix-cli${_T}51 tools" \
+    "12 commands${_T}  20b oci-mail${_T}  30a btop${_T}  40b nix-gui${_T}  51a table" \
+    "  (120-1225)${_T}  20c oci-analy${_T}  30b iotop${_T}  40c nix-tty${_T}  51b help" \
+    "${_T}  20d oci-apps${_T}  30c top-batch${_T}  40d apt-cli${_T}52 info" \
+    "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  52a info" \
+    "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  52b engines" \
+    "${_T}  20g local${_T}  31b mpstat${_T}41 nixos${_T}" \
+    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}" \
+    "${_T}  20i vps-cloud${_T}  31d sar${_T}  41b hm-gui${_T}" \
+    "${_T}  20j gh-actions${_T}32 journal-dash${_T}  41c hm-tty${_T}" \
+    "${_T}  20k gh-repos${_T}  32a transport${_T}42 shell${_T}" \
+    "${_T}  20l gh-registry${_T}  32b priority${_T}  42a fish+tools${_T}" \
+    "${_T}21 ssh${_T}  32c unit${_T}  42b fish${_T}" \
+    "${_T}  21a gcp-proxy${_T}  32d watch-n35${_T}  42c konsole-cfg${_T}" \
+    "${_T}  21b oci-mail${_T}33 connect${_T}43 git${_T}" \
+    "${_T}  21c oci-analy${_T}remote${_T}  43a gcl-https${_T}" \
+    "${_T}  21d oci-apps${_T}34 btop-dash${_T}  43b gcl-ssh${_T}" \
+    "${_T}  21e gcp-t4${_T}35 journal-dash${_T}${_T}" \
+    "${_T}  21f github${_T}36 docker-stats${_T}${_T}" \
+  | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  # Commands sub-table
   printf "  ${D}12) commands:${R}\n"
-  printf "  ${D}120 fish-install  125 stop-docker  1210 free-mem     1215 full-rescue  1220 ssh-restart${R}\n"
-  printf "  ${D}121 flush-ipt     126 start-docker 1211 disk-usage   1216 tmux-web     1221 wg-debug${R}\n"
-  printf "  ${D}122 rst-sshd      127 docker-ps    1212 kill-wdog    1217 fix-wg-ip    1222 sshd-debug${R}\n"
-  printf "  ${D}123 rst-wg        128 wg-status    1213 journal-sil  1218 guardrail    1223 vm-health${R}\n"
-  printf "  ${D}124 rst-docker    129 iptables     1214 fix-journal  1219 fix-nix-path 1224 fix-all${R}\n"
-  printf "  ${D}                                                                       1225 mem-emerg${R}\n"
+  printf '%s\n' \
+    "120 fish-install${_T}125 stop-docker${_T}1210 free-mem${_T}1215 full-rescue${_T}1220 ssh-restart" \
+    "121 flush-ipt${_T}126 start-docker${_T}1211 disk-usage${_T}1216 tmux-web${_T}1221 wg-debug" \
+    "122 rst-sshd${_T}127 docker-ps${_T}1212 kill-wdog${_T}1217 fix-wg-ip${_T}1222 sshd-debug" \
+    "123 rst-wg${_T}128 wg-status${_T}1213 journal-sil${_T}1218 guardrail${_T}1223 vm-health" \
+    "124 rst-docker${_T}129 iptables${_T}1214 fix-journal${_T}1219 fix-nix-path${_T}1224 fix-all" \
+    "${_T}${_T}${_T}${_T}1225 mem-emerg" \
+  | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-52 shortcode${R}\n"
   printf "\n"
