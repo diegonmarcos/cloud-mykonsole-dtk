@@ -2,7 +2,7 @@
 manageProfile=false
 
 [gcp-proxy][SSH (port 22)]
-hostname=10.0.0.1
+hostname=gcp-proxy
 identifier=SSH (port 22)
 port=22
 profileName=Profile 1
@@ -20,7 +20,7 @@ useSshConfig=false
 username=diego
 
 [oci-mail][SSH (port 22)]
-hostname=10.0.0.3
+hostname=oci-mail
 identifier=SSH (port 22)
 port=22
 profileName=Profile 1
@@ -38,7 +38,7 @@ useSshConfig=false
 username=ubuntu
 
 [oci-analytics][SSH (port 22)]
-hostname=10.0.0.4
+hostname=oci-analytics
 identifier=SSH (port 22)
 port=22
 profileName=Profile 1
@@ -56,7 +56,7 @@ useSshConfig=false
 username=ubuntu
 
 [oci-apps][SSH (port 22)]
-hostname=10.0.0.6
+hostname=oci-apps
 identifier=SSH (port 22)
 port=22
 profileName=Profile 1
@@ -74,7 +74,7 @@ useSshConfig=false
 username=ubuntu
 
 [gcp-t4][SSH (port 22)]
-hostname=10.0.0.8
+hostname=gcp-t4
 identifier=SSH (port 22)
 port=22
 profileName=Profile 1

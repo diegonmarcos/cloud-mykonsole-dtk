@@ -1086,62 +1086,75 @@ do_all_commands() { set +x 2>/dev/null
   # Two-column: shortcode + description
   _cmds="
 10|aliases (3-col)
-11|tools (5-col compact)
-11a|tools table (5-col)
-11b|tools help (1-col+desc)
-12|info
-12a|info (installed tools)
-12b|engines (build scripts)
-20|deb setups
-20a|deb nix-cli
-20b|deb nix-gui
-20c|deb nix-tty
-20d|deb apt-cli
-20e|deb apt-gui
-20f|deb apt-tty
-21|nixos setups
-21a|nixos hm-cli
-21b|nixos hm-gui
-21c|nixos hm-tty
-22|shell setup
-22a|fish+tools (sudo)
-22b|fish (no sudo)
-22c|git clone (https)
-22d|git clone (ssh)
-22e|konsole quick-cmds install
-30|local btop
-31|journal-dash (picker)
-31a|journal transport (4-pane)
-31b|journal priority (8-pane)
-31c|journal unit (4-pane)
-31d|journal watch -n35
-32|connect dashboard
-33|remote btop-dash (4-pane)
-34|remote journal-dash (4-pane)
-35|remote docker-stats (4-pane)
-40|VM quick-cmds (picker)
-40a|VM gcp-proxy
-40b|VM oci-mail
-40c|VM oci-analytics
-40d|VM oci-apps
-40e|VM gcp-t4
-40f|orchestrate (all VMs)
-40g|local commands
-40h|desktop commands
-40i|vps cloud (oci/gcloud)
-40j|vps gh-actions
-40k|vps gh-repos
-40l|vps gh-registry
-41|SSH (picker)
-41a|SSH gcp-proxy
-41b|SSH oci-mail
-41c|SSH oci-analytics
-41d|SSH oci-apps
-41e|SSH gcp-t4
-41f|SSH github
+11|webhooks
+12|commands (this list)
+20|quick-cmds (picker)
+20a|VM gcp-proxy
+20b|VM oci-mail
+20c|VM oci-analytics
+20d|VM oci-apps
+20e|VM gcp-t4
+20f|orchestrate (all VMs)
+20g|local commands
+20h|desktop commands
+20i|vps cloud (oci/gcloud)
+20j|vps gh-actions
+20k|vps gh-repos
+20l|vps gh-registry
+21|SSH (picker)
+21a|SSH gcp-proxy
+21b|SSH oci-mail
+21c|SSH oci-analytics
+21d|SSH oci-apps
+21e|SSH gcp-t4
+21f|SSH github
+30|monitors (btop)
+30a|btop
+30b|iotop
+30c|top-batch
+31|sysstat
+31a|iostat
+31b|mpstat
+31c|pidstat
+31d|sar
+32|journal-dash (picker)
+32a|journal transport (4-pane)
+32b|journal priority (8-pane)
+32c|journal unit (4-pane)
+32d|journal watch -n35
+33|connect dashboard
+34|btop-dash (4-pane)
+35|journal-dash remote (4-pane)
+36|docker-stats (4-pane)
+40|containers (deb)
+40a|nix-cli
+40b|nix-gui
+40c|nix-tty
+40d|apt-cli
+40e|apt-gui
+40f|apt-tty
+41|nixos (hm)
+41a|hm-cli
+41b|hm-gui
+41c|hm-tty
+42|shell setup
+42a|fish+tools (sudo)
+42b|fish (no sudo)
+42c|konsole quick-cmds install
+43|git
+43a|git clone (https)
+43b|git clone (ssh)
 50|help
-51|webhooks
-52|commands (this list)
+51|infos (all)
+51a|sys-info
+51b|sys-net-resource
+51c|sys-paths
+51d|sys-envs
+51e|tools-table
+51f|tools-help
+52|deps
+52a|deps-drift
+52b|deps-solver
 "
   echo "$_cmds" | awk -F'|' '
     BEGIN { C="\033[1;36m"; Y="\033[1;33m"; R="\033[0m"; n=0 }
