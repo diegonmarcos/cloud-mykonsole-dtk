@@ -189,7 +189,7 @@ show_menu_header() { set +x 2>/dev/null
     "10 aliases${_T}20 quick-cmds${_T}local${_T}40 deb${_T}50 help" \
     "11 webhooks${_T}  20a gcp-proxy${_T}30 monitors${_T}  40a nix-cli${_T}51 infos" \
     "12 commands${_T}  20b oci-mail${_T}  30a btop${_T}  40b nix-gui${_T}  51a sys-info" \
-    "  (120-1225)${_T}  20c oci-analy${_T}  30b iotop${_T}  40c nix-tty${_T}  51b sys-net-res" \
+    "  (120-1226)${_T}  20c oci-analy${_T}  30b iotop${_T}  40c nix-tty${_T}  51b sys-net-res" \
     "${_T}  20d oci-apps${_T}  30c top-batch${_T}  40d apt-cli${_T}  51c sys-paths" \
     "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  51d sys-envs" \
     "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  51e tools-table" \
@@ -217,6 +217,7 @@ show_menu_header() { set +x 2>/dev/null
     "123 rst-wg${_T}128 wg-status${_T}1213 journal-sil${_T}1218 guardrail${_T}1223 vm-health" \
     "124 rst-docker${_T}129 iptables${_T}1214 fix-journal${_T}1219 fix-nix-path${_T}1224 fix-all" \
     "${_T}${_T}${_T}${_T}1225 mem-emerg" \
+    "${_T}${_T}${_T}${_T}1226 hm-rescue" \
   | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-52 shortcode${R}\n"
