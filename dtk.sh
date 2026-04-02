@@ -122,6 +122,8 @@ show_banner() { set +x 2>/dev/null
   _ip=$(ip -4 route get 1 2>/dev/null | awk '{print $7; exit}' || echo "?")
 
   printf "  ${G}system${R}\n"
+  printf "  ${D}══════════════════════════════════════════════════════════════════════════════════${R}\n"
+  printf "  ${Y}infos${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   # Col widths: label=6 val=15 | label=6 val=22 | label=6 val=17 | label=6 val=11 | label=6 val=*
   _F="  ${Y}%-6s${R} ${W}%-15s${R} ${Y}%-6s${R} ${W}%-22s${R} ${Y}%-6s${R} ${W}%-17s${R} ${Y}%-6s${R} ${W}%-11s${R} ${Y}%-6s${R} ${W}%s${R}\n"
@@ -152,7 +154,7 @@ show_menu_header() { set +x 2>/dev/null
   # Menu tree — auto-aligned via column -t
   _T=$(printf '\t')
   printf "  ${G}toolkit${R}\n"
-  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  printf "  ${D}══════════════════════════════════════════════════════════════════════════════════${R}\n"
   printf "1) cmds-local${_T}2) cmds-cloud${_T}3) dashboards${_T}4) setups${_T}5) infos\n" | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${Y}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '%s\n' \
