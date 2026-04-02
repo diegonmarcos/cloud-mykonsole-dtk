@@ -5,17 +5,34 @@
 # OS-agnostic POSIX: NixOS, Arch, Debian, Fedora, macOS, Termux
 set -eu
 
-# Logging — all activity to dtk.log, verbose trace via set -x
+# Logging — dual output:
+#   dtk.log  — raw verbose (set -x trace + stdout, with ANSI)
+#   dtk.md   — clean markdown (stdout only, ANSI stripped)
 LOGFILE="${HOME:-/tmp}/dtk.log"
+MDFILE="${HOME:-/tmp}/dtk.md"
 _LOG_USER=$(whoami 2>/dev/null || echo "?")
 _LOG_HOST=$(hostname -s 2>/dev/null || echo "?")
 _LOG_TS() { date '+%Y-%m-%d %H:%M:%S'; }
 
-# Log everything: stdout to screen + log, stderr (set -x trace) to log only
+# Strip ANSI escape codes for markdown output
+_strip_ansi() { sed 's/\x1b\[[0-9;]*m//g; s/\x1b\[[0-9;]*[A-Za-z]//g'; }
+
+# Log everything: stdout to screen + log + md, stderr (set -x) to log only
 if [ -z "${_DTK_LOGGING:-}" ]; then
   export _DTK_LOGGING=1
-  "$0" "$@" 2>>"$LOGFILE" | tee -a "$LOGFILE"
-  exit $?
+  # Write md header
+  printf "# DTK Output\n\n" > "$MDFILE"
+  printf "> %s — %s@%s\n\n" "$(_LOG_TS)" "$_LOG_USER" "$_LOG_HOST" >> "$MDFILE"
+  printf '```\n' >> "$MDFILE"
+  # stdout → screen + log (raw with ANSI) + md (stripped)
+  # tee sends to screen + log, sed strips for md — all in one pipeline
+  _dtk_raw="${TMPDIR:-/tmp}/dtk-raw-$$"
+  "$0" "$@" 2>>"$LOGFILE" | tee -a "$LOGFILE" | tee "$_dtk_raw"
+  _rc=$?
+  _strip_ansi < "$_dtk_raw" >> "$MDFILE"
+  printf '```\n' >> "$MDFILE"
+  rm -f "$_dtk_raw"
+  exit $_rc
 fi
 
 # Second invocation: stderr goes to LOGFILE, stdout goes to tee (screen + log)
