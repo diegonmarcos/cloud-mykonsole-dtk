@@ -152,7 +152,9 @@ show_menu_header() { set +x 2>/dev/null
 
   # Menu tree — auto-aligned via column -t
   _T=$(printf '\t')
-  printf "1) cmds-local${_T}2) cmds-cloud${_T}3) dashboards${_T}4) setups${_T}5) infos\n" | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${C}%s${R}\n" "$_line"; done
+  printf "  ${G}toolkit${R}\n"
+  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  printf "1) cmds-local${_T}2) cmds-cloud${_T}3) dashboards${_T}4) setups${_T}5) infos\n" | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${Y}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '%s\n' \
     "10 aliases${_T}20 quick-cmds${_T}local${_T}40 deb${_T}50 help" \
