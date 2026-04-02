@@ -124,12 +124,16 @@ show_banner() { set +x 2>/dev/null
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${G}system${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${Y}host${R}  ${W}%-13s${R} ${Y}os${R}     ${W}%-21s${R} ${Y}uptime${R} ${W}%-16s${R} ${Y}load${R}   ${W}%-10s${R} ${Y}users${R} ${W}%s${R}\n" "$SYS_HOSTNAME" "$SYS_DISTRO" "$_uptime" "$_load" "$_users"
-  printf "  ${Y}arch${R}  ${W}%-13s${R} ${Y}kernel${R} ${W}%-21s${R} ${Y}disk${R}   ${W}%-16s${R} ${Y}swap${R}   ${W}%-10s${R} ${Y}procs${R} ${W}%s${R}\n" "$SYS_ARCH" "$_kern" "$_disk" "$_swap" "$_procs"
-  printf "  ${Y}cpu${R}   ${W}%-13s${R} ${Y}ram${R}    ${W}%-21s${R} ${Y}ip${R}     ${W}%-16s${R} ${Y}wg0${R}    ${W}%-10s${R} ${Y}shell${R} ${W}%s${R}\n" "${SYS_CPUS} cores" "${_mem_used}/${SYS_RAM_MB}MB" "$_ip" "$_wg_ip" "$_shell"
+  # Row 1: Identity (static)
+  printf "  ${Y}host${R}   ${W}%-13s${R} ${Y}os${R}     ${W}%-21s${R} ${Y}arch${R}   ${W}%-16s${R} ${Y}kernel${R} ${W}%-10s${R} ${Y}shell${R} ${W}%s${R}\n" "$SYS_HOSTNAME" "$SYS_DISTRO" "$SYS_ARCH" "$_kern" "$_shell"
+  # Row 2: Config (static)
   _nix_pad=""; [ "$SYS_HAS_NIX" != true ] && _nix_pad=" "
   _dok_pad=""; [ "$SYS_HAS_DOCKER" != true ] && _dok_pad=" "
-  printf "  ${Y}nix${R}   ${nix_icon}${_nix_pad}            ${Y}docker${R} ${docker_icon}${_dok_pad}                    ${Y}init${R}   ${W}%-16s${R} ${Y}pkg${R}    ${W}%-10s${R} ${Y}cont.${R} ${W}%s${R}\n" "$SYS_INIT" "$SYS_PKG" "$_containers"
+  printf "  ${Y}pkg${R}    ${W}%-13s${R} ${Y}init${R}   ${W}%-21s${R} ${Y}nix${R}    ${nix_icon}${_nix_pad}%-11s ${Y}docker${R} ${docker_icon}${_dok_pad}%-5s ${Y}cont.${R} ${W}%s${R}\n" "$SYS_PKG" "$SYS_INIT" "" "" "$_containers"
+  # Row 3: Network (semi-static)
+  printf "  ${Y}ip${R}     ${W}%-13s${R} ${Y}wg0${R}    ${W}%-21s${R} ${Y}users${R}  ${W}%-16s${R} ${Y}procs${R}  ${W}%-10s${R} ${Y}uptime${R} ${W}%s${R}\n" "$_ip" "$_wg_ip" "$_users" "$_procs" "$_uptime"
+  # Row 4: Resources (dynamic)
+  printf "  ${Y}cpu${R}    ${W}%-13s${R} ${Y}ram${R}    ${W}%-21s${R} ${Y}swap${R}   ${W}%-16s${R} ${Y}disk${R}   ${W}%-10s${R} ${Y}load${R} ${W}%s${R}\n" "${SYS_CPUS} cores" "${_mem_used}/${SYS_RAM_MB}MB" "$_swap" "$_disk" "$_load"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '\n'
 }
