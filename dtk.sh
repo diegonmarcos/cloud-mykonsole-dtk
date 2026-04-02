@@ -103,12 +103,20 @@ show_banner() { set +x 2>/dev/null
   printf "${C}  ╚═════╝ ${B}   ╚═╝   ${M}╚═╝  ╚═╝${R}\n"
   printf '\n'
   _T=$(printf '\t')
+  _uptime=$(uptime -p 2>/dev/null | sed 's/up //')
+  [ -z "$_uptime" ] && _uptime=$(uptime 2>/dev/null | sed 's/.*up //' | sed 's/,.*//' | sed 's/^ *//')
+  [ -z "$_uptime" ] && _uptime="?"
+  _disk=$(LANG=C command df -h / 2>/dev/null | awk 'NR==2{print $3"/"$2}' || echo "?")
+  _mem_used=$(free -m 2>/dev/null | awk '/Mem/{print $3}' || echo "?")
+  _load=$(cat /proc/loadavg 2>/dev/null | awk '{print $1}' || echo "?")
+  _wg_ip=$(ip -4 addr show wg0 2>/dev/null | awk '/inet/{print $2}' | cut -d/ -f1 || echo "down")
+  _containers=$(docker ps -q 2>/dev/null | wc -l || echo "0")
   printf '%s\n' \
-    "host ${SYS_HOSTNAME}${_T}os ${SYS_DISTRO}" \
-    "arch ${SYS_ARCH}${_T}kernel ${_kern}" \
-    "cpu ${SYS_CPUS} cores${_T}ram ${SYS_RAM_MB}MB" \
-    "pkg ${SYS_PKG}${_T}init ${SYS_INIT}" \
-    "nix $([ "$SYS_HAS_NIX" = true ] && echo ON || echo off)${_T}docker $([ "$SYS_HAS_DOCKER" = true ] && echo ON || echo off)" \
+    "host ${SYS_HOSTNAME}${_T}os ${SYS_DISTRO}${_T}uptime ${_uptime}" \
+    "arch ${SYS_ARCH}${_T}kernel ${_kern}${_T}disk ${_disk}" \
+    "cpu ${SYS_CPUS} cores${_T}ram ${_mem_used}/${SYS_RAM_MB}MB${_T}load ${_load}" \
+    "pkg ${SYS_PKG}${_T}init ${SYS_INIT}${_T}wg0 ${_wg_ip}" \
+    "nix $([ "$SYS_HAS_NIX" = true ] && echo ON || echo off)${_T}docker $([ "$SYS_HAS_DOCKER" = true ] && echo ON || echo off)${_T}containers ${_containers}" \
   | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '\n'
