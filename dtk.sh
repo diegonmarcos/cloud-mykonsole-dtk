@@ -124,16 +124,18 @@ show_banner() { set +x 2>/dev/null
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${G}system${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  # Col widths: label=6 val=15 | label=6 val=22 | label=6 val=17 | label=6 val=11 | label=6 val=*
+  _F="  ${Y}%-6s${R} ${W}%-15s${R} ${Y}%-6s${R} ${W}%-22s${R} ${Y}%-6s${R} ${W}%-17s${R} ${Y}%-6s${R} ${W}%-11s${R} ${Y}%-6s${R} ${W}%s${R}\n"
   # Row 1: Identity (static)
-  printf "  ${Y}host${R}   ${W}%-13s${R} ${Y}os${R}     ${W}%-21s${R} ${Y}arch${R}   ${W}%-16s${R} ${Y}kernel${R} ${W}%-10s${R} ${Y}shell${R} ${W}%s${R}\n" "$SYS_HOSTNAME" "$SYS_DISTRO" "$SYS_ARCH" "$_kern" "$_shell"
+  printf "$_F" "host" "$SYS_HOSTNAME" "os" "$SYS_DISTRO" "arch" "$SYS_ARCH" "kernel" "$_kern" "shell" "$_shell"
   # Row 2: Config (static)
-  _nix_pad=""; [ "$SYS_HAS_NIX" != true ] && _nix_pad=" "
-  _dok_pad=""; [ "$SYS_HAS_DOCKER" != true ] && _dok_pad=" "
-  printf "  ${Y}pkg${R}    ${W}%-13s${R} ${Y}init${R}   ${W}%-21s${R} ${Y}nix${R}    ${nix_icon}${_nix_pad}%-11s ${Y}docker${R} ${docker_icon}${_dok_pad}%-5s ${Y}cont.${R} ${W}%s${R}\n" "$SYS_PKG" "$SYS_INIT" "" "" "$_containers"
+  _nix_v="off"; [ "$SYS_HAS_NIX" = true ] && _nix_v="ON"
+  _dok_v="off"; [ "$SYS_HAS_DOCKER" = true ] && _dok_v="ON"
+  printf "$_F" "pkg" "$SYS_PKG" "init" "$SYS_INIT" "nix" "$_nix_v" "docker" "$_dok_v" "cont." "$_containers"
   # Row 3: Network (semi-static)
-  printf "  ${Y}ip${R}     ${W}%-13s${R} ${Y}wg0${R}    ${W}%-21s${R} ${Y}users${R}  ${W}%-16s${R} ${Y}procs${R}  ${W}%-10s${R} ${Y}uptime${R} ${W}%s${R}\n" "$_ip" "$_wg_ip" "$_users" "$_procs" "$_uptime"
+  printf "$_F" "ip" "$_ip" "wg0" "$_wg_ip" "users" "$_users" "procs" "$_procs" "uptime" "$_uptime"
   # Row 4: Resources (dynamic)
-  printf "  ${Y}cpu${R}    ${W}%-13s${R} ${Y}ram${R}    ${W}%-21s${R} ${Y}swap${R}   ${W}%-16s${R} ${Y}disk${R}   ${W}%-10s${R} ${Y}load${R} ${W}%s${R}\n" "${SYS_CPUS} cores" "${_mem_used}/${SYS_RAM_MB}MB" "$_swap" "$_disk" "$_load"
+  printf "$_F" "cpu" "${SYS_CPUS} cores" "ram" "${_mem_used}/${SYS_RAM_MB}MB" "swap" "$_swap" "disk" "$_disk" "load" "$_load"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '\n'
 }
