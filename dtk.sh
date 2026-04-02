@@ -121,7 +121,7 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  printf "  ${C}1) aliases/tools${R}  ${C}2) setups${R}         ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) help/others${R}\n"
+  printf "  ${C}1) aliases/tools${R}  ${C}2) setups${R}         ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) infos${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}10 aliases${R}        ${D}20 deb${R}            ${D}local${R}              ${D}40 quick-cmds${R}    ${D}50 help${R}\n"
   printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 monitors${R}        ${D}  40a gcp-proxy${R}  ${D}51 webhooks${R}\n"
@@ -187,7 +187,7 @@ PROJECT="diegonmarcos-infra-prod"
 
 # Module paths — all logic lives in subfolders, dtk.sh is the orchestrator
 _DTK_DIR="$(cd "$(dirname "$0")" && pwd)"
-_OTHERS_DIR="$_DTK_DIR/5-help-others"
+_OTHERS_DIR="$_DTK_DIR/5-infos"
 _ALIASES_DIR="$_DTK_DIR/1-aliases"
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1009,7 +1009,7 @@ do_qc_vps() {
 # ═══════════════════════════════════════════════════════════════════
 # D) OTHERS — ssh, git-clone, install, commands, info
 # ═══════════════════════════════════════════════════════════════════
-# D) OTHERS — all logic in 5-help-others/ modules, these are thin delegators
+# D) OTHERS — all logic in 5-infos/ modules, these are thin delegators
 # ═══════════════════════════════════════════════════════════════════
 
 do_all_commands() { set +x 2>/dev/null
@@ -1120,7 +1120,7 @@ do_help() { set +x 2>/dev/null
   printf "  ${W}b) setups${R}       Containers, NixOS, shell setup\n"
   printf "  ${W}c) dashboards${R}   Local & remote monitoring dashboards\n"
   printf "  ${W}d) commands${R}     SSH, git-clone, install, commands, info\n"
-  printf "  ${W}e) help/others${R}  This help & other utilities\n\n"
+  printf "  ${W}e) infos${R}        Help, webhooks, commands\n\n"
   printf "${Y}Direct Commands:${R}\n"
   printf "  dtk.sh aliases                  ${D}# all shell aliases (3-column)${R}\n"
   printf "  dtk.sh tools                    ${D}# all installed CLI tools (5-column)${R}\n"
