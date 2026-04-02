@@ -124,18 +124,18 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${C}1) aliases/tools${R}  ${C}2) setups${R}         ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) infos${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}10 aliases${R}        ${D}20 deb${R}            ${D}local${R}              ${D}40 quick-cmds${R}    ${D}50 help${R}\n"
-  printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 monitors${R}        ${D}  40a gcp-proxy${R}  ${D}51 webhooks${R}\n"
-  printf "  ${D}  11a table${R}       ${D}  20b nix-gui${R}     ${D}  30a btop${R}          ${D}  40b oci-mail${R}   ${D}52 commands${R}\n"
-  printf "  ${D}  11b help${R}        ${D}  20c nix-tty${R}     ${D}  30b iotop${R}         ${D}  40c oci-analy${R}\n"
-  printf "  ${D}12 info${R}           ${D}  20d apt-cli${R}     ${D}  30c top-batch${R}     ${D}  40d oci-apps${R}\n"
-  printf "  ${D}  12a info${R}        ${D}  20e apt-gui${R}     ${D}31 sysstat${R}          ${D}  40e gcp-t4${R}\n"
-  printf "  ${D}  12b engines${R}     ${D}  20f apt-tty${R}     ${D}  31a iostat${R}        ${D}  40f orchestrate${R}\n"
+  printf "                    ${D}  20a nix-cli${R}     ${D}30 monitors${R}        ${D}  40a gcp-proxy${R}  ${D}51 tools${R}\n"
+  printf "                    ${D}  20b nix-gui${R}     ${D}  30a btop${R}          ${D}  40b oci-mail${R}   ${D}  51a table${R}\n"
+  printf "                    ${D}  20c nix-tty${R}     ${D}  30b iotop${R}         ${D}  40c oci-analy${R}  ${D}  51b help${R}\n"
+  printf "                    ${D}  20d apt-cli${R}     ${D}  30c top-batch${R}     ${D}  40d oci-apps${R}   ${D}52 info${R}\n"
+  printf "                    ${D}  20e apt-gui${R}     ${D}31 sysstat${R}          ${D}  40e gcp-t4${R}     ${D}  52a info${R}\n"
+  printf "                    ${D}  20f apt-tty${R}     ${D}  31a iostat${R}        ${D}  40f orchestrate${R} ${D}  52b engines${R}\n"
   printf "                    ${D}21 nixos${R}          ${D}  31b mpstat${R}        ${D}  40g local${R}\n"
   printf "                    ${D}  21a hm-cli${R}      ${D}  31c pidstat${R}       ${D}  40h desktop${R}\n"
   printf "                    ${D}  21b hm-gui${R}      ${D}  31d sar${R}\n"
   printf "                    ${D}  21c hm-tty${R}      ${D}32 journal-dash${R}\n"
-  printf "                    ${D}22 shell${R}           ${D}  32a transport${R}    ${D}  40i vps-cloud${R}\n"
-  printf "                    ${D}  22a fish+tools${R}   ${D}  32b priority${R}     ${D}  40j gh-actions${R}\n"
+  printf "                    ${D}22 shell${R}           ${D}  32a transport${R}    ${D}  40i vps-cloud${R}   ${D}53 webhooks${R}\n"
+  printf "                    ${D}  22a fish+tools${R}   ${D}  32b priority${R}     ${D}  40j gh-actions${R}  ${D}54 commands${R}\n"
   printf "                    ${D}  22b fish${R}          ${D}  32c unit${R}         ${D}  40k gh-repos${R}\n"
   printf "                    ${D}  22c konsole-cfg${R} ${D}  32d watch-n35${R}    ${D}  40l gh-registry${R}\n"
   printf "                    ${D}23 git${R}            ${D}33 connect${R}         ${D}41 ssh${R}\n"
@@ -148,32 +148,27 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}commands:${R}\n"
   printf "  ${D}10 aliases         30 monitors        40  quick-cmds      50 help${R}\n"
-  printf "  ${D}11 tools           30a btop           40a gcp-proxy      51 webhooks${R}\n"
-  printf "  ${D}11a table          30b iotop          40b oci-mail       52 commands${R}\n"
-  printf "  ${D}11b help           30c top-batch      40c oci-analytics${R}\n"
-  printf "  ${D}12  info           31 sysstat         40d oci-apps${R}\n"
-  printf "  ${D}12a info           31a iostat         40e gcp-t4${R}\n"
-  printf "  ${D}12b engines        31b mpstat         40f orchestrate${R}\n"
-  printf "  ${D}20  deb            31c pidstat        40g local${R}\n"
-  printf "  ${D}20a nix-cli        31d sar            40h desktop${R}\n"
-  printf "  ${D}20b nix-gui        32 journal-dash    40i vps-cloud${R}\n"
-  printf "  ${D}20c nix-tty        32a transport      40j gh-actions${R}\n"
-  printf "  ${D}20d apt-cli        32b priority       40k gh-repos${R}\n"
-  printf "  ${D}20e apt-gui        32c unit           40l gh-registry${R}\n"
-  printf "  ${D}20f apt-tty        32d watch-n35      41  ssh${R}\n"
-  printf "  ${D}21  nixos          33 connect         41a gcp-proxy${R}\n"
-  printf "  ${D}21a hm-cli         34 btop-dash       41b oci-mail${R}\n"
-  printf "  ${D}21b hm-gui         35 journal-dash    41c oci-analytics${R}\n"
-  printf "  ${D}21c hm-tty         36 docker-stats    41d oci-apps${R}\n"
-  printf "  ${D}22  shell                             41e gcp-t4${R}\n"
-  printf "  ${D}22a fish+tools                        41f github${R}\n"
-  printf "  ${D}22b fish${R}\n"
-  printf "  ${D}22c konsole-cfg${R}\n"
-  printf "  ${D}23  git${R}\n"
-  printf "  ${D}23a gcl-https${R}\n"
-  printf "  ${D}23b gcl-ssh${R}\n"
+  printf "  ${D}20  deb            30a btop           40a gcp-proxy      51 tools${R}\n"
+  printf "  ${D}20a nix-cli        30b iotop          40b oci-mail       51a table${R}\n"
+  printf "  ${D}20b nix-gui        30c top-batch      40c oci-analytics  51b help${R}\n"
+  printf "  ${D}20c nix-tty        31 sysstat         40d oci-apps       52 info${R}\n"
+  printf "  ${D}20d apt-cli        31a iostat         40e gcp-t4         52a info${R}\n"
+  printf "  ${D}20e apt-gui        31b mpstat         40f orchestrate    52b engines${R}\n"
+  printf "  ${D}20f apt-tty        31c pidstat        40g local          53 webhooks${R}\n"
+  printf "  ${D}21  nixos          31d sar            40h desktop        54 commands${R}\n"
+  printf "  ${D}21a hm-cli         32 journal-dash    40i vps-cloud${R}\n"
+  printf "  ${D}21b hm-gui         32a transport      40j gh-actions${R}\n"
+  printf "  ${D}21c hm-tty         32b priority       40k gh-repos${R}\n"
+  printf "  ${D}22  shell          32c unit           40l gh-registry${R}\n"
+  printf "  ${D}22a fish+tools     32d watch-n35      41  ssh${R}\n"
+  printf "  ${D}22b fish           33 connect         41a gcp-proxy${R}\n"
+  printf "  ${D}22c konsole-cfg    34 btop-dash       41b oci-mail${R}\n"
+  printf "  ${D}23  git            35 journal-dash    41c oci-analytics${R}\n"
+  printf "  ${D}23a gcl-https      36 docker-stats    41d oci-apps${R}\n"
+  printf "  ${D}23b gcl-ssh                           41e gcp-t4${R}\n"
+  printf "  ${D}                                      41f github${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-52 shortcode${R}\n"
+  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-54 shortcode${R}\n"
   printf "\n"
 }
 
@@ -1149,11 +1144,10 @@ _resolve_shortcode() {
   _minor=$(echo "$_code" | cut -c2)
   _rest=$(echo "$_code" | cut -c3-)
   case "$_major" in
-    1) # aliases/tools
+    1) # aliases
       case "$_minor$_rest" in
-        0) do_aliases ;; 1) do_tools ;; 1a) do_tools ;; 1b) do_tools_help ;;
-        2) do_info ;; 2a) do_info ;; 2b) do_engines ;;
-        *) do_aliases; do_tools ;;
+        0) do_aliases ;;
+        *) do_aliases ;;
       esac; return 0 ;;
     2) # containers + shell config
       _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
@@ -1197,9 +1191,13 @@ _resolve_shortcode() {
         1f) ssh github.com ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
-    5) # help/others
+    5) # infos
       case "$_minor$_rest" in
-        0) do_help ;; 1) sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;; 2) do_commands ;;
+        0) do_help ;;
+        1) do_tools ;; 1a) do_tools ;; 1b) do_tools_help ;;
+        2) do_info ;; 2a) do_info ;; 2b) do_engines ;;
+        3) sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;;
+        4) do_commands ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
@@ -1248,7 +1246,7 @@ else
     printf "> "
     read -r _input
     case "$_input" in
-      1)  do_aliases; do_tools ;;
+      1)  do_aliases ;;
       2)  sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" ;;
       3)  do_connect ;;
       4)  printf "\n  40 vm  41 orchestrate  42 desktop  43 vps/cloud\n\n" ;;
