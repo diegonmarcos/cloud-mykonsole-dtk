@@ -194,9 +194,9 @@ show_menu_header() { set +x 2>/dev/null
     "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  51d sys-envs" \
     "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  51e tools-table" \
     "${_T}  20g local${_T}  31b mpstat${_T}41 nixos${_T}  51f tools-help" \
-    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}  51g deps-solver" \
-    "${_T}  20i vps-cloud${_T}  31d sar${_T}  41b hm-gui${_T}" \
-    "${_T}  20j gh-actions${_T}32 journal-dash${_T}  41c hm-tty${_T}" \
+    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}52 deps" \
+    "${_T}  20i vps-cloud${_T}  31d sar${_T}  41b hm-gui${_T}  52a deps-drift" \
+    "${_T}  20j gh-actions${_T}32 journal-dash${_T}  41c hm-tty${_T}  52b deps-solver" \
     "${_T}  20k gh-repos${_T}  32a transport${_T}42 shell${_T}" \
     "${_T}  20l gh-registry${_T}  32b priority${_T}  42a fish+tools${_T}" \
     "${_T}21 ssh${_T}  32c unit${_T}  42b fish${_T}" \
@@ -1153,6 +1153,48 @@ do_all_commands() { set +x 2>/dev/null
   '
 }
 
+do_deps_drift() { set +x 2>/dev/null
+  R='\033[0m'; G='\033[1;32m'; Y='\033[1;33m'; RED='\033[0;31m'; D='\033[0;90m'; W='\033[1;37m'; C='\033[1;36m'
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _DEPS_JSON="$_SCRIPT_DIR/deps.json"
+
+  printf "\n${G}deps-drift${R} ${D}(declared vs installed)${R}\n"
+  printf "${D}══════════════════════════════════════════════════════════════════════════════════${R}\n"
+
+  _req_total=0; _req_miss=0; _rec_total=0; _rec_miss=0; _opt_total=0; _opt_miss=0
+
+  for _level in required recommended optional; do
+    _count=0; _miss=0
+    jq -r ".${_level} | keys[]" "$_DEPS_JSON" 2>/dev/null | while read -r _bin; do
+      _count=$((_count + 1))
+      command -v "$_bin" >/dev/null 2>&1 || _miss=$((_miss + 1))
+    done
+  done
+
+  # Summary per level
+  for _level in required recommended optional; do
+    case "$_level" in
+      required)    _icon="$RED" ;; recommended) _icon="$Y" ;; optional) _icon="$D" ;;
+    esac
+    _total=$(jq ".${_level} | length" "$_DEPS_JSON" 2>/dev/null)
+    _miss=$(jq -r ".${_level} | keys[]" "$_DEPS_JSON" 2>/dev/null | while read -r _b; do
+      command -v "$_b" >/dev/null 2>&1 || echo x
+    done | wc -l)
+    _found=$((_total - _miss))
+    if [ "$_miss" -eq 0 ]; then
+      printf "  ${G}✓${R}  %-14s ${G}%s/%s${R}\n" "$_level" "$_found" "$_total"
+    else
+      printf "  ${_icon}✗  %-14s %s/%s ${_icon}(%s missing)${R}\n" "$_level" "$_found" "$_total" "$_miss"
+      jq -r ".${_level} | to_entries[] | \"\(.key)\t\(.value)\"" "$_DEPS_JSON" 2>/dev/null | \
+      while IFS="$(printf '\t')" read -r _bin _desc; do
+        command -v "$_bin" >/dev/null 2>&1 || printf "     ${_icon}✗ %-12s${R} ${D}%s${R}\n" "$_bin" "$_desc"
+      done
+    fi
+  done
+
+  printf "\n"
+}
+
 do_tools_deps_solver() { set +x 2>/dev/null
   R='\033[0m'; G='\033[1;32m'; Y='\033[1;33m'; RED='\033[0;31m'; D='\033[0;90m'; W='\033[1;37m'; C='\033[1;36m'
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1267,7 +1309,9 @@ do_sys_info_menu() {
   printf "  51d sys-envs         Environment variables\n"
   printf "  51e tools-table      Installed tools (5-col)\n"
   printf "  51f tools-help       Installed tools (with descriptions)\n"
-  printf "  51g deps-solver      Check missing tools + install\n\n"
+  printf "\n  ${C}52) deps${R}\n"
+  printf "  52a deps-drift       Declared vs installed (summary)\n"
+  printf "  52b deps-solver      Full toolchain check (detailed)\n\n"
 }
 
 do_sys_info() { set +x 2>/dev/null
@@ -1462,8 +1506,9 @@ _resolve_shortcode() {
     5) # infos
       case "$_minor$_rest" in
         0) do_help ;;
-        1) do_sys_info; do_sys_net_resource; do_sys_paths; do_sys_envs; do_tools; do_tools_help; do_tools_deps_solver ;;
-        1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;; 1g) do_tools_deps_solver ;;
+        1) do_sys_info; do_sys_net_resource; do_sys_paths; do_sys_envs; do_tools; do_tools_help ;;
+        1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;;
+        2) do_deps_drift; do_tools_deps_solver ;; 2a) do_deps_drift ;; 2b) do_tools_deps_solver ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
