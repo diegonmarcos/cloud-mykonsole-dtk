@@ -121,7 +121,8 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  printf "  ${C}1) aliases/tools${R}  ${C}2) containers${R}    ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) help/others${R}\n"
+  printf "  ${C}1) aliases/tools${R}  ${C}2) setups${R}         ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) help/others${R}\n"
+  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}10 aliases${R}        ${D}20 deb${R}            ${D}local${R}              ${D}40 quick-cmds${R}    ${D}50 help${R}\n"
   printf "  ${D}11 tools${R}          ${D}  20a nix-cli${R}     ${D}30 monitors${R}        ${D}  40a gcp-proxy${R}  ${D}51 webhooks${R}\n"
   printf "  ${D}  11a table${R}       ${D}  20b nix-gui${R}     ${D}  30a btop${R}          ${D}  40b oci-mail${R}   ${D}52 commands${R}\n"
@@ -1022,14 +1023,14 @@ do_all_commands() { set +x 2>/dev/null
 12|info
 12a|info (installed tools)
 12b|engines (build scripts)
-20|deb containers
+20|deb setups
 20a|deb nix-cli
 20b|deb nix-gui
 20c|deb nix-tty
 20d|deb apt-cli
 20e|deb apt-gui
 20f|deb apt-tty
-21|nixos containers
+21|nixos setups
 21a|nixos hm-cli
 21b|nixos hm-gui
 21c|nixos hm-tty
@@ -1115,7 +1116,7 @@ do_help() { set +x 2>/dev/null
   printf "  dtk.sh <command> [args]        ${D}# direct${R}\n\n"
   printf "${Y}Main Menu:${R}\n"
   printf "  ${W}a) aliases${R}      Toolchain list — all aliases/functions by category\n"
-  printf "  ${W}b) containers${R}   Pull & run dev environment container (cli/gui/tty)\n"
+  printf "  ${W}b) setups${R}       Containers, NixOS, shell setup\n"
   printf "  ${W}c) dashboards${R}   Local & remote monitoring dashboards\n"
   printf "  ${W}d) commands${R}     SSH, git-clone, install, commands, info\n"
   printf "  ${W}e) help/others${R}  This help & other utilities\n\n"
@@ -1155,7 +1156,7 @@ _resolve_shortcode() {
       esac; return 0 ;;
     2) # containers + shell config
       _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
-      _containers_sh="$_dtk_dir/2-containers/containers.sh"
+      _containers_sh="$_dtk_dir/2-setups/containers.sh"
       case "$_minor$_rest" in
         0) sh "$_containers_sh" ;;
         0a) sh "$_containers_sh" 1 ;; 0b) sh "$_containers_sh" 2 ;; 0c) sh "$_containers_sh" 3 ;;
@@ -1163,8 +1164,8 @@ _resolve_shortcode() {
         1) echo "21a hm-cli  21b hm-gui  21c hm-tty" ;;
         1a) sh "$_containers_sh" 7 ;; 1b) sh "$_containers_sh" 8 ;; 1c) sh "$_containers_sh" 9 ;;
         2) echo "22a fish+tools  22b fish  22c gcl-https  22d gcl-ssh" ;;
-        2a) sh "$_dtk_dir/2-containers/fish-tools.sh" ;;
-        2b) sh "$_dtk_dir/2-containers/fish-shell.sh" ;;
+        2a) sh "$_dtk_dir/2-setups/fish-tools.sh" ;;
+        2b) sh "$_dtk_dir/2-setups/fish-shell.sh" ;;
         2c) do_gcl_https ;; 2d) do_gcl_ssh ;; 2e) do_konsole_cfg ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
@@ -1220,9 +1221,9 @@ if [ $# -ge 1 ]; then
     journal-priority)  do_journal_dash priority ;;
     journal-unit)      do_journal_dash unit ;;
     remote-journal) do_remote_journal ;;
-    containers)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" "$@" ;;
-    docker-run)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" "$@" ;;
-    docker-start)   sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" deb-nix cli ;;
+    containers)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" "$@" ;;
+    docker-run)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" "$@" ;;
+    docker-start)   sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" deb-nix cli ;;
     connect)        shift; do_connect "$@" ;;
     others)         shift; do_others "$@" ;;
     ssh)            do_ssh ;;
@@ -1245,7 +1246,7 @@ else
     read -r _input
     case "$_input" in
       1)  do_aliases; do_tools ;;
-      2)  sh "$(cd "$(dirname "$0")" && pwd)/2-containers/containers.sh" ;;
+      2)  sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" ;;
       3)  do_connect ;;
       4)  printf "\n  40 vm  41 orchestrate  42 desktop  43 vps/cloud\n\n" ;;
       5)  do_help ;;
