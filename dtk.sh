@@ -162,11 +162,11 @@ show_menu_header() { set +x 2>/dev/null
     "11 webhooks${_T}  20a gcp-proxy${_T}30 monitors${_T}  40a nix-cli${_T}51 tools" \
     "12 commands${_T}  20b oci-mail${_T}  30a btop${_T}  40b nix-gui${_T}  51a table" \
     "  (120-1225)${_T}  20c oci-analy${_T}  30b iotop${_T}  40c nix-tty${_T}  51b help" \
-    "${_T}  20d oci-apps${_T}  30c top-batch${_T}  40d apt-cli${_T}52 info" \
-    "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  52a info" \
-    "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  52b engines" \
-    "${_T}  20g local${_T}  31b mpstat${_T}41 nixos${_T}" \
-    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}" \
+    "${_T}  20d oci-apps${_T}  30c top-batch${_T}  40d apt-cli${_T}52 sys-info" \
+    "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  52a sys-info" \
+    "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  52b sys-net-res" \
+    "${_T}  20g local${_T}  31b mpstat${_T}41 nixos${_T}  52c sys-paths" \
+    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}  52d sys-envs" \
     "${_T}  20i vps-cloud${_T}  31d sar${_T}  41b hm-gui${_T}" \
     "${_T}  20j gh-actions${_T}32 journal-dash${_T}  41c hm-tty${_T}" \
     "${_T}  20k gh-repos${_T}  32a transport${_T}42 shell${_T}" \
@@ -1120,6 +1120,108 @@ do_git_clone() { sh "$_OTHERS_DIR/git-clone/git-clone.sh" "$@"; }
 do_install()   { sh "$_OTHERS_DIR/install/install.sh" "$@"; }
 do_commands()  { sh "$_OTHERS_DIR/commands/commands.sh" "$@"; }
 do_info()      { sh "$_INFOS_DIR/info/info.sh" "$@"; }
+
+do_sys_info_menu() {
+  printf "\n\033[1;36m── 52) system info ──\033[0m\n"
+  printf "  52a sys-info        Static system identity\n"
+  printf "  52b sys-net-resource Dynamic network + resources\n"
+  printf "  52c sys-paths       Flake & engine paths\n"
+  printf "  52d sys-envs        Environment variables\n\n"
+}
+
+do_sys_info() { set +x 2>/dev/null
+  R='\033[0m'; Y='\033[1;33m'; W='\033[1;37m'; G='\033[1;32m'; D='\033[0;90m'
+  _kern=$(uname -r 2>/dev/null | sed 's/[-+].*//')
+  printf "\n${G}sys-info${R} ${D}(static)${R}\n"
+  printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  _F="  ${Y}%-12s${R} ${W}%s${R}\n"
+  printf "$_F" "hostname" "$(hostname 2>/dev/null)"
+  printf "$_F" "os" "$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || uname -s)"
+  printf "$_F" "arch" "$(uname -m)"
+  printf "$_F" "kernel" "$_kern"
+  printf "$_F" "shell" "$(basename "${SHELL:-sh}")"
+  printf "$_F" "pkg" "$(if command -v nix >/dev/null 2>&1; then echo nix; elif command -v apt >/dev/null 2>&1; then echo apt; else echo unknown; fi)"
+  printf "$_F" "init" "$(command -v systemctl >/dev/null && echo systemd || echo other)"
+  printf "$_F" "nix" "$(command -v nix >/dev/null && echo ON || echo off)"
+  printf "$_F" "docker" "$(command -v docker >/dev/null && echo ON || echo off)"
+  printf "$_F" "cpu-model" "$(awk -F: '/model name/{print $2; exit}' /proc/cpuinfo 2>/dev/null | sed 's/^ //')"
+  printf "$_F" "cpu-cores" "$(nproc 2>/dev/null)"
+  printf "$_F" "ram-total" "$(free -h 2>/dev/null | awk '/Mem/{print $2}')"
+  printf "$_F" "swap-total" "$(free -h 2>/dev/null | awk '/Swap/{print $2}')"
+  printf "$_F" "disk-total" "$(LANG=C command df -h / 2>/dev/null | awk 'NR==2{print $2}')"
+  printf "$_F" "boot-id" "$(cat /proc/sys/kernel/random/boot_id 2>/dev/null | cut -c1-8)"
+  printf "\n"
+}
+
+do_sys_net_resource() { set +x 2>/dev/null
+  R='\033[0m'; Y='\033[1;33m'; W='\033[1;37m'; G='\033[1;32m'; D='\033[0;90m'
+  printf "\n${G}sys-net-resource${R} ${D}(dynamic)${R}\n"
+  printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  _F="  ${Y}%-12s${R} ${W}%s${R}\n"
+  printf "$_F" "uptime" "$(uptime -p 2>/dev/null | sed 's/up //' || uptime 2>/dev/null | sed 's/.*up //;s/,.*//')"
+  printf "$_F" "load" "$(cat /proc/loadavg 2>/dev/null | awk '{print $1, $2, $3}')"
+  printf "$_F" "ram-used" "$(free -h 2>/dev/null | awk '/Mem/{print $3"/"$2}')"
+  printf "$_F" "swap-used" "$(free -h 2>/dev/null | awk '/Swap/{print $3"/"$2}')"
+  printf "$_F" "disk-used" "$(LANG=C command df -h / 2>/dev/null | awk 'NR==2{print $3"/"$2" ("$5")"}')"
+  printf "$_F" "ip" "$(ip -4 route get 1 2>/dev/null | awk '{print $7; exit}')"
+  printf "$_F" "wg0" "$(ip -4 addr show wg0 2>/dev/null | awk '/inet/{print $2}' | cut -d/ -f1 || echo down)"
+  printf "$_F" "dns" "$(awk '/^nameserver/{print $2; exit}' /etc/resolv.conf 2>/dev/null)"
+  printf "$_F" "gateway" "$(ip route 2>/dev/null | awk '/default/{print $3; exit}')"
+  printf "$_F" "users" "$(who 2>/dev/null | wc -l)"
+  printf "$_F" "procs" "$(ps aux 2>/dev/null | wc -l)"
+  printf "$_F" "containers" "$(docker ps -q 2>/dev/null | wc -l)"
+  printf "$_F" "listening" "$(ss -tlnp 2>/dev/null | tail -n+2 | wc -l) ports"
+  printf "\n"
+}
+
+do_sys_paths() { set +x 2>/dev/null
+  R='\033[0m'; Y='\033[1;33m'; W='\033[1;37m'; G='\033[1;32m'; D='\033[0;90m'
+  printf "\n${G}sys-paths${R} ${D}(flakes & engines)${R}\n"
+  printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  _F="  ${Y}%-20s${R} ${W}%s${R}\n"
+  printf "$_F" "nixos-host" "~/git/unix/aa_nixos-surface_host/"
+  printf "$_F" "hm-desktop" "~/git/unix/ba_flakes_desktop/"
+  printf "$_F" "hm-termux" "~/git/unix/bb_flakes_termux/"
+  printf "$_F" "cloud-repo" "~/git/cloud/"
+  printf "$_F" "front-repo" "~/git/front/"
+  printf "$_F" "tools-repo" "~/git/tools/"
+  printf "$_F" "vault-repo" "~/git/vault/"
+  printf "${D}  engines:${R}\n"
+  printf "$_F" "cloud-engine" "~/git/tools/5-infos/engines/cloud-engine/"
+  printf "$_F" "cloud-orchestrator" "~/git/tools/5-infos/engines/cloud-orchestrator/"
+  printf "$_F" "front-engine" "~/git/tools/5-infos/engines/front-engine/"
+  printf "$_F" "front-orchestrator" "~/git/tools/5-infos/engines/front-orchestrator/"
+  printf "$_F" "container-orch." "~/git/tools/5-infos/engines/cloud-container-orchestrator/"
+  printf "$_F" "nix-os-desktop" "~/git/tools/5-infos/engines/nix-os-desktop/"
+  printf "$_F" "nix-hm-desktop" "~/git/tools/5-infos/engines/nix-hm-desktop/"
+  printf "$_F" "nix-hm-termux" "~/git/tools/5-infos/engines/nix-hm-termux/"
+  printf "\n"
+}
+
+do_sys_envs() { set +x 2>/dev/null
+  R='\033[0m'; Y='\033[1;33m'; W='\033[1;37m'; G='\033[1;32m'; D='\033[0;90m'
+  printf "\n${G}sys-envs${R} ${D}(environment variables)${R}\n"
+  printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  _F="  ${Y}%-16s${R} ${W}%s${R}\n"
+  printf "$_F" "HOME" "${HOME:-?}"
+  printf "$_F" "USER" "${USER:-?}"
+  printf "$_F" "SHELL" "${SHELL:-?}"
+  printf "$_F" "TERM" "${TERM:-?}"
+  printf "$_F" "EDITOR" "${EDITOR:-?}"
+  printf "$_F" "LANG" "${LANG:-?}"
+  printf "$_F" "XDG_SESSION" "${XDG_SESSION_TYPE:-?}"
+  printf "$_F" "DISPLAY" "${DISPLAY:-?}"
+  printf "$_F" "WAYLAND" "${WAYLAND_DISPLAY:-?}"
+  printf "$_F" "GOPATH" "${GOPATH:-?}"
+  printf "$_F" "CARGO_HOME" "${CARGO_HOME:-?}"
+  printf "$_F" "NPM_PREFIX" "${npm_config_prefix:-?}"
+  printf "$_F" "NIX_PROFILES" "${NIX_PROFILES:-?}"
+  printf "${D}  PATH entries:${R}\n"
+  echo "$PATH" | tr ':' '\n' | while read -r _p; do
+    printf "  ${D}%s${R}\n" "$_p"
+  done
+  printf "\n"
+}
 do_engines()   { sh "$_INFOS_DIR/engines/engines.sh" "$@"; }
 do_webhooks()  { sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$@"; }
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
@@ -1218,7 +1320,7 @@ _resolve_shortcode() {
     5) # infos
       case "$_minor$_rest" in
         0) do_help ;; 1) do_tools ;; 1a) do_tools ;; 1b) do_tools_help ;;
-        2) do_info ;; 2a) do_info ;; 2b) do_engines ;;
+        2) do_sys_info_menu ;; 2a) do_sys_info ;; 2b) do_sys_net_resource ;; 2c) do_sys_paths ;; 2d) do_sys_envs ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
