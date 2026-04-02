@@ -194,7 +194,7 @@ show_menu_header() { set +x 2>/dev/null
     "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  51d sys-envs" \
     "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  51e tools-table" \
     "${_T}  20g local${_T}  31b mpstat${_T}41 nixos${_T}  51f tools-help" \
-    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}" \
+    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}  51g deps-solver" \
     "${_T}  20i vps-cloud${_T}  31d sar${_T}  41b hm-gui${_T}" \
     "${_T}  20j gh-actions${_T}32 journal-dash${_T}  41c hm-tty${_T}" \
     "${_T}  20k gh-repos${_T}  32a transport${_T}42 shell${_T}" \
@@ -1152,6 +1152,104 @@ do_all_commands() { set +x 2>/dev/null
   '
 }
 
+do_tools_deps_solver() { set +x 2>/dev/null
+  R='\033[0m'; G='\033[1;32m'; Y='\033[1;33m'; RED='\033[0;31m'; D='\033[0;90m'; W='\033[1;37m'; C='\033[1;36m'
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _TOOLS_JSON="$_SCRIPT_DIR/1-cmds-local/tools.json"
+  _DEPS_JSON="$_SCRIPT_DIR/deps.json"
+
+  # ── Part 1: DTK runtime deps (deps.json) ──────────────────────────
+  printf "\n${G}deps-solver${R}\n"
+  printf "${D}══════════════════════════════════════════════════════════════════════════════════${R}\n"
+  printf "  ${C}DTK runtime dependencies${R} ${D}(deps.json)${R}\n"
+  printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+
+  for _level in required recommended optional; do
+    case "$_level" in
+      required)    _color="$RED" ;;
+      recommended) _color="$Y" ;;
+      optional)    _color="$D" ;;
+    esac
+    _level_total=0; _level_miss=0
+    jq -r ".${_level} | to_entries[] | \"\(.key)\t\(.value)\"" "$_DEPS_JSON" 2>/dev/null | \
+    while IFS="$(printf '\t')" read -r _bin _desc; do
+      _level_total=$((_level_total + 1))
+      if command -v "$_bin" >/dev/null 2>&1; then
+        printf "  ${G}✓${R}  %-14s ${D}%s${R}\n" "$_bin" "$_desc"
+      else
+        _level_miss=$((_level_miss + 1))
+        printf "  ${_color}✗  %-14s %s${R}\n" "$_bin" "$_desc"
+      fi
+    done
+    printf "\n"
+  done
+
+  # ── Part 2: Full toolchain (tools.json) ────────────────────────────
+  printf "  ${C}Full toolchain${R} ${D}(tools.json)${R}\n"
+  printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+
+  _total=0; _found=0; _missing=0; _missing_list=""
+
+  # Read all tool names from tools.json
+  jq -r 'to_entries[] | .key as $cat | .value | keys_unsorted[] | $cat + "\t" + .' "$_TOOLS_JSON" 2>/dev/null | \
+  while IFS="$(printf '\t')" read -r _cat _tool; do
+    _total=$((_total + 1))
+    # Map tool names to actual binary names
+    _bin="$_tool"
+    case "$_tool" in
+      ripgrep) _bin="rg" ;; node) _bin="node" ;; tsc) _bin="tsc" ;;
+      sass) _bin="sass" ;; python3) _bin="python3" ;; virtualenv) _bin="virtualenv" ;;
+      torch) _bin="python3" ;; scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic|bokeh|sympy|beautifulsoup4|scrapy|httpx|requests|seaborn|plotly|pyarrow|ipython) _bin="python3" ;;
+      jupyterlab) _bin="jupyter" ;; docker-compose) _bin="docker-compose" ;; docker-buildx) _bin="docker" ;;
+      wireguard) _bin="wg" ;; gnupg) _bin="gpg" ;; netcat) _bin="nc" ;;
+      wireshark) _bin="tshark" ;; kubernetes-helm|helm) _bin="helm" ;;
+      p7zip) _bin="7z" ;; wl-clipboard) _bin="wl-copy" ;; xclip) _bin="xclip" ;;
+      R) _bin="R" ;; imagemagick) _bin="convert" ;; obs-studio) _bin="obs" ;;
+    esac
+
+    if command -v "$_bin" >/dev/null 2>&1; then
+      _found=$((_found + 1))
+    else
+      _missing=$((_missing + 1))
+      printf "  ${RED}✗${R}  ${Y}%-18s${R} ${D}(%s)${R}\n" "$_tool" "$_cat"
+      _missing_list="${_missing_list} ${_tool}"
+    fi
+  done
+
+  # Summary (vars lost in pipe subshell, re-count)
+  _total_count=$(jq '[.[] | keys[]] | length' "$_TOOLS_JSON" 2>/dev/null)
+  _missing_count=$(jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
+    _b="$_t"
+    case "$_t" in
+      ripgrep) _b="rg" ;; wireguard) _b="wg" ;; gnupg) _b="gpg" ;; netcat) _b="nc" ;;
+      wireshark) _b="tshark" ;; p7zip) _b="7z" ;; wl-clipboard) _b="wl-copy" ;;
+      imagemagick) _b="convert" ;; obs-studio) _b="obs" ;; jupyterlab) _b="jupyter" ;;
+      R) _b="R" ;; helm|kubernetes-helm) _b="helm" ;;
+      torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic|bokeh|sympy|beautifulsoup4|scrapy|httpx|requests|seaborn|plotly|pyarrow|ipython) _b="python3" ;;
+    esac
+    command -v "$_b" >/dev/null 2>&1 || echo "$_t"
+  done | wc -l)
+  _found_count=$((_total_count - _missing_count))
+
+  printf "\n${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  printf "  ${W}total${R} %-6s ${G}found${R} %-6s ${RED}missing${R} %s\n" "$_total_count" "$_found_count" "$_missing_count"
+
+  if [ "$_missing_count" -gt 0 ]; then
+    # Detect package manager and offer install
+    if command -v nix >/dev/null 2>&1; then
+      printf "\n  ${Y}nix detected${R} — missing tools are declared in nix profiles.\n"
+      printf "  ${D}Run: ~/git/unix/ba_flakes_desktop/build.sh switch${R}\n"
+    elif command -v apt >/dev/null 2>&1; then
+      printf "\n  ${Y}apt detected${R} — install missing with apt\n"
+    elif command -v pacman >/dev/null 2>&1; then
+      printf "\n  ${Y}pacman detected${R} — install missing with pacman\n"
+    fi
+  else
+    printf "\n  ${G}All tools installed!${R}\n"
+  fi
+  printf "\n"
+}
+
 do_ssh()       { sh "$_OTHERS_DIR/ssh/ssh.sh" "$@"; }
 
 do_git_clone() { sh "$_OTHERS_DIR/git-clone/git-clone.sh" "$@"; }
@@ -1167,7 +1265,8 @@ do_sys_info_menu() {
   printf "  51c sys-paths        Flake & engine paths\n"
   printf "  51d sys-envs         Environment variables\n"
   printf "  51e tools-table      Installed tools (5-col)\n"
-  printf "  51f tools-help       Installed tools (with descriptions)\n\n"
+  printf "  51f tools-help       Installed tools (with descriptions)\n"
+  printf "  51g deps-solver      Check missing tools + install\n\n"
 }
 
 do_sys_info() { set +x 2>/dev/null
@@ -1362,8 +1461,8 @@ _resolve_shortcode() {
     5) # infos
       case "$_minor$_rest" in
         0) do_help ;;
-        1) do_sys_info; do_sys_net_resource; do_sys_paths; do_sys_envs; do_tools; do_tools_help ;;
-        1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;;
+        1) do_sys_info; do_sys_net_resource; do_sys_paths; do_sys_envs; do_tools; do_tools_help; do_tools_deps_solver ;;
+        1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;; 1g) do_tools_deps_solver ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
