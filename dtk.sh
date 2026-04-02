@@ -1327,7 +1327,8 @@ _resolve_shortcode() {
     5) # infos
       case "$_minor$_rest" in
         0) do_help ;;
-        1) do_sys_info_menu ;; 1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;;
+        1) do_sys_info; do_sys_net_resource; do_sys_paths; do_sys_envs; do_tools; do_tools_help ;;
+        1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;;
         *) do_help ;;
       esac; return 0 ;;
   esac
