@@ -113,11 +113,22 @@ show_banner() { set +x 2>/dev/null
   nix_icon="$D off$R"; [ "$SYS_HAS_NIX" = true ] && nix_icon="${G}ON${R}"
   docker_icon="$D off$R"; [ "$SYS_HAS_DOCKER" = true ] && docker_icon="${G}ON${R}"
 
-  printf "  ${Y}host${R}  ${W}%-14s${R}  ${Y}os${R}      ${W}%-22s${R}  ${Y}uptime${R}  ${W}%s${R}\n" "$SYS_HOSTNAME" "$SYS_DISTRO" "$_uptime"
-  printf "  ${Y}arch${R}  ${W}%-14s${R}  ${Y}kernel${R}  ${W}%-22s${R}  ${Y}disk${R}    ${W}%s${R}\n" "$SYS_ARCH" "$_kern" "$_disk"
-  printf "  ${Y}cpu${R}   ${W}%-14s${R}  ${Y}ram${R}     ${W}%-22s${R}  ${Y}load${R}    ${W}%s${R}\n" "${SYS_CPUS} cores" "${_mem_used}/${SYS_RAM_MB}MB" "$_load"
-  printf "  ${Y}pkg${R}   ${W}%-14s${R}  ${Y}init${R}    ${W}%-22s${R}  ${Y}wg0${R}     ${W}%s${R}\n" "$SYS_PKG" "$SYS_INIT" "$_wg_ip"
-  printf "  ${Y}nix${R}   $nix_icon%-9s  ${Y}docker${R}  $docker_icon%-17s  ${Y}cont.${R}   ${W}%s${R}\n" "" "" "$_containers"
+  _swap=$(free -m 2>/dev/null | awk '/Swap/{printf "%d/%dMB", $3, $2}' || echo "?")
+  _ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "?")
+  _users=$(who 2>/dev/null | wc -l || echo "?")
+  _procs=$(ps aux 2>/dev/null | wc -l || echo "?")
+  _shell=$(basename "${SHELL:-sh}" 2>/dev/null)
+
+  _T=$(printf '\t')
+  _nix_s="off"; [ "$SYS_HAS_NIX" = true ] && _nix_s="ON"
+  _docker_s="off"; [ "$SYS_HAS_DOCKER" = true ] && _docker_s="ON"
+  _ip=$(ip -4 route get 1 2>/dev/null | awk '{print $7; exit}' || echo "?")
+  printf '%s\n' \
+    "host $SYS_HOSTNAME${_T}os $SYS_DISTRO${_T}uptime $_uptime${_T}load $_load${_T}users $_users" \
+    "arch $SYS_ARCH${_T}kernel $_kern${_T}disk $_disk${_T}swap $_swap${_T}procs $_procs" \
+    "cpu ${SYS_CPUS} cores${_T}ram ${_mem_used}/${SYS_RAM_MB}MB${_T}ip $_ip${_T}wg0 $_wg_ip${_T}shell $_shell" \
+    "pkg $SYS_PKG${_T}init $SYS_INIT${_T}nix $_nix_s${_T}docker $_docker_s${_T}containers $_containers" \
+  | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '\n'
 }
