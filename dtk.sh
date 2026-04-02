@@ -206,7 +206,8 @@ PROJECT="diegonmarcos-infra-prod"
 # Module paths — all logic lives in subfolders, dtk.sh is the orchestrator
 _DTK_DIR="$(cd "$(dirname "$0")" && pwd)"
 _OTHERS_DIR="$_DTK_DIR/5-infos"
-_ALIASES_DIR="$_DTK_DIR/1-aliases"
+_ALIASES_DIR="$_DTK_DIR/1-cmds-local"
+_INFOS_DIR="$_DTK_DIR/5-infos"
 
 # ═══════════════════════════════════════════════════════════════════
 # POSIX menu picker
@@ -240,7 +241,7 @@ pick() { set +x 2>/dev/null
 
 do_aliases() { set +x 2>/dev/null
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  _ALIASES_JSON="$_SCRIPT_DIR/1-aliases/aliases.json"
+  _ALIASES_JSON="$_SCRIPT_DIR/1-cmds-local/aliases.json"
 
   # 3-column layout: key+val | key+val | key+val
   jq -r '
@@ -280,7 +281,7 @@ do_aliases() { set +x 2>/dev/null
 
 do_tools() { set +x 2>/dev/null
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  _TOOLS_JSON="$_SCRIPT_DIR/1-aliases/tools.json"
+  _TOOLS_JSON="$_SCRIPT_DIR/1-cmds-local/tools.json"
 
   # 5-column layout: tool names (keys only) by category
   jq -r '
@@ -317,7 +318,7 @@ do_tools() { set +x 2>/dev/null
 
 do_tools_help() { set +x 2>/dev/null
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  _TOOLS_JSON="$_SCRIPT_DIR/1-aliases/tools.json"
+  _TOOLS_JSON="$_SCRIPT_DIR/1-cmds-local/tools.json"
 
   # 1-column: tool name + description, grouped by category
   jq -r '
@@ -666,15 +667,15 @@ do_gcl_ssh()   { _gcl_repos ssh; }
 
 do_konsole_cfg() {
   _DTK="$(cd "$(dirname "$0")" && pwd)"
-  _src_qc="$_DTK/4-quick-cmds/konsolequickcommandsconfig"
-  _src_ssh="$_DTK/4-quick-cmds/konsolesshconfig"
+  _src_qc="$_DTK/2-cmds-cloud/konsolequickcommandsconfig"
+  _src_ssh="$_DTK/2-cmds-cloud/konsolesshconfig"
   _dst_qc="${HOME:-/root}/.config/konsolequickcommandsconfig"
   _dst_ssh="${HOME:-/root}/.config/konsolesshconfig"
 
   printf "\n\033[1;36m── Konsole Quick Commands + SSH Config ──\033[0m\n"
 
   if [ ! -f "$_src_qc" ] || [ ! -f "$_src_ssh" ]; then
-    echo "  ERROR: asset files not found in $_DTK/4-quick-cmds/"
+    echo "  ERROR: asset files not found in $_DTK/2-cmds-cloud/"
     echo "  Run: git clone https://github.com/diegonmarcos/tools.git ~/git/tools"
     return 1
   fi
@@ -915,7 +916,7 @@ do_remote_journal() {
 # QUICK COMMANDS — delegates to cloud-container-orchestrator.sh
 # ═══════════════════════════════════════════════════════════════════
 
-_QC="bash ${HOME:-/root}/git/tools/1-aliases/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
+_QC="bash ${HOME:-/root}/git/tools/5-infos/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
 
 do_qc_vm() {
   _vm="${1:-}"
@@ -1118,8 +1119,8 @@ do_git_clone() { sh "$_OTHERS_DIR/git-clone/git-clone.sh" "$@"; }
 
 do_install()   { sh "$_OTHERS_DIR/install/install.sh" "$@"; }
 do_commands()  { sh "$_OTHERS_DIR/commands/commands.sh" "$@"; }
-do_info()      { sh "$_ALIASES_DIR/info/info.sh" "$@"; }
-do_engines()   { sh "$_ALIASES_DIR/engines/engines.sh" "$@"; }
+do_info()      { sh "$_INFOS_DIR/info/info.sh" "$@"; }
+do_engines()   { sh "$_INFOS_DIR/engines/engines.sh" "$@"; }
 do_webhooks()  { sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$@"; }
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
 
@@ -1199,7 +1200,7 @@ _resolve_shortcode() {
       esac; return 0 ;;
     4) # setups (containers + shell + git)
       _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
-      _containers_sh="$_dtk_dir/2-setups/containers.sh"
+      _containers_sh="$_dtk_dir/4-setups/containers.sh"
       case "$_minor$_rest" in
         0) sh "$_containers_sh" ;;
         0a) sh "$_containers_sh" 1 ;; 0b) sh "$_containers_sh" 2 ;; 0c) sh "$_containers_sh" 3 ;;
@@ -1207,8 +1208,8 @@ _resolve_shortcode() {
         1) echo "41a hm-cli  41b hm-gui  41c hm-tty" ;;
         1a) sh "$_containers_sh" 7 ;; 1b) sh "$_containers_sh" 8 ;; 1c) sh "$_containers_sh" 9 ;;
         2) echo "42a fish+tools  42b fish  42c konsole-cfg" ;;
-        2a) sh "$_dtk_dir/2-setups/fish-tools.sh" ;;
-        2b) sh "$_dtk_dir/2-setups/fish-shell.sh" ;;
+        2a) sh "$_dtk_dir/4-setups/fish-tools.sh" ;;
+        2b) sh "$_dtk_dir/4-setups/fish-shell.sh" ;;
         2c) do_konsole_cfg ;;
         3) echo "43a gcl-https  43b gcl-ssh" ;;
         3a) do_gcl_https ;; 3b) do_gcl_ssh ;;
@@ -1242,9 +1243,9 @@ if [ $# -ge 1 ]; then
     journal-priority)  do_journal_dash priority ;;
     journal-unit)      do_journal_dash unit ;;
     remote-journal) do_remote_journal ;;
-    containers)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" "$@" ;;
-    docker-run)     shift; sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" "$@" ;;
-    docker-start)   sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" deb-nix cli ;;
+    containers)     shift; sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" "$@" ;;
+    docker-run)     shift; sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" "$@" ;;
+    docker-start)   sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" deb-nix cli ;;
     connect)        shift; do_connect "$@" ;;
     others)         shift; do_others "$@" ;;
     ssh)            do_ssh ;;
@@ -1269,7 +1270,7 @@ else
       1)  do_aliases; do_tools ;;
       2)  printf "\n  20 quick-cmds  21 ssh\n\n" ;;
       3)  do_connect ;;
-      4)  sh "$(cd "$(dirname "$0")" && pwd)/2-setups/containers.sh" ;;
+      4)  sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" ;;
       5)  do_help ;;
       b|back) continue ;;
       r|refresh) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all && git -C "$_repo_dir" reset --hard origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD) && echo "Updated to $(git -C "$_repo_dir" log --oneline -1)" ;;
