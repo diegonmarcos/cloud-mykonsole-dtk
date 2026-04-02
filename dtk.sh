@@ -20,9 +20,9 @@ _strip_ansi() { sed 's/\x1b\[[0-9;]*m//g; s/\x1b\[[0-9;]*[A-Za-z]//g'; }
 # Log everything: stdout to screen + log + md, stderr (set -x) to log only
 if [ -z "${_DTK_LOGGING:-}" ]; then
   export _DTK_LOGGING=1
-  # Write md header
-  printf "# DTK Output\n\n" > "$MDFILE"
-  printf "> %s — %s@%s\n\n" "$(_LOG_TS)" "$_LOG_USER" "$_LOG_HOST" >> "$MDFILE"
+  # Append md entry (keeps history, creates header on first run)
+  [ ! -f "$MDFILE" ] && printf "# DTK Log\n" > "$MDFILE"
+  printf "\n---\n\n## %s — %s@%s — \`dtk %s\`\n\n" "$(_LOG_TS)" "$_LOG_USER" "$_LOG_HOST" "$*" >> "$MDFILE"
   printf '```\n' >> "$MDFILE"
   # stdout → screen + log (raw with ANSI) + md (stripped)
   # tee sends to screen + log, sed strips for md — all in one pipeline
