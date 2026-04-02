@@ -1171,7 +1171,33 @@ do_deps_drift() { set +x 2>/dev/null
     done
   done
 
-  # Summary per level
+  # Verbose: show every dep per level
+  _sum_req=""; _sum_rec=""; _sum_opt=""
+  for _level in required recommended optional; do
+    case "$_level" in
+      required)    _icon="$RED"; _label="REQUIRED" ;;
+      recommended) _icon="$Y";   _label="RECOMMENDED" ;;
+      optional)    _icon="$D";   _label="OPTIONAL" ;;
+    esac
+    printf "  ${C}%s${R}\n" "$_label"
+    _total=$(jq ".${_level} | length" "$_DEPS_JSON" 2>/dev/null)
+    _miss=0
+    jq -r ".${_level} | to_entries[] | \"\(.key)\t\(.value)\"" "$_DEPS_JSON" 2>/dev/null | \
+    while IFS="$(printf '\t')" read -r _bin _desc; do
+      if command -v "$_bin" >/dev/null 2>&1; then
+        _ver=$(command -v "$_bin" 2>/dev/null)
+        printf "  ${G}✓${R}  ${W}%-14s${R} ${D}%s${R}\n" "$_bin" "$_desc"
+      else
+        _miss=$((_miss + 1))
+        printf "  ${_icon}✗  %-14s %s${R}\n" "$_bin" "$_desc"
+      fi
+    done
+    printf "\n"
+  done
+
+  # Summary table
+  printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  printf "  ${C}summary${R}\n"
   for _level in required recommended optional; do
     case "$_level" in
       required)    _icon="$RED" ;; recommended) _icon="$Y" ;; optional) _icon="$D" ;;
@@ -1185,13 +1211,8 @@ do_deps_drift() { set +x 2>/dev/null
       printf "  ${G}✓${R}  %-14s ${G}%s/%s${R}\n" "$_level" "$_found" "$_total"
     else
       printf "  ${_icon}✗  %-14s %s/%s ${_icon}(%s missing)${R}\n" "$_level" "$_found" "$_total" "$_miss"
-      jq -r ".${_level} | to_entries[] | \"\(.key)\t\(.value)\"" "$_DEPS_JSON" 2>/dev/null | \
-      while IFS="$(printf '\t')" read -r _bin _desc; do
-        command -v "$_bin" >/dev/null 2>&1 || printf "     ${_icon}✗ %-12s${R} ${D}%s${R}\n" "$_bin" "$_desc"
-      done
     fi
   done
-
   printf "\n"
 }
 
