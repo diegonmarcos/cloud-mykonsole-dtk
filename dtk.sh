@@ -171,8 +171,6 @@ show_menu_header() { set +x 2>/dev/null
   printf "  ${D}22d gcl-ssh${R}\n"
   printf "  ${D}22e konsole-cfg${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${C}1) aliases/tools${R}  ${C}2) containers${R}    ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) help/others${R}\n"
-  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-52 shortcode${R}\n"
   printf "\n"
 }
