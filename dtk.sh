@@ -121,6 +121,9 @@ show_banner() { set +x 2>/dev/null
 
   _ip=$(ip -4 route get 1 2>/dev/null | awk '{print $7; exit}' || echo "?")
 
+  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+  printf "  ${G}system${R}\n"
+  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${Y}host${R}  ${W}%-13s${R} ${Y}os${R}     ${W}%-21s${R} ${Y}uptime${R} ${W}%-16s${R} ${Y}load${R}   ${W}%-10s${R} ${Y}users${R} ${W}%s${R}\n" "$SYS_HOSTNAME" "$SYS_DISTRO" "$_uptime" "$_load" "$_users"
   printf "  ${Y}arch${R}  ${W}%-13s${R} ${Y}kernel${R} ${W}%-21s${R} ${Y}disk${R}   ${W}%-16s${R} ${Y}swap${R}   ${W}%-10s${R} ${Y}procs${R} ${W}%s${R}\n" "$SYS_ARCH" "$_kern" "$_disk" "$_swap" "$_procs"
   printf "  ${Y}cpu${R}   ${W}%-13s${R} ${Y}ram${R}    ${W}%-21s${R} ${Y}ip${R}     ${W}%-16s${R} ${Y}wg0${R}    ${W}%-10s${R} ${Y}shell${R} ${W}%s${R}\n" "${SYS_CPUS} cores" "${_mem_used}/${SYS_RAM_MB}MB" "$_ip" "$_wg_ip" "$_shell"
