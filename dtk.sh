@@ -20,19 +20,11 @@ _strip_ansi() { sed 's/\x1b\[[0-9;]*m//g; s/\x1b\[[0-9;]*[A-Za-z]//g'; }
 # Log everything: stdout to screen + log + md, stderr (set -x) to log only
 if [ -z "${_DTK_LOGGING:-}" ]; then
   export _DTK_LOGGING=1
-  # Append md entry (keeps history, creates header on first run)
+  # stdout → screen + log (raw with ANSI)
+  # md logging handled per-command inside _resolve_shortcode wrapper
   [ ! -f "$MDFILE" ] && printf "# DTK Log\n" > "$MDFILE"
-  printf "\n---\n\n## %s — %s@%s — \`dtk %s\`\n\n" "$(_LOG_TS)" "$_LOG_USER" "$_LOG_HOST" "$*" >> "$MDFILE"
-  printf '```\n' >> "$MDFILE"
-  # stdout → screen + log (raw with ANSI) + md (stripped)
-  # tee sends to screen + log, sed strips for md — all in one pipeline
-  _dtk_raw="${TMPDIR:-/tmp}/dtk-raw-$$"
-  "$0" "$@" 2>>"$LOGFILE" | tee -a "$LOGFILE" | tee "$_dtk_raw"
-  _rc=$?
-  _strip_ansi < "$_dtk_raw" >> "$MDFILE"
-  printf '```\n' >> "$MDFILE"
-  rm -f "$_dtk_raw"
-  exit $_rc
+  "$0" "$@" 2>>"$LOGFILE" | tee -a "$LOGFILE"
+  exit $?
 fi
 
 # Second invocation: stderr goes to LOGFILE, stdout goes to tee (screen + log)
@@ -1487,9 +1479,15 @@ do_help() { set +x 2>/dev/null
 # ═══════════════════════════════════════════════════════════════════
 # ENTRY POINT — set -x starts here (after quiet setup)
 # ═══════════════════════════════════════════════════════════════════
-_resolve_shortcode() {
+_md_log_cmd() {
+  # Append command header to dtk.md for interactive mode
+  printf "\n---\n\n## %s — %s@%s — \`dtk %s\`\n\n\`\`\`\n" \
+    "$(_LOG_TS)" "${USER:-?}" "$(hostname -s 2>/dev/null || echo ?)" "$1" >> "$MDFILE"
+}
+_md_log_end() { printf '```\n' >> "$MDFILE"; }
+
+_resolve_shortcode_inner() {
   _code="$1"
-  _log "shortcode: $_code"
   _major=$(echo "$_code" | cut -c1)
   _minor=$(echo "$_code" | cut -c2)
   _rest=$(echo "$_code" | cut -c3-)
@@ -1551,6 +1549,20 @@ _resolve_shortcode() {
       esac; return 0 ;;
   esac
   return 1
+}
+
+_resolve_shortcode() {
+  _code="$1"
+  _log "shortcode: $_code"
+  _md_log_cmd "$_code"
+  # Capture output for md logging
+  _sc_raw="${TMPDIR:-/tmp}/dtk-sc-$$"
+  _resolve_shortcode_inner "$_code" | tee "$_sc_raw"
+  _rc=$?
+  _strip_ansi < "$_sc_raw" >> "$MDFILE"
+  _md_log_end
+  rm -f "$_sc_raw"
+  return $_rc
 }
 
 set +x 2>/dev/null
