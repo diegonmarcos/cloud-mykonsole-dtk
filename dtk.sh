@@ -657,29 +657,35 @@ $_CMD"
 _gcl_repos() {
   _proto="$1"  # https or ssh
   _target="${HOME:-/root}/git"
+  _user="diegonmarcos"
   mkdir -p "$_target"
 
-  # Public repos (HTTPS or SSH)
-  _public="unix cloud cloud-data tools front"
-  # Private repos (SSH only, fail silent on HTTPS)
+  # Public repos — always accessible
+  _public="unix cloud cloud-data front front-data tools"
+  # Private repos — need auth (SSH key or gh token)
   _private="vault notes"
+
+  # Prevent git from prompting for credentials (fail fast instead)
+  export GIT_TERMINAL_PROMPT=0
 
   printf "\n\033[1;36m── git clone (%s) ──\033[0m\n" "$_proto"
 
   for _name in $_public $_private; do
     case "$_proto" in
-      https) _url="https://github.com/diegonmarcos/${_name}.git" ;;
-      ssh)   _url="git@github.com:diegonmarcos/${_name}.git" ;;
+      https) _url="https://github.com/${_user}/${_name}.git" ;;
+      ssh)   _url="git@github.com:${_user}/${_name}.git" ;;
     esac
 
     if [ -d "$_target/$_name" ]; then
       printf "  \033[1;33m%-14s\033[0m exists, pulling... "  "$_name"
-      git -C "$_target/$_name" pull --ff-only 2>&1 | head -1
+      git -C "$_target/$_name" pull --ff-only 2>&1 | head -1 || echo "failed"
     else
       printf "  \033[1;32m%-14s\033[0m cloning... " "$_name"
-      git clone "$_url" "$_target/$_name" 2>/dev/null && echo "done" || echo "skipped (no access)"
+      git clone --quiet "$_url" "$_target/$_name" 2>/dev/null && echo "done" || echo "skipped (no access)"
     fi
   done
+
+  unset GIT_TERMINAL_PROMPT
   printf "\n"
 }
 
