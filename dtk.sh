@@ -11,15 +11,20 @@ _LOG_USER=$(whoami 2>/dev/null || echo "?")
 _LOG_HOST=$(hostname -s 2>/dev/null || echo "?")
 _LOG_TS() { date '+%Y-%m-%d %H:%M:%S'; }
 
-# Redirect set -x trace to log file (fd 9), keep stdout/stderr for user
-exec 9>>"$LOGFILE"
-BASH_XTRACEFD=9 2>/dev/null || true  # bash only, harmless on sh
-export PS4='+ $(_LOG_TS) '
+# Log everything: stdout to screen + log, stderr (set -x trace) to log only
+if [ -z "${_DTK_LOGGING:-}" ]; then
+  export _DTK_LOGGING=1
+  "$0" "$@" 2>>"$LOGFILE" | tee -a "$LOGFILE"
+  exit $?
+fi
 
-_log() { printf "[%s] %s\n" "$(_LOG_TS)" "$*" >> "$LOGFILE"; }
+# Second invocation: stderr goes to LOGFILE, stdout goes to tee (screen + log)
+export PS4='[$(date "+%H:%M:%S")] '
+_log() { echo "[$(_LOG_TS)] $*" >&2; }
 _log "════════ dtk.sh $* ════════ ${_LOG_USER}@${_LOG_HOST} ════════"
 
-# Enable verbose trace to log file
+# Enable verbose trace — goes to stderr → log file
+set -x
 set -x
 
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
