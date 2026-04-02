@@ -121,7 +121,7 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  printf "  ${C}1) aliases/tools${R}  ${C}2) setups${R}         ${C}3) dashboards${R}    ${C}4) quick-cmds${R}    ${C}5) infos${R}\n"
+  printf "  ${C}1) cmds-local${R}  ${C}2) setups${R}         ${C}3) dashboards${R}    ${C}4) cmds-cloud${R}    ${C}5) infos${R}\n"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${D}10 aliases${R}        ${D}20 deb${R}            ${D}local${R}              ${D}40 quick-cmds${R}    ${D}50 help${R}\n"
   printf "                    ${D}  20a nix-cli${R}     ${D}30 monitors${R}        ${D}  40a gcp-proxy${R}  ${D}51 tools${R}\n"
