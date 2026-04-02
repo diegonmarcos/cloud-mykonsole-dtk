@@ -102,7 +102,6 @@ show_banner() { set +x 2>/dev/null
   printf "${C}  ██████╔╝${B}   ██║   ${M}██║  ██╗${R}\n"
   printf "${C}  ╚═════╝ ${B}   ╚═╝   ${M}╚═╝  ╚═╝${R}\n"
   printf '\n'
-  _T=$(printf '\t')
   _uptime=$(uptime -p 2>/dev/null | sed 's/up //')
   [ -z "$_uptime" ] && _uptime=$(uptime 2>/dev/null | sed 's/.*up //' | sed 's/,.*//' | sed 's/^ *//')
   [ -z "$_uptime" ] && _uptime="?"
@@ -111,13 +110,14 @@ show_banner() { set +x 2>/dev/null
   _load=$(cat /proc/loadavg 2>/dev/null | awk '{print $1}' || echo "?")
   _wg_ip=$(ip -4 addr show wg0 2>/dev/null | awk '/inet/{print $2}' | cut -d/ -f1 || echo "down")
   _containers=$(docker ps -q 2>/dev/null | wc -l || echo "0")
-  printf '%s\n' \
-    "host ${SYS_HOSTNAME}${_T}os ${SYS_DISTRO}${_T}uptime ${_uptime}" \
-    "arch ${SYS_ARCH}${_T}kernel ${_kern}${_T}disk ${_disk}" \
-    "cpu ${SYS_CPUS} cores${_T}ram ${_mem_used}/${SYS_RAM_MB}MB${_T}load ${_load}" \
-    "pkg ${SYS_PKG}${_T}init ${SYS_INIT}${_T}wg0 ${_wg_ip}" \
-    "nix $([ "$SYS_HAS_NIX" = true ] && echo ON || echo off)${_T}docker $([ "$SYS_HAS_DOCKER" = true ] && echo ON || echo off)${_T}containers ${_containers}" \
-  | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
+  nix_icon="$D off$R"; [ "$SYS_HAS_NIX" = true ] && nix_icon="${G}ON${R}"
+  docker_icon="$D off$R"; [ "$SYS_HAS_DOCKER" = true ] && docker_icon="${G}ON${R}"
+
+  printf "  ${Y}host${R}  ${W}%-14s${R}  ${Y}os${R}      ${W}%-22s${R}  ${Y}uptime${R}  ${W}%s${R}\n" "$SYS_HOSTNAME" "$SYS_DISTRO" "$_uptime"
+  printf "  ${Y}arch${R}  ${W}%-14s${R}  ${Y}kernel${R}  ${W}%-22s${R}  ${Y}disk${R}    ${W}%s${R}\n" "$SYS_ARCH" "$_kern" "$_disk"
+  printf "  ${Y}cpu${R}   ${W}%-14s${R}  ${Y}ram${R}     ${W}%-22s${R}  ${Y}load${R}    ${W}%s${R}\n" "${SYS_CPUS} cores" "${_mem_used}/${SYS_RAM_MB}MB" "$_load"
+  printf "  ${Y}pkg${R}   ${W}%-14s${R}  ${Y}init${R}    ${W}%-22s${R}  ${Y}wg0${R}     ${W}%s${R}\n" "$SYS_PKG" "$SYS_INIT" "$_wg_ip"
+  printf "  ${Y}nix${R}   $nix_icon%-9s  ${Y}docker${R}  $docker_icon%-17s  ${Y}cont.${R}   ${W}%s${R}\n" "" "" "$_containers"
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '\n'
 }
