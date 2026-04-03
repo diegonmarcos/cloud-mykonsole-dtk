@@ -1755,7 +1755,7 @@ else
       4)  sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" ;;
       5)  do_help ;;
       b|back) continue ;;
-      r|refresh) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all && git -C "$_repo_dir" reset --hard origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD) && echo "Updated — restarting..." && exec "$0" ;;
+      r|refresh) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all -q && git -C "$_repo_dir" reset --hard origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD) -q && echo "Updated to $(git -C "$_repo_dir" log --oneline -1)" && exec "$0" ;;
       q)  echo "Bye."; exit 0 ;;
       # Shortcodes: 2+ digits — route through resolver
       [1-5][0-9a-f]*) _resolve_shortcode "$_input" ;;
