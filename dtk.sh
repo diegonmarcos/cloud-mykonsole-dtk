@@ -1384,6 +1384,39 @@ do_tools_deps_solver() { set +x 2>/dev/null
     # Always use apt — fast, simple, works everywhere (even alongside nix)
     if command -v apt-get >/dev/null 2>&1; then
       printf "\n  ${Y}%s missing tools${R} — installing via apt...\n" "$_missing_count"
+      # Map tools.json names → apt package names (skip tools with no apt equivalent)
+      _tool_to_apt() {
+        case "$1" in
+          # shell-core
+          yazi|multitail|duf) echo "" ;; # no apt pkg
+          ripgrep) echo "ripgrep" ;; wl-clipboard) echo "wl-clipboard" ;; p7zip) echo "p7zip-full" ;;
+          # dev-languages
+          tsc) echo "node-typescript" ;; sass) echo "sassc" ;; jdk) echo "default-jdk" ;;
+          virtualenv) echo "python3-virtualenv" ;; llvm) echo "llvm" ;; lldb) echo "lldb" ;;
+          delve) echo "" ;; # Go-only
+          # build-debug
+          clang-format) echo "clang-format" ;; act) echo "" ;; watchexec) echo "" ;; # no apt
+          # containers-cloud (most need external repos)
+          kubectl) echo "" ;; helm) echo "" ;; k9s) echo "" ;; stern) echo "" ;;
+          dive) echo "" ;; terraform) echo "" ;; ansible) echo "ansible" ;;
+          gcloud) echo "" ;; aws) echo "awscli" ;; az) echo "" ;; oci) echo "" ;;
+          cloudflared) echo "" ;; flarectl) echo "" ;; istioctl) echo "" ;;
+          # security-network
+          wireshark) echo "wireshark" ;; tshark) echo "tshark" ;; nftables) echo "nftables" ;;
+          # data-science (most need pip or external)
+          claude) echo "" ;; gemini) echo "" ;; jupyterlab) echo "" ;; ipython) echo "ipython3" ;;
+          sqlite) echo "sqlite3" ;; postgresql) echo "postgresql-client" ;; redis) echo "redis-tools" ;;
+          R) echo "r-base" ;; octave) echo "octave" ;; scrapy) echo "" ;;
+          # productivity
+          brave) echo "" ;; obsidian) echo "" ;; zettlr) echo "" ;; joplin) echo "" ;;
+          spectacle) echo "kde-spectacle" ;; mdcat) echo "" ;; glow) echo "" ;;
+          drawio) echo "" ;; taskwarrior) echo "taskwarrior" ;; vit) echo "" ;;
+          # media-graphics
+          obs-studio) echo "obs-studio" ;; imagemagick) echo "imagemagick" ;;
+          # default: same name
+          *) echo "$1" ;;
+        esac
+      }
       _pkgs=$(jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
         _b="$_t"
         case "$_t" in
@@ -1393,8 +1426,11 @@ do_tools_deps_solver() { set +x 2>/dev/null
           R) _b="R" ;; helm|kubernetes-helm) _b="helm" ;;
           torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic) _b="python3" ;;
         esac
-        command -v "$_b" >/dev/null 2>&1 || echo "$_t"
-      done | tr '\n' ' ')
+        if ! command -v "$_b" >/dev/null 2>&1; then
+          _apt=$(_tool_to_apt "$_t")
+          [ -n "$_apt" ] && echo "$_apt"
+        fi
+      done | sort -u | tr '\n' ' ')
       if [ -n "$_pkgs" ]; then
         printf "  ${C}apt-get install${R} %s\n\n" "$_pkgs"
         $S apt-get update -qq 2>/dev/null
