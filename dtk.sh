@@ -226,10 +226,10 @@ show_menu_header() { set +x 2>/dev/null
     "${_T}  20k gh-repos${_T}32 journal-dash${_T}  43b gcl-ssh${_T}" \
     "${_T}  20l gh-registry${_T}  32a transport${_T}44 sys${_T}" \
     "${_T}21 ssh${_T}  32b priority${_T}  44a sudoers${_T}" \
-    "${_T}  21a gcp-proxy${_T}  32c unit${_T}${_T}" \
-    "${_T}  21b oci-mail${_T}  32d watch-n35${_T}${_T}" \
-    "${_T}  21c oci-analy${_T}33 connect${_T}${_T}" \
-    "${_T}  21d oci-apps${_T}remote${_T}${_T}" \
+    "${_T}  21a gcp-proxy${_T}  32c unit${_T}45 llms${_T}" \
+    "${_T}  21b oci-mail${_T}  32d watch-n35${_T}  45a goose${_T}" \
+    "${_T}  21c oci-analy${_T}33 connect${_T}  45b claude/gemini${_T}" \
+    "${_T}  21d oci-apps${_T}remote${_T}  45c malloc-termux${_T}" \
     "${_T}  21e gcp-t4${_T}34 monitors${_T}${_T}" \
     "${_T}  21f github${_T}  34a btop-dash${_T}${_T}" \
     "${_T}22 mode${_T}  34b journal-dash${_T}${_T}" \
@@ -1700,6 +1700,10 @@ _resolve_shortcode_inner() {
         3a) do_gcl_https ;; 3b) do_gcl_ssh ;;
         4) echo "44a sudoers-nopasswd" ;;
         4a) do_sudoers_nopasswd ;;
+        5) echo "45a goose  45b claude/gemini  45c malloc-termux" ;;
+        5a) sh "$_dtk_dir/4-setups/llms.sh" goose ;;
+        5b) sh "$_dtk_dir/4-setups/llms.sh" claude ;;
+        5c) sh "$_dtk_dir/4-setups/llms.sh" malloc-termux ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     5) # infos
