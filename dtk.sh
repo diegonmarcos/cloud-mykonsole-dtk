@@ -23,7 +23,11 @@ if [ -z "${_DTK_LOGGING:-}" ]; then
   # stdout → screen + log (raw with ANSI)
   # md logging handled per-command inside _resolve_shortcode wrapper
   [ ! -f "$MDFILE" ] && printf "# DTK Log\n" > "$MDFILE"
-  "$0" "$@" 2>>"$LOGFILE" | tee -a "$LOGFILE"
+  if [ -t 1 ]; then
+    "$0" "$@" 2>>"$LOGFILE" | tee -a "$LOGFILE"
+  else
+    "$0" "$@" 2>>"$LOGFILE"
+  fi
   exit $?
 fi
 
@@ -1454,6 +1458,10 @@ do_tools_deps_solver() { set +x 2>/dev/null
       done | sort -u | tr '\n' ' ')
       if [ -n "$_pkgs" ]; then
         printf "  ${C}apt-get install${R} %s\n\n" "$_pkgs"
+        # Clear stale apt locks if present
+        if [ -n "$S" ]; then
+          $S sh -c 'fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && kill $(fuser /var/lib/dpkg/lock-frontend 2>/dev/null) 2>/dev/null; rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock 2>/dev/null; dpkg --configure -a 2>/dev/null' || true
+        fi
         $S apt-get update -qq 2>/dev/null
         $S apt-get install -y $_pkgs 2>&1 || true
       fi
