@@ -206,17 +206,21 @@ show_menu_header() { set +x 2>/dev/null
     "${_T}  20g local${_T}  31b mpstat${_T}  42b fish${_T}  51f tools-help" \
     "${_T}  20h desktop${_T}  31c pidstat${_T}  42c konsole-cfg${_T}52 deps" \
     "${_T}  20i vps-cloud${_T}  31d sar${_T}43 git${_T}  52a deps-drift" \
-    "${_T}  20j gh-actions${_T}32 journal-dash${_T}  43a gcl-https${_T}  52b deps-solver" \
-    "${_T}  20k gh-repos${_T}  32a transport${_T}  43b gcl-ssh${_T}" \
-    "${_T}  20l gh-registry${_T}  32b priority${_T}44 sys${_T}" \
-    "${_T}21 ssh${_T}  32c unit${_T}  44a sudoers${_T}" \
-    "${_T}  21a gcp-proxy${_T}  32d watch-n35${_T}${_T}" \
-    "${_T}  21b oci-mail${_T}33 connect${_T}${_T}" \
-    "${_T}  21c oci-analy${_T}remote${_T}${_T}" \
-    "${_T}  21d oci-apps${_T}34 monitors${_T}${_T}" \
-    "${_T}  21e gcp-t4${_T}  34a btop-dash${_T}${_T}" \
-    "${_T}  21f github${_T}  34b journal-dash${_T}${_T}" \
-    "${_T}${_T}  34c docker-stats${_T}${_T}" \
+    "${_T}  20j gh-actions${_T}  31e vmstat${_T}  43a gcl-https${_T}  52b deps-solver" \
+    "${_T}  20k gh-repos${_T}32 journal-dash${_T}  43b gcl-ssh${_T}" \
+    "${_T}  20l gh-registry${_T}  32a transport${_T}44 sys${_T}" \
+    "${_T}21 ssh${_T}  32b priority${_T}  44a sudoers${_T}" \
+    "${_T}  21a gcp-proxy${_T}  32c unit${_T}${_T}" \
+    "${_T}  21b oci-mail${_T}  32d watch-n35${_T}${_T}" \
+    "${_T}  21c oci-analy${_T}33 connect${_T}${_T}" \
+    "${_T}  21d oci-apps${_T}remote${_T}${_T}" \
+    "${_T}  21e gcp-t4${_T}34 monitors${_T}${_T}" \
+    "${_T}  21f github${_T}  34a btop-dash${_T}${_T}" \
+    "${_T}22 mode${_T}  34b journal-dash${_T}${_T}" \
+    "${_T}  22a ssh${_T}  34c docker-stats${_T}${_T}" \
+    "${_T}  22b dropbear${_T}${_T}${_T}" \
+    "${_T}  22c serial${_T}${_T}${_T}" \
+    "${_T}  22d status${_T}${_T}${_T}" \
   | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   # Commands sub-table
@@ -797,6 +801,7 @@ do_sysstat() {
     mpstat)  mpstat -P ALL 2 5 2>/dev/null || echo "mpstat not found (install sysstat)" ;;
     pidstat) pidstat -u -d 2 5 2>/dev/null || echo "pidstat not found (install sysstat)" ;;
     sar)     sar -u -r -d 1 10 2>/dev/null || echo "sar not found (install sysstat)" ;;
+    vmstat)  vmstat 1 5 2>/dev/null || echo "vmstat not found (install procps)" ;;
     *)       echo "Unknown: $_cmd" ;;
   esac
 }
@@ -1153,6 +1158,11 @@ do_all_commands() { set +x 2>/dev/null
 20k|vps gh-repos
 20l|vps gh-registry
 21|SSH (picker)
+22|mode (ssh/dropbear/serial)
+22a|mode ssh
+22b|mode dropbear
+22c|mode serial
+22d|mode status
 21a|SSH gcp-proxy
 21b|SSH oci-mail
 21c|SSH oci-analytics
@@ -1369,12 +1379,31 @@ do_tools_deps_solver() { set +x 2>/dev/null
   printf "  ${W}total${R} %-6s ${G}found${R} %-6s ${RED}missing${R} %s\n" "$_total_count" "$_found_count" "$_missing_count"
 
   if [ "$_missing_count" -gt 0 ]; then
-    # Detect package manager and offer install
     if command -v nix >/dev/null 2>&1; then
-      printf "\n  ${Y}nix detected${R} — missing tools are declared in nix profiles.\n"
-      printf "  ${D}Run: ~/git/unix/ba_flakes_desktop/build.sh switch${R}\n"
+      printf "\n  ${Y}nix detected${R} — %s missing tools. Installing via home-manager...\n" "$_missing_count"
+      _hm_build="${HOME}/git/unix/ba_flakes_desktop/build.sh"
+      if [ -x "$_hm_build" ]; then
+        printf "  ${C}Running:${R} %s switch\n\n" "$_hm_build"
+        "$_hm_build" switch
+      else
+        printf "  ${RED}ERROR${R}: %s not found\n" "$_hm_build"
+        printf "  ${D}Clone unix repo: git clone https://github.com/diegonmarcos/unix.git ~/git/unix${R}\n"
+      fi
     elif command -v apt >/dev/null 2>&1; then
-      printf "\n  ${Y}apt detected${R} — install missing with apt\n"
+      printf "\n  ${Y}apt detected${R} — installing missing tools...\n"
+      # Collect apt package names from missing tools
+      _apt_pkgs=""
+      jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
+        _b="$_t"
+        case "$_t" in
+          ripgrep) _b="rg" ;; wireguard) _b="wg" ;; gnupg) _b="gpg" ;; netcat) _b="nc" ;;
+          wireshark) _b="tshark" ;; p7zip) _b="7z" ;; wl-clipboard) _b="wl-copy" ;;
+          imagemagick) _b="convert" ;; obs-studio) _b="obs" ;; jupyterlab) _b="jupyter" ;;
+          R) _b="R" ;; helm|kubernetes-helm) _b="helm" ;;
+          torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic) _b="python3" ;;
+        esac
+        command -v "$_b" >/dev/null 2>&1 || printf "%s " "$_t"
+      done | { read -r _pkgs; [ -n "$_pkgs" ] && $S apt-get install -y $_pkgs 2>&1 || true; }
     elif command -v pacman >/dev/null 2>&1; then
       printf "\n  ${Y}pacman detected${R} — install missing with pacman\n"
     fi
@@ -1570,6 +1599,8 @@ _resolve_shortcode_inner() {
         1) do_qc_ssh ;;
         1a) do_qc_ssh gcp-proxy ;; 1b) do_qc_ssh oci-mail ;; 1c) do_qc_ssh oci-analytics ;; 1d) do_qc_ssh oci-apps ;; 1e) do_qc_ssh gcp-t4 ;;
         1f) ssh github.com ;;
+        2) echo "22a ssh  22b dropbear  22c serial  22d status" ;;
+        2a) $_QC mode-ssh ;; 2b) $_QC mode-dropbear ;; 2c) $_QC mode-serial ;; 2d) $_QC mode-status ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     3) # dashboards
@@ -1577,7 +1608,7 @@ _resolve_shortcode_inner() {
         # local monitors
         0) do_local_btop ;; 0a) do_local_btop ;; 0b) do_local_iotop ;; 0c) do_top_batch ;;
         # sysstat
-        1) do_sysstat ;; 1a) do_sysstat iostat ;; 1b) do_sysstat mpstat ;; 1c) do_sysstat pidstat ;; 1d) do_sysstat sar ;;
+        1) do_sysstat iostat; do_sysstat mpstat; do_sysstat pidstat; do_sysstat vmstat ;; 1a) do_sysstat iostat ;; 1b) do_sysstat mpstat ;; 1c) do_sysstat pidstat ;; 1d) do_sysstat sar ;; 1e) do_sysstat vmstat ;;
         # journal
         2) do_journal_dash ;; 2a) do_journal_dash transport ;; 2b) do_journal_dash priority ;; 2c) do_journal_dash unit ;; 2d) do_journal_watch_n35 ;;
         # connect + remote monitors
