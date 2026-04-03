@@ -1451,14 +1451,21 @@ do_tools_deps_solver() { set +x 2>/dev/null
       done | sort -u | tr '\n' ' ')
       if [ -n "$_pkgs" ]; then
         printf "  ${C}apt-get install${R} %s\n\n" "$_pkgs"
-        # Fix interrupted dpkg + clear stale locks
+        # Fix dpkg: kill stuck apt, remove corrupt updates, clear locks, configure
         if [ -n "$S" ]; then
-          $S sh -c 'kill -9 $(fuser /var/lib/dpkg/lock-frontend 2>/dev/null) 2>/dev/null; rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock' 2>/dev/null || true
-          printf "  ${D}dpkg --configure -a${R}\n"
-          $S dpkg --configure -a 2>&1 || true
+          printf "  ${D}fixing dpkg state...${R}\n"
+          $S sh -c '
+            kill -9 $(fuser /var/lib/dpkg/lock-frontend 2>/dev/null) 2>/dev/null
+            rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+            for f in /var/lib/dpkg/updates/*; do
+              [ -f "$f" ] && head -1 "$f" | grep -q "^Package:" 2>/dev/null || rm -f "$f"
+            done
+            dpkg --configure -a
+          ' 2>&1 || true
         fi
         printf "  ${D}apt-get update${R}\n"
         $S apt-get update -qq 2>&1 || true
+        printf "  ${D}apt-get install${R}\n"
         $S apt-get install -y $_pkgs 2>&1 || true
       fi
     elif command -v pacman >/dev/null 2>&1; then
