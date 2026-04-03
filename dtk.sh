@@ -43,10 +43,12 @@ for p in /run/wrappers/bin/sudo /usr/bin/sudo /usr/local/bin/sudo; do
 done
 
 # $S — sudo prefix for commands needing root, empty if already root
+# Only set $S if sudo works without password (NOPASSWD configured)
 S=""
 if [ "$(id -u)" != "0" ] && [ -n "$_SUDO" ]; then
-  S="$_SUDO"
-  $_SUDO -v 2>/dev/null || true
+  if $_SUDO -n true 2>/dev/null; then
+    S="$_SUDO"
+  fi
 fi
 
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
