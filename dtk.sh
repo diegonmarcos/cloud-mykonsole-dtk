@@ -1440,18 +1440,11 @@ do_tools_deps_solver() { set +x 2>/dev/null
   if [ "$_missing_count" -gt 0 ]; then
     # Always use apt — fast, simple, works everywhere (even alongside nix)
     if command -v apt-get >/dev/null 2>&1; then
-      printf "\n  ${Y}%s missing tools${R} — installing via apt...\n" "$_missing_count"
+      printf "\n  ${Y}%s missing DTK deps${R} — installing via apt...\n" "$_missing_count"
       _APT_JSON="$_SCRIPT_DIR/deps-apt.json"
-      _pkgs=$(jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
-        _b="$_t"
-        case "$_t" in
-          ripgrep) _b="rg" ;; wireguard) _b="wg" ;; gnupg) _b="gpg" ;; netcat) _b="nc" ;;
-          wireshark) _b="tshark" ;; p7zip) _b="7z" ;; wl-clipboard) _b="wl-copy" ;;
-          imagemagick) _b="convert" ;; obs-studio) _b="obs" ;; jupyterlab) _b="jupyter" ;;
-          R) _b="R" ;; helm|kubernetes-helm) _b="helm" ;;
-          torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic) _b="python3" ;;
-        esac
-        if ! command -v "$_b" >/dev/null 2>&1; then
+      # Only install DTK runtime deps (deps.json), NOT the full toolchain (tools.json)
+      _pkgs=$(jq -r '[.required, .recommended, .optional] | add | keys[]' "$_DEPS_JSON" 2>/dev/null | while read -r _t; do
+        if ! command -v "$_t" >/dev/null 2>&1; then
           _apt=$(jq -r --arg t "$_t" '.[$t] // ""' "$_APT_JSON" 2>/dev/null)
           [ -n "$_apt" ] && echo "$_apt"
         fi
