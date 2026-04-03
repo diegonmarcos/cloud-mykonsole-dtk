@@ -1379,10 +1379,10 @@ do_tools_deps_solver() { set +x 2>/dev/null
   printf "  ${W}total${R} %-6s ${G}found${R} %-6s ${RED}missing${R} %s\n" "$_total_count" "$_found_count" "$_missing_count"
 
   if [ "$_missing_count" -gt 0 ]; then
-    if command -v nix >/dev/null 2>&1; then
-      printf "\n  ${Y}nix detected${R} — %s missing tools. Installing via nix profile...\n" "$_missing_count"
-      # Collect missing tool names from tools.json
-      _missing_tools=$(jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
+    # Always use apt — fast, simple, works everywhere (even alongside nix)
+    if command -v apt-get >/dev/null 2>&1; then
+      printf "\n  ${Y}%s missing tools${R} — installing via apt...\n" "$_missing_count"
+      _pkgs=$(jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
         _b="$_t"
         case "$_t" in
           ripgrep) _b="rg" ;; wireguard) _b="wg" ;; gnupg) _b="gpg" ;; netcat) _b="nc" ;;
@@ -1392,28 +1392,16 @@ do_tools_deps_solver() { set +x 2>/dev/null
           torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic) _b="python3" ;;
         esac
         command -v "$_b" >/dev/null 2>&1 || echo "$_t"
-      done)
-      for _pkg in $_missing_tools; do
-        printf "  ${C}nix profile install${R} nixpkgs#%s\n" "$_pkg"
-        nix profile install "nixpkgs#$_pkg" 2>/dev/null || printf "  ${RED}failed${R}: %s\n" "$_pkg"
-      done
-    elif command -v apt >/dev/null 2>&1; then
-      printf "\n  ${Y}apt detected${R} — installing missing tools...\n"
-      # Collect apt package names from missing tools
-      _apt_pkgs=""
-      jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
-        _b="$_t"
-        case "$_t" in
-          ripgrep) _b="rg" ;; wireguard) _b="wg" ;; gnupg) _b="gpg" ;; netcat) _b="nc" ;;
-          wireshark) _b="tshark" ;; p7zip) _b="7z" ;; wl-clipboard) _b="wl-copy" ;;
-          imagemagick) _b="convert" ;; obs-studio) _b="obs" ;; jupyterlab) _b="jupyter" ;;
-          R) _b="R" ;; helm|kubernetes-helm) _b="helm" ;;
-          torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic) _b="python3" ;;
-        esac
-        command -v "$_b" >/dev/null 2>&1 || printf "%s " "$_t"
-      done | { read -r _pkgs; [ -n "$_pkgs" ] && $S apt-get install -y $_pkgs 2>&1 || true; }
+      done | tr '\n' ' ')
+      if [ -n "$_pkgs" ]; then
+        printf "  ${C}apt-get install${R} %s\n\n" "$_pkgs"
+        $S apt-get update -qq 2>/dev/null
+        $S apt-get install -y $_pkgs 2>&1 || true
+      fi
     elif command -v pacman >/dev/null 2>&1; then
       printf "\n  ${Y}pacman detected${R} — install missing with pacman\n"
+    else
+      printf "\n  ${RED}No apt or pacman found${R} — install tools manually\n"
     fi
   else
     printf "\n  ${G}All tools installed!${R}\n"
