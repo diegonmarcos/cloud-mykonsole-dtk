@@ -1451,11 +1451,14 @@ do_tools_deps_solver() { set +x 2>/dev/null
       done | sort -u | tr '\n' ' ')
       if [ -n "$_pkgs" ]; then
         printf "  ${C}apt-get install${R} %s\n\n" "$_pkgs"
-        # Clear stale apt locks if present
+        # Fix interrupted dpkg + clear stale locks
         if [ -n "$S" ]; then
-          $S sh -c 'fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && kill $(fuser /var/lib/dpkg/lock-frontend 2>/dev/null) 2>/dev/null; rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock 2>/dev/null; dpkg --configure -a 2>/dev/null' || true
+          $S sh -c 'kill -9 $(fuser /var/lib/dpkg/lock-frontend 2>/dev/null) 2>/dev/null; rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock' 2>/dev/null || true
+          printf "  ${D}dpkg --configure -a${R}\n"
+          $S dpkg --configure -a 2>&1 || true
         fi
-        $S apt-get update -qq 2>/dev/null
+        printf "  ${D}apt-get update${R}\n"
+        $S apt-get update -qq 2>&1 || true
         $S apt-get install -y $_pkgs 2>&1 || true
       fi
     elif command -v pacman >/dev/null 2>&1; then
