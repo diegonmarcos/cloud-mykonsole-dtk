@@ -1277,6 +1277,42 @@ do_deps_drift() { set +x 2>/dev/null
     printf "\n"
   done
 
+  # ── Full toolchain (tools.json) ────────────────────────────
+  _TOOLS_JSON="$_SCRIPT_DIR/1-cmds-local/tools.json"
+  if [ -f "$_TOOLS_JSON" ]; then
+    printf "  ${C}FULL TOOLCHAIN${R} ${D}(tools.json)${R}\n"
+    _tools_total=$(jq '[.[] | keys[]] | length' "$_TOOLS_JSON" 2>/dev/null)
+    _tools_miss=0
+    jq -r 'to_entries[] | .key as $cat | .value | keys_unsorted[] | $cat + "\t" + .' "$_TOOLS_JSON" 2>/dev/null | \
+    while IFS="$(printf '\t')" read -r _cat _tool; do
+      _b="$_tool"
+      case "$_tool" in
+        ripgrep) _b="rg" ;; wireguard) _b="wg" ;; gnupg) _b="gpg" ;; netcat) _b="nc" ;;
+        wireshark) _b="tshark" ;; p7zip) _b="7z" ;; wl-clipboard) _b="wl-copy" ;;
+        imagemagick) _b="convert" ;; obs-studio) _b="obs" ;; jupyterlab) _b="jupyter" ;;
+        R) _b="R" ;; helm|kubernetes-helm) _b="helm" ;; docker-compose) _b="docker-compose" ;;
+        docker-buildx) _b="docker" ;;
+        torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic|scrapy|ipython) _b="python3" ;;
+      esac
+      if ! command -v "$_b" >/dev/null 2>&1; then
+        printf "  ${RED}✗${R}  ${Y}%-18s${R} ${D}(%s)${R}\n" "$_tool" "$_cat"
+      fi
+    done
+    _tools_miss_count=$(jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
+      _b="$_t"
+      case "$_t" in
+        ripgrep) _b="rg" ;; wireguard) _b="wg" ;; gnupg) _b="gpg" ;; netcat) _b="nc" ;;
+        wireshark) _b="tshark" ;; p7zip) _b="7z" ;; wl-clipboard) _b="wl-copy" ;;
+        imagemagick) _b="convert" ;; obs-studio) _b="obs" ;; jupyterlab) _b="jupyter" ;;
+        R) _b="R" ;; helm|kubernetes-helm) _b="helm" ;;
+        torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic|scrapy|ipython) _b="python3" ;;
+      esac
+      command -v "$_b" >/dev/null 2>&1 || echo x
+    done | wc -l)
+    _tools_found=$((_tools_total - _tools_miss_count))
+    printf "\n"
+  fi
+
   # Summary table
   printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf "  ${C}summary${R}\n"
@@ -1295,6 +1331,13 @@ do_deps_drift() { set +x 2>/dev/null
       printf "  ${_icon}✗  %-14s %s/%s ${_icon}(%s missing)${R}\n" "$_level" "$_found" "$_total" "$_miss"
     fi
   done
+  if [ -f "$_TOOLS_JSON" ]; then
+    if [ "$_tools_miss_count" -eq 0 ]; then
+      printf "  ${G}✓${R}  %-14s ${G}%s/%s${R}\n" "toolchain" "$_tools_found" "$_tools_total"
+    else
+      printf "  ${RED}✗${R}  %-14s %s/%s ${RED}(%s missing)${R}\n" "toolchain" "$_tools_found" "$_tools_total" "$_tools_miss_count"
+    fi
+  fi
   printf "\n"
 }
 
@@ -1399,7 +1442,7 @@ do_tools_deps_solver() { set +x 2>/dev/null
           # containers-cloud (most need external repos)
           kubectl) echo "" ;; helm) echo "" ;; k9s) echo "" ;; stern) echo "" ;;
           dive) echo "" ;; terraform) echo "" ;; ansible) echo "ansible" ;;
-          gcloud) echo "" ;; aws) echo "awscli" ;; az) echo "" ;; oci) echo "" ;;
+          gcloud) echo "" ;; aws) echo "" ;; az) echo "" ;; oci) echo "" ;;
           cloudflared) echo "" ;; flarectl) echo "" ;; istioctl) echo "" ;;
           # security-network
           wireshark) echo "wireshark" ;; tshark) echo "tshark" ;; nftables) echo "nftables" ;;
