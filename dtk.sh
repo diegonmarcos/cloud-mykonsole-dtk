@@ -51,6 +51,16 @@ if [ "$(id -u)" != "0" ] && [ -n "$_SUDO" ]; then
   fi
 fi
 
+# Fix repo ownership if mixed root/user runs left wrong permissions
+_DTK_REPO="$(cd "$(dirname "$0")" && pwd)"
+if [ -d "$_DTK_REPO/.git" ] && ! git -C "$_DTK_REPO" status >/dev/null 2>&1; then
+  if [ -n "$S" ]; then
+    $S chown -R "$(id -u):$(id -g)" "$_DTK_REPO" 2>/dev/null
+  elif [ "$(id -u)" = "0" ]; then
+    chown -R "${SUDO_UID:-0}:${SUDO_GID:-0}" "$_DTK_REPO" 2>/dev/null
+  fi
+fi
+
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
 export PATH="/run/wrappers/bin:/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:${HOME:-/root}/.nix-profile/bin:/run/current-system/sw/bin:$PATH"
 
