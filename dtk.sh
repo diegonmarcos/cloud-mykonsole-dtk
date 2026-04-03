@@ -230,9 +230,9 @@ show_menu_header() { set +x 2>/dev/null
     "${_T}  21b oci-mail${_T}  32d watch-n35${_T}  45a goose${_T}" \
     "${_T}  21c oci-analy${_T}33 connect${_T}  45b claude/gemini${_T}" \
     "${_T}  21d oci-apps${_T}remote${_T}  45c malloc-termux${_T}" \
-    "${_T}  21e gcp-t4${_T}34 monitors${_T}${_T}" \
-    "${_T}  21f github${_T}  34a btop-dash${_T}${_T}" \
-    "${_T}22 mode${_T}  34b journal-dash${_T}${_T}" \
+    "${_T}  21e gcp-t4${_T}34 monitors${_T}46 vault${_T}" \
+    "${_T}  21f github${_T}  34a btop-dash${_T}  46a vault-build${_T}" \
+    "${_T}22 mode${_T}  34b journal-dash${_T}  46b env-vars-export${_T}" \
     "${_T}  22a ssh${_T}  34c docker-stats${_T}${_T}" \
     "${_T}  22b dropbear${_T}${_T}${_T}" \
     "${_T}  22c serial${_T}${_T}${_T}" \
@@ -1704,6 +1704,9 @@ _resolve_shortcode_inner() {
         5a) sh "$_dtk_dir/4-setups/llms.sh" goose ;;
         5b) sh "$_dtk_dir/4-setups/llms.sh" claude ;;
         5c) sh "$_dtk_dir/4-setups/llms.sh" malloc-termux ;;
+        6) echo "46a vault-build  46b env-vars-export" ;;
+        6a) sh "$_dtk_dir/4-setups/vault.sh" build ;;
+        6b) sh "$_dtk_dir/4-setups/vault.sh" env-export ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     5) # infos
