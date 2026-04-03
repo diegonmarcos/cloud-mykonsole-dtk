@@ -39,7 +39,7 @@ rexec() {
       local _ip; _ip="$(vm_field "$_vm" 3)"
       # dropbear uses WG IP from ssh config, port 2200, no ControlMaster
       printf '\033[0;90m[dropbear:2200] %s: %s\033[0m\n' "$_vm" "$*"
-      ssh -p 2200 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${_user}@${_vm}" -t "$@" ;;
+      ssh -p 2200 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${_user}@${_vm}" -t "export PATH=\$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:\$PATH; $*" ;;
     serial)
       local _provider; _provider="$(vm_field "$_vm" 3)"
       printf '\033[0;33m[serial] %s — interactive serial console (%s)\033[0m\n' "$_vm" "$_provider"

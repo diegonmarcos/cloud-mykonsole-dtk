@@ -36,26 +36,27 @@ _log "════════ dtk.sh $* ════════ ${_LOG_USER}@$
 set -x
 set -x
 
-# Elevate to root if not already (preserves env for nix/docker paths)
-if [ "$(id -u)" != "0" ] 2>/dev/null; then
-  _SUDO=""
-  for p in /run/wrappers/bin/sudo /usr/bin/sudo /usr/local/bin/sudo; do
-    [ -x "$p" ] && _SUDO="$p" && break
-  done
-  if [ -n "$_SUDO" ]; then
-    _log "elevating to root via $_SUDO"
-    exec $_SUDO -E "$0" "$@"
-  fi
+# Find sudo for commands that need elevation (do NOT exec as root — breaks SSH config)
+_SUDO=""
+for p in /run/wrappers/bin/sudo /usr/bin/sudo /usr/local/bin/sudo; do
+  [ -x "$p" ] && _SUDO="$p" && break
+done
+
+# $S — sudo prefix for commands needing root, empty if already root
+S=""
+if [ "$(id -u)" != "0" ] && [ -n "$_SUDO" ]; then
+  S="$_SUDO"
+  $_SUDO -v 2>/dev/null || true
 fi
 
 # Force real system binaries FIRST (bypass nix guardrail wrappers)
 export PATH="/run/wrappers/bin:/usr/bin:/usr/sbin:/usr/local/bin:/bin:/sbin:/nix/var/nix/profiles/default/bin:${HOME:-/root}/.nix-profile/bin:/run/current-system/sw/bin:$PATH"
 
 # Stop systemd journal from flooding the terminal
-if [ "$(id -u)" = "0" ] 2>/dev/null; then
-  dmesg -n 1 2>/dev/null || true
-  systemctl stop systemd-journald-audit.socket 2>/dev/null || true
-  echo 0 > /proc/sys/kernel/printk 2>/dev/null || true
+if [ -n "$_SUDO" ]; then
+  $S dmesg -n 1 2>/dev/null || true
+  $S systemctl stop systemd-journald-audit.socket 2>/dev/null || true
+  $S sh -c 'echo 0 > /proc/sys/kernel/printk' 2>/dev/null || true
 fi
 
 # ═══════════════════════════════════════════════════════════════════
@@ -195,26 +196,27 @@ show_menu_header() { set +x 2>/dev/null
   printf "1) cmds-local${_T}2) cmds-cloud${_T}3) dashboards${_T}4) setups${_T}5) infos\n" | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${Y}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   printf '%s\n' \
-    "10 aliases${_T}20 quick-cmds${_T}local${_T}40 deb${_T}50 help" \
-    "11 webhooks${_T}  20a gcp-proxy${_T}30 monitors${_T}  40a nix-cli${_T}51 infos" \
-    "12 commands${_T}  20b oci-mail${_T}  30a btop${_T}  40b nix-gui${_T}  51a sys-info" \
-    "  (120-1226)${_T}  20c oci-analy${_T}  30b iotop${_T}  40c nix-tty${_T}  51b sys-net-res" \
-    "${_T}  20d oci-apps${_T}  30c top-batch${_T}  40d apt-cli${_T}  51c sys-paths" \
-    "${_T}  20e gcp-t4${_T}31 sysstat${_T}  40e apt-gui${_T}  51d sys-envs" \
-    "${_T}  20f orchestrate${_T}  31a iostat${_T}  40f apt-tty${_T}  51e tools-table" \
-    "${_T}  20g local${_T}  31b mpstat${_T}41 nixos${_T}  51f tools-help" \
-    "${_T}  20h desktop${_T}  31c pidstat${_T}  41a hm-cli${_T}52 deps" \
-    "${_T}  20i vps-cloud${_T}  31d sar${_T}  41b hm-gui${_T}  52a deps-drift" \
-    "${_T}  20j gh-actions${_T}32 journal-dash${_T}  41c hm-tty${_T}  52b deps-solver" \
-    "${_T}  20k gh-repos${_T}  32a transport${_T}42 shell${_T}" \
-    "${_T}  20l gh-registry${_T}  32b priority${_T}  42a fish+tools${_T}" \
-    "${_T}21 ssh${_T}  32c unit${_T}  42b fish${_T}" \
-    "${_T}  21a gcp-proxy${_T}  32d watch-n35${_T}  42c konsole-cfg${_T}" \
-    "${_T}  21b oci-mail${_T}33 connect${_T}43 git${_T}" \
-    "${_T}  21c oci-analy${_T}remote${_T}  43a gcl-https${_T}" \
-    "${_T}  21d oci-apps${_T}34 btop-dash${_T}  43b gcl-ssh${_T}" \
-    "${_T}  21e gcp-t4${_T}35 journal-dash${_T}${_T}" \
-    "${_T}  21f github${_T}36 docker-stats${_T}${_T}" \
+    "10 aliases${_T}20 quick-cmds${_T}local${_T}40 containers${_T}50 help" \
+    "11 webhooks${_T}  20a gcp-proxy${_T}30 monitors${_T}  40a nix {c|g|t}${_T}51 infos" \
+    "12 commands${_T}  20b oci-mail${_T}  30a btop${_T}  40b apt {c|g|t}${_T}  51a sys-info" \
+    "  (120-1226)${_T}  20c oci-analy${_T}  30b iotop${_T}41 nixos${_T}  51b sys-net-res" \
+    "${_T}  20d oci-apps${_T}  30c top-batch${_T}  41a hm {c|g|t}${_T}  51c sys-paths" \
+    "${_T}  20e gcp-t4${_T}31 sysstat${_T}42 shell${_T}  51d sys-envs" \
+    "${_T}  20f orchestrate${_T}  31a iostat${_T}  42a fish+tools${_T}  51e tools-table" \
+    "${_T}  20g local${_T}  31b mpstat${_T}  42b fish${_T}  51f tools-help" \
+    "${_T}  20h desktop${_T}  31c pidstat${_T}  42c konsole-cfg${_T}52 deps" \
+    "${_T}  20i vps-cloud${_T}  31d sar${_T}43 git${_T}  52a deps-drift" \
+    "${_T}  20j gh-actions${_T}32 journal-dash${_T}  43a gcl-https${_T}  52b deps-solver" \
+    "${_T}  20k gh-repos${_T}  32a transport${_T}  43b gcl-ssh${_T}" \
+    "${_T}  20l gh-registry${_T}  32b priority${_T}44 sys${_T}" \
+    "${_T}21 ssh${_T}  32c unit${_T}  44a sudoers${_T}" \
+    "${_T}  21a gcp-proxy${_T}  32d watch-n35${_T}${_T}" \
+    "${_T}  21b oci-mail${_T}33 connect${_T}${_T}" \
+    "${_T}  21c oci-analy${_T}remote${_T}${_T}" \
+    "${_T}  21d oci-apps${_T}34 monitors${_T}${_T}" \
+    "${_T}  21e gcp-t4${_T}  34a btop-dash${_T}${_T}" \
+    "${_T}  21f github${_T}  34b journal-dash${_T}${_T}" \
+    "${_T}${_T}  34c docker-stats${_T}${_T}" \
   | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   # Commands sub-table
@@ -229,7 +231,7 @@ show_menu_header() { set +x 2>/dev/null
     "${_T}${_T}${_T}${_T}1226 hm-rescue" \
   | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
   printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-52 shortcode${R}\n"
+  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-52 shortcode  40a nix {cli|gui|tty} = {40a0|40a1|40a2}${R}\n"
   printf "\n"
 }
 
@@ -734,6 +736,29 @@ do_konsole_cfg() {
   printf "\n  Restart Konsole to pick up changes.\n\n"
 }
 
+do_sudoers_nopasswd() { set +x 2>/dev/null
+  R='\033[0m'; C='\033[1;36m'; G='\033[1;32m'; Y='\033[1;33m'; D='\033[0;90m'
+  _user="${USER:-$(whoami)}"
+  _rule="$_user ALL=(ALL) NOPASSWD: ALL"
+  _file="/etc/sudoers.d/99-${_user}-nopasswd"
+
+  printf "\n${C}── sudoers NOPASSWD ──${R}\n"
+  if [ -f "$_file" ] && grep -q "$_user" "$_file" 2>/dev/null; then
+    printf "  ${G}already configured${R}: %s\n" "$_file"
+    printf "  ${D}%s${R}\n\n" "$_rule"
+    return 0
+  fi
+
+  printf "  ${Y}Setting up${R}: %s\n" "$_file"
+  printf "  ${D}%s${R}\n" "$_rule"
+  $S sh -c "echo '$_rule' > '$_file' && chmod 440 '$_file'"
+  if [ $? -eq 0 ]; then
+    printf "  ${G}Done${R} — sudo will not prompt for password.\n\n"
+  else
+    printf "  ${Y}Failed${R} — check sudo access.\n\n"
+  fi
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # C) CONNECT — unified dashboard (git/mounts/sync/servers)
 # ═══════════════════════════════════════════════════════════════════
@@ -967,6 +992,32 @@ do_remote_journal() {
 
 _QC="bash ${HOME:-/root}/git/tools/5-infos/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
 
+# Map command number to orchestrator command name (matches pick order in do_qc_vm)
+_qc_cmd_by_num() {
+  case "$1" in
+    1) echo htop ;; 2) echo journalctl-f ;;
+    3) echo journal-docker ;; 4) echo journal-sshd ;; 5) echo journal-wg ;;
+    6) echo journal-cinit ;; 7) echo journal-kernel ;; 8) echo journal-errors ;;
+    9) echo systemctl-status ;; 10) echo systemctl-list ;;
+    11) echo docker-start ;; 12) echo docker-stop ;; 13) echo docker-ps ;;
+    14) echo docker-stats ;; 15) echo docker-exec ;; 16) echo dashboard ;;
+    17) echo oci-start ;; 18) echo oci-stop ;; 19) echo oci-reset ;; 20) echo oci-serial ;;
+    21) echo gcloud-start ;; 22) echo gcloud-stop ;; 23) echo gcloud-reset ;; 24) echo gcloud-serial ;;
+    *) echo "" ;;
+  esac
+}
+
+# Direct VM+command: 20a13 → gcp-proxy docker-ps
+do_qc_vm_direct() {
+  _vm="$1"; _cmd_num="$2"
+  _cmd=$(_qc_cmd_by_num "$_cmd_num")
+  if [ -z "$_cmd" ]; then
+    echo "Invalid command number: $_cmd_num (1-24)"
+    return 1
+  fi
+  $_QC "vm-$_cmd" "$_vm"
+}
+
 do_qc_vm() {
   _vm="${1:-}"
   R='\033[0m'; C='\033[1;36m'; Y='\033[1;33m'; D='\033[0;90m'
@@ -1123,20 +1174,15 @@ do_all_commands() { set +x 2>/dev/null
 32c|journal unit (4-pane)
 32d|journal watch -n35
 33|connect dashboard
-34|btop-dash (4-pane)
-35|journal-dash remote (4-pane)
-36|docker-stats (4-pane)
-40|containers (deb)
-40a|nix-cli
-40b|nix-gui
-40c|nix-tty
-40d|apt-cli
-40e|apt-gui
-40f|apt-tty
-41|nixos (hm)
-41a|hm-cli
-41b|hm-gui
-41c|hm-tty
+34|remote monitors
+34a|btop-dash (4-pane)
+34b|journal-dash remote (4-pane)
+34c|docker-stats (4-pane)
+40|containers
+40a|nix {cli|gui|tty} = {40a0|40a1|40a2}
+40b|apt {cli|gui|tty} = {40b0|40b1|40b2}
+41|nixos
+41a|hm {cli|gui|tty} = {41a0|41a1|41a2}
 42|shell setup
 42a|fish+tools (sudo)
 42b|fish (no sudo)
@@ -1144,6 +1190,8 @@ do_all_commands() { set +x 2>/dev/null
 43|git
 43a|git clone (https)
 43b|git clone (ssh)
+44|sys
+44a|sudoers-nopasswd
 50|help
 51|infos (all)
 51a|sys-info
@@ -1516,6 +1564,7 @@ _resolve_shortcode_inner() {
       case "$_minor$_rest" in
         0) do_qc_vm ;;
         0a) do_qc_vm gcp-proxy ;; 0b) do_qc_vm oci-mail ;; 0c) do_qc_vm oci-analytics ;; 0d) do_qc_vm oci-apps ;; 0e) do_qc_vm gcp-t4 ;;
+        0a[0-9]*) do_qc_vm_direct gcp-proxy "${_rest#a}" ;; 0b[0-9]*) do_qc_vm_direct oci-mail "${_rest#b}" ;; 0c[0-9]*) do_qc_vm_direct oci-analytics "${_rest#c}" ;; 0d[0-9]*) do_qc_vm_direct oci-apps "${_rest#d}" ;; 0e[0-9]*) do_qc_vm_direct gcp-t4 "${_rest#e}" ;;
         0f) do_qc_orchestrate ;; 0g) do_qc_local ;; 0h) do_qc_desktop ;;
         0i) do_qc_vps cloud ;; 0j) do_qc_vps gh-actions ;; 0k) do_qc_vps gh-repos ;; 0l) do_qc_vps gh-registry ;;
         1) do_qc_ssh ;;
@@ -1531,8 +1580,10 @@ _resolve_shortcode_inner() {
         1) do_sysstat ;; 1a) do_sysstat iostat ;; 1b) do_sysstat mpstat ;; 1c) do_sysstat pidstat ;; 1d) do_sysstat sar ;;
         # journal
         2) do_journal_dash ;; 2a) do_journal_dash transport ;; 2b) do_journal_dash priority ;; 2c) do_journal_dash unit ;; 2d) do_journal_watch_n35 ;;
-        # connect + remote
-        3) do_connect ;; 4) do_batch_htop ;; 5) do_remote_journal ;; 6) do_docker_stats_dash ;;
+        # connect + remote monitors
+        3) do_connect ;;
+        4) echo "34a btop-dash  34b journal-dash  34c docker-stats" ;;
+        4a) do_batch_htop ;; 4b) do_remote_journal ;; 4c) do_docker_stats_dash ;;
         *) do_connect "$_minor$_rest" ;;
       esac; return 0 ;;
     4) # setups (containers + shell + git)
@@ -1540,16 +1591,18 @@ _resolve_shortcode_inner() {
       _containers_sh="$_dtk_dir/4-setups/containers.sh"
       case "$_minor$_rest" in
         0) sh "$_containers_sh" ;;
-        0a) sh "$_containers_sh" 1 ;; 0b) sh "$_containers_sh" 2 ;; 0c) sh "$_containers_sh" 3 ;;
-        0d) sh "$_containers_sh" 4 ;; 0e) sh "$_containers_sh" 5 ;; 0f) sh "$_containers_sh" 6 ;;
-        1) echo "41a hm-cli  41b hm-gui  41c hm-tty" ;;
-        1a) sh "$_containers_sh" 7 ;; 1b) sh "$_containers_sh" 8 ;; 1c) sh "$_containers_sh" 9 ;;
+        0a) sh "$_containers_sh" 1 ;; 0a0) sh "$_containers_sh" 1 ;; 0a1) sh "$_containers_sh" 2 ;; 0a2) sh "$_containers_sh" 3 ;;
+        0b) sh "$_containers_sh" 4 ;; 0b0) sh "$_containers_sh" 4 ;; 0b1) sh "$_containers_sh" 5 ;; 0b2) sh "$_containers_sh" 6 ;;
+        1) echo "41a hm {cli|gui|tty} = {41a0|41a1|41a2}" ;;
+        1a) sh "$_containers_sh" 7 ;; 1a0) sh "$_containers_sh" 7 ;; 1a1) sh "$_containers_sh" 8 ;; 1a2) sh "$_containers_sh" 9 ;;
         2) echo "42a fish+tools  42b fish  42c konsole-cfg" ;;
         2a) sh "$_dtk_dir/4-setups/fish-tools.sh" ;;
         2b) sh "$_dtk_dir/4-setups/fish-shell.sh" ;;
         2c) do_konsole_cfg ;;
         3) echo "43a gcl-https  43b gcl-ssh" ;;
         3a) do_gcl_https ;; 3b) do_gcl_ssh ;;
+        4) echo "44a sudoers-nopasswd" ;;
+        4a) do_sudoers_nopasswd ;;
         *) echo "Invalid shortcode: $_code" ;;
       esac; return 0 ;;
     5) # infos
