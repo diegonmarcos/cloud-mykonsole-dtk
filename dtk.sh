@@ -1380,15 +1380,23 @@ do_tools_deps_solver() { set +x 2>/dev/null
 
   if [ "$_missing_count" -gt 0 ]; then
     if command -v nix >/dev/null 2>&1; then
-      printf "\n  ${Y}nix detected${R} — %s missing tools. Installing via home-manager...\n" "$_missing_count"
-      _hm_build="${HOME}/git/unix/ba_flakes_desktop/build.sh"
-      if [ -x "$_hm_build" ]; then
-        printf "  ${C}Running:${R} %s switch\n\n" "$_hm_build"
-        "$_hm_build" switch
-      else
-        printf "  ${RED}ERROR${R}: %s not found\n" "$_hm_build"
-        printf "  ${D}Clone unix repo: git clone https://github.com/diegonmarcos/unix.git ~/git/unix${R}\n"
-      fi
+      printf "\n  ${Y}nix detected${R} — %s missing tools. Installing via nix profile...\n" "$_missing_count"
+      # Collect missing tool names from tools.json
+      _missing_tools=$(jq -r '[.[] | keys_unsorted[]] | .[]' "$_TOOLS_JSON" 2>/dev/null | while read -r _t; do
+        _b="$_t"
+        case "$_t" in
+          ripgrep) _b="rg" ;; wireguard) _b="wg" ;; gnupg) _b="gpg" ;; netcat) _b="nc" ;;
+          wireshark) _b="tshark" ;; p7zip) _b="7z" ;; wl-clipboard) _b="wl-copy" ;;
+          imagemagick) _b="convert" ;; obs-studio) _b="obs" ;; jupyterlab) _b="jupyter" ;;
+          R) _b="R" ;; helm|kubernetes-helm) _b="helm" ;;
+          torch|scikit-learn|numpy|pandas|scipy|matplotlib|polars|dask|pydantic) _b="python3" ;;
+        esac
+        command -v "$_b" >/dev/null 2>&1 || echo "$_t"
+      done)
+      for _pkg in $_missing_tools; do
+        printf "  ${C}nix profile install${R} nixpkgs#%s\n" "$_pkg"
+        nix profile install "nixpkgs#$_pkg" 2>/dev/null || printf "  ${RED}failed${R}: %s\n" "$_pkg"
+      done
     elif command -v apt >/dev/null 2>&1; then
       printf "\n  ${Y}apt detected${R} — installing missing tools...\n"
       # Collect apt package names from missing tools
