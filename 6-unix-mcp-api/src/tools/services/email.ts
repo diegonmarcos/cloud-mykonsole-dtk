@@ -9,7 +9,7 @@ import { CLOUD_DATA } from "../../paths.js";
 
 const MAIL_SECRETS_PATH = join(
   CLOUD_DATA,
-  "secrets/aa-sui_mailu-mcp-secrets.json.secrets"
+  "secrets/aa-sui_tools-maddy-secrets.json.secrets"
 );
 const DEFAULT_IMAP_HOST = process.env.IMAP_HOST ?? "mail.diegonmarcos.com";
 const DEFAULT_SMTP_HOST = process.env.SMTP_HOST ?? "mail.diegonmarcos.com";
@@ -74,7 +74,7 @@ while IFS= read -r -t 2 line; do printf '%s\\n' "$line"; [[ "$line" == "Z000 "* 
     timeout: timeoutMs,
     env: { IMAP_U: user, IMAP_P: pass },
   });
-  const authOk = result.stdout.includes("Authentication successful");
+  const authOk = result.stdout.includes("A001 OK") || result.stdout.includes("Authentication successful");
   return { ...result, ok: authOk || result.ok };
 }
 
