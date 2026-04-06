@@ -27,6 +27,8 @@ STATIC
   for vm in $VMS; do
     cat <<EOF
 ──────────── VM: $vm ────────────
+VM: $vm          | ssh (port 22)              | vm-ssh $vm
+VM: $vm          | ssh dropbear (port 2200)   | vm-ssh-dropbear $vm
 VM: $vm          | htop                       | vm-htop $vm
 VM: $vm          | journalctl -f              | vm-journalctl-f $vm
 VM: $vm          | journal: docker            | vm-journal-docker $vm

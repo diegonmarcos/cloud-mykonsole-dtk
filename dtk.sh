@@ -1049,18 +1049,23 @@ do_qc_vm() {
     _vm="$PICK"
   fi
   printf "\n${C}── VM: $_vm ──${R}\n"
+  # Provider-specific cloud commands
+  _cloud_cmds=""
+  case "$_vm" in
+    oci-*)     _cloud_cmds="oci-start oci-stop oci-reset oci-serial" ;;
+    gcp-*)     _cloud_cmds="gcloud-start gcloud-stop gcloud-reset gcloud-serial" ;;
+  esac
   pick "Command:" \
+    ssh ssh-dropbear \
     htop journalctl-f \
     journal-docker journal-sshd journal-wg journal-cinit journal-kernel journal-errors \
     systemctl-status systemctl-list \
     docker-start docker-stop docker-ps docker-stats docker-exec \
     dashboard \
-    oci-start oci-stop oci-reset oci-serial \
-    gcloud-start gcloud-stop gcloud-reset gcloud-serial
+    $_cloud_cmds
   [ "$PICK" = "back" ] && return 0
   case "$PICK" in
     dashboard)       $_QC vm-dashboard "$_vm" ;;
-    oci-*|gcloud-*)  $_QC "vm-$PICK" "$_vm" ;;
     *)               $_QC "vm-$PICK" "$_vm" ;;
   esac
 }

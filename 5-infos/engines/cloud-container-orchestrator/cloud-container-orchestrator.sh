@@ -74,6 +74,18 @@ case "$cmd" in
     printf '\033[1;36mCurrent mode: %s\033[0m\n' "$(get_mode)"
     ;;
 
+  # ── VM SSH connections (require $vm) ─────────────────────────────────
+  vm-ssh)
+    local _user; _user="$(vm_field "$vm" 2)"
+    printf '\033[0;90m[ssh:22] %s@%s\033[0m\n' "$_user" "$vm"
+    ssh "$vm"
+    ;;
+  vm-ssh-dropbear)
+    local _user; _user="$(vm_field "$vm" 2)"
+    printf '\033[0;90m[dropbear:2200] %s@%s\033[0m\n' "$_user" "$vm"
+    ssh -p 2200 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${_user}@${vm}"
+    ;;
+
   # ── VM commands (require $vm) ───────────────────────────────────────
   vm-htop)              rexec "$vm" htop ;;
   vm-journalctl-f)      rexec "$vm" sudo journalctl -f ;;
