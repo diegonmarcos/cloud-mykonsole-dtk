@@ -1607,6 +1607,28 @@ do_sys_mounts() { set +x 2>/dev/null
   _boot="$_nixos_src/modules/hardware_boot.nix"
   _prot="$_nixos_src/modules/configuration_system-protection.nix"
 
+  # Collect runtime data once
+  _df_data=$(df -k 2>/dev/null | awk 'NR>1 { printf "%s|%s|%s|%s\n", $6, $2, $3, $5 }')
+  _swap_rt=$(swapon --bytes --noheadings 2>/dev/null)
+  _grand_total_kb=0; _grand_used_kb=0
+
+  # Helper: get runtime size for a mount → sets _sz_used _sz_total _sz_pct _sz_total_kb _sz_used_kb
+  _mnt_sz() {
+    _sz_used="-"; _sz_total="-"; _sz_pct="-"; _sz_total_kb=0; _sz_used_kb=0
+    local line; while IFS= read -r line; do
+      local mnt_f=${line%%|*}; local rest=${line#*|}
+      if [ "$mnt_f" = "$1" ]; then
+        local tk=${rest%%|*}; rest=${rest#*|}; local uk=${rest%%|*}; _sz_pct=${rest#*|}
+        _sz_total_kb=$tk; _sz_used_kb=$uk
+        _sz_total=$(awk "BEGIN{printf \"%.1fG\", $tk/1048576}")
+        _sz_used=$(awk "BEGIN{printf \"%.1fG\", $uk/1048576}")
+        break
+      fi
+    done <<EOF
+$_df_data
+EOF
+  }
+
   printf "\n${G}sys-mounts${R} ${D}(declared storage — from nix source)${R}\n"
   printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
 
@@ -1629,33 +1651,52 @@ do_sys_mounts() { set +x 2>/dev/null
   fi
 
   # 2. Btrfs
-  printf "\n${C}Btrfs Subvolumes${R}\n"
-  printf "  ${Y}%-4s %-42s %-26s %-20s${R}\n" "#" "Mount" "Subvolume" "Source"
-  printf "  ${D}%-4s %-42s %-26s %-20s${R}\n" "─" "─────" "─────────" "──────"
+  printf "\n${C}Btrfs Subvolume Mounts${R}\n"
+  printf "  ${Y}%-4s %-42s %-26s %-8s %-8s %-6s %-20s${R}\n" "#" "Mount" "Subvolume" "Used" "Total" "%" "Source"
+  printf "  ${D}%-4s %-42s %-26s %-8s %-8s %-6s %-20s${R}\n" "─" "─────" "─────────" "────" "─────" "──" "──────"
+  _btrfs_n=0; _btrfs_total_kb=0; _btrfs_used_kb=0
   if [ -f "$_fs" ]; then
-    awk '
+    _btrfs_lines=$(awk '
       /fileSystems\."/ {
         gsub(/.*fileSystems\."/, ""); gsub(/".*/, "")
-        mount = $0; dev = ""; fs = ""; subvol = ""
+        mount = $0; fs = ""; subvol = ""
         while (1) {
           getline
-          if ($0 ~ /device =/) { dev = $0; gsub(/.*= "/, "", dev); gsub(/".*/, "", dev) }
           if ($0 ~ /fsType =/) { fs = $0; gsub(/.*= "/, "", fs); gsub(/".*/, "", fs) }
           if ($0 ~ /subvol=/) { subvol = $0; gsub(/.*subvol=/, "", subvol); gsub(/".*/, "", subvol) }
           if ($0 ~ /subvolid=/) { subvol = $0; gsub(/.*subvolid=/, "", subvol); gsub(/".*/, "", subvol); subvol = "subvolid=" subvol }
           if ($0 ~ /};/) break
         }
-        if (fs == "btrfs") { count++; printf "  %-4s %-42s %-26s %-20s\n", count, mount, subvol, "hardware_filesystems.nix" }
+        if (fs == "btrfs") printf "%s|%s\n", mount, subvol
       }
-    ' "$_fs"
+    ' "$_fs")
+    while IFS='|' read -r _mnt _subvol; do
+      [ -z "$_mnt" ] && continue
+      _btrfs_n=$(( _btrfs_n + 1 ))
+      _mnt_sz "$_mnt"
+      _btrfs_total_kb=$(( _btrfs_total_kb + _sz_total_kb ))
+      _btrfs_used_kb=$(( _btrfs_used_kb + _sz_used_kb ))
+      _grand_total_kb=$(( _grand_total_kb + _sz_total_kb ))
+      _grand_used_kb=$(( _grand_used_kb + _sz_used_kb ))
+      printf "  %-4s %-42s %-26s %-8s %-8s %-6s %-20s\n" "$_btrfs_n" "$_mnt" "$_subvol" "$_sz_used" "$_sz_total" "$_sz_pct" "hardware_filesystems.nix"
+    done <<EOF
+$_btrfs_lines
+EOF
+    if [ "$_btrfs_n" -gt 0 ]; then
+      _sub_t=$(awk "BEGIN{printf \"%.1fG\", $_btrfs_total_kb/1048576}")
+      _sub_u=$(awk "BEGIN{printf \"%.1fG\", $_btrfs_used_kb/1048576}")
+      _sub_p=$(( _btrfs_total_kb > 0 ? _btrfs_used_kb * 100 / _btrfs_total_kb : 0 ))
+      printf "  ${D}%-4s %-42s %-26s %-8s %-8s %-6s${R}\n" "" "" "Subtotal ($_btrfs_n)" "$_sub_u" "$_sub_t" "${_sub_p}%"
+    fi
   fi
 
   # 3. Partitions
   printf "\n${C}Partition Mounts${R}\n"
-  printf "  ${Y}%-4s %-24s %-52s %-8s %-20s${R}\n" "#" "Mount" "Device" "Type" "Source"
-  printf "  ${D}%-4s %-24s %-52s %-8s %-20s${R}\n" "─" "─────" "──────" "────" "──────"
+  printf "  ${Y}%-4s %-24s %-40s %-8s %-8s %-8s %-6s %-20s${R}\n" "#" "Mount" "Device" "Type" "Used" "Total" "%" "Source"
+  printf "  ${D}%-4s %-24s %-40s %-8s %-8s %-8s %-6s %-20s${R}\n" "─" "─────" "──────" "────" "────" "─────" "──" "──────"
+  _part_n=0; _part_total_kb=0; _part_used_kb=0
   if [ -f "$_fs" ]; then
-    awk '
+    _part_lines=$(awk '
       /fileSystems\."/ {
         gsub(/.*fileSystems\."/, ""); gsub(/".*/, "")
         mount = $0; dev = ""; fs = ""
@@ -1665,17 +1706,36 @@ do_sys_mounts() { set +x 2>/dev/null
           if ($0 ~ /fsType =/) { fs = $0; gsub(/.*= "/, "", fs); gsub(/".*/, "", fs) }
           if ($0 ~ /};/) break
         }
-        if (fs == "ext4" || fs == "vfat") { count++; printf "  %-4s %-24s %-52s %-8s %-20s\n", count, mount, dev, fs, "hardware_filesystems.nix" }
+        if (fs == "ext4" || fs == "vfat") printf "%s|%s|%s\n", mount, dev, fs
       }
-    ' "$_fs"
+    ' "$_fs")
+    while IFS='|' read -r _mnt _dev _fstype; do
+      [ -z "$_mnt" ] && continue
+      _part_n=$(( _part_n + 1 ))
+      _mnt_sz "$_mnt"
+      _part_total_kb=$(( _part_total_kb + _sz_total_kb ))
+      _part_used_kb=$(( _part_used_kb + _sz_used_kb ))
+      _grand_total_kb=$(( _grand_total_kb + _sz_total_kb ))
+      _grand_used_kb=$(( _grand_used_kb + _sz_used_kb ))
+      printf "  %-4s %-24s %-40s %-8s %-8s %-8s %-6s %-20s\n" "$_part_n" "$_mnt" "$_dev" "$_fstype" "$_sz_used" "$_sz_total" "$_sz_pct" "hardware_filesystems.nix"
+    done <<EOF
+$_part_lines
+EOF
+    if [ "$_part_n" -gt 0 ]; then
+      _sub_t=$(awk "BEGIN{printf \"%.1fG\", $_part_total_kb/1048576}")
+      _sub_u=$(awk "BEGIN{printf \"%.1fG\", $_part_used_kb/1048576}")
+      _sub_p=$(( _part_total_kb > 0 ? _part_used_kb * 100 / _part_total_kb : 0 ))
+      printf "  ${D}%-4s %-24s %-40s %-8s %-8s %-8s %-6s${R}\n" "" "" "Subtotal ($_part_n)" "" "$_sub_u" "$_sub_t" "${_sub_p}%"
+    fi
   fi
 
   # 4. tmpfs
   printf "\n${C}tmpfs${R}\n"
-  printf "  ${Y}%-4s %-24s %-16s %-20s${R}\n" "#" "Mount" "Size" "Source"
-  printf "  ${D}%-4s %-24s %-16s %-20s${R}\n" "─" "─────" "────" "──────"
+  printf "  ${Y}%-4s %-24s %-16s %-8s %-8s %-6s %-20s${R}\n" "#" "Mount" "Declared" "Used" "Total" "%" "Source"
+  printf "  ${D}%-4s %-24s %-16s %-8s %-8s %-6s %-20s${R}\n" "─" "─────" "────────" "────" "─────" "──" "──────"
+  _tmpfs_n=0; _tmpfs_total_kb=0; _tmpfs_used_kb=0
   if [ -f "$_fs" ]; then
-    awk '
+    _tmpfs_lines=$(awk '
       /fileSystems\."/ {
         gsub(/.*fileSystems\."/, ""); gsub(/".*/, "")
         mount = $0; fs = ""; size = ""
@@ -1685,54 +1745,122 @@ do_sys_mounts() { set +x 2>/dev/null
           if ($0 ~ /size=/) { size = $0; gsub(/.*size=/, "", size); gsub(/".*/, "", size) }
           if ($0 ~ /};/) break
         }
-        if (fs == "tmpfs") { count++; printf "  %-4s %-24s %-16s %-20s\n", count, mount, size, "hardware_filesystems.nix" }
+        if (fs == "tmpfs") printf "%s|%s\n", mount, size
       }
-    ' "$_fs"
+    ' "$_fs")
+    while IFS='|' read -r _mnt _declared; do
+      [ -z "$_mnt" ] && continue
+      _tmpfs_n=$(( _tmpfs_n + 1 ))
+      _mnt_sz "$_mnt"
+      _tmpfs_total_kb=$(( _tmpfs_total_kb + _sz_total_kb ))
+      _tmpfs_used_kb=$(( _tmpfs_used_kb + _sz_used_kb ))
+      _grand_total_kb=$(( _grand_total_kb + _sz_total_kb ))
+      _grand_used_kb=$(( _grand_used_kb + _sz_used_kb ))
+      printf "  %-4s %-24s %-16s %-8s %-8s %-6s %-20s\n" "$_tmpfs_n" "$_mnt" "$_declared" "$_sz_used" "$_sz_total" "$_sz_pct" "hardware_filesystems.nix"
+    done <<EOF
+$_tmpfs_lines
+EOF
+    if [ "$_tmpfs_n" -gt 0 ]; then
+      _sub_t=$(awk "BEGIN{printf \"%.1fG\", $_tmpfs_total_kb/1048576}")
+      _sub_u=$(awk "BEGIN{printf \"%.1fG\", $_tmpfs_used_kb/1048576}")
+      _sub_p=$(( _tmpfs_total_kb > 0 ? _tmpfs_used_kb * 100 / _tmpfs_total_kb : 0 ))
+      printf "  ${D}%-4s %-24s %-16s %-8s %-8s %-6s${R}\n" "" "" "Subtotal ($_tmpfs_n)" "$_sub_u" "$_sub_t" "${_sub_p}%"
+    fi
   fi
 
   # 5. Swap
   printf "\n${C}Swap Devices${R}\n"
-  printf "  ${Y}%-4s %-40s %-28s %-20s${R}\n" "#" "Device" "Type" "Source"
-  printf "  ${D}%-4s %-40s %-28s %-20s${R}\n" "─" "──────" "────" "──────"
-  _swap_n=0
+  printf "  ${Y}%-4s %-40s %-28s %-8s %-8s %-6s %-20s${R}\n" "#" "Device" "Type" "Used" "Total" "%" "Source"
+  printf "  ${D}%-4s %-40s %-28s %-8s %-8s %-6s %-20s${R}\n" "─" "──────" "────" "────" "─────" "──" "──────"
+  _swap_n=0; _swap_total_kb=0; _swap_used_kb=0
   if [ -f "$_fs" ]; then
-    awk '
+    _swap_devs=$(awk '
       /swapDevices/ { inside=1; next }
       inside && /device =/ {
         dev = $0; gsub(/.*= "/, "", dev); gsub(/".*/, "", dev)
-        count++
-        printf "  %-4s %-40s %-28s %-20s\n", count, dev, "swap file", "hardware_filesystems.nix"
+        print dev
       }
       inside && /\];/ { inside=0 }
-    ' "$_fs"
-    _swap_n=$(awk '/swapDevices/,/\];/ { if (/device =/) count++ } END { print count+0 }' "$_fs")
+    ' "$_fs")
+    while IFS= read -r _sdev; do
+      [ -z "$_sdev" ] && continue
+      _swap_n=$(( _swap_n + 1 ))
+      _s_used="-"; _s_total="-"; _s_pct="-"
+      while IFS= read -r _sline; do
+        case "$_sline" in *"$_sdev"*)
+          set -- $_sline  # NAME TYPE SIZE USED PRIO
+          if [ $# -ge 4 ]; then
+            _s_total=$(awk "BEGIN{printf \"%.1fG\", $3/1073741824}")
+            _s_used=$(awk "BEGIN{printf \"%.1fG\", $4/1073741824}")
+            _s_pct=$(( $3 > 0 ? $4 * 100 / $3 : 0 ))"%"
+            _swap_total_kb=$(( _swap_total_kb + $3 / 1024 ))
+            _swap_used_kb=$(( _swap_used_kb + $4 / 1024 ))
+          fi; break ;;
+        esac
+      done <<EOF2
+$_swap_rt
+EOF2
+      printf "  %-4s %-40s %-28s %-8s %-8s %-6s %-20s\n" "$_swap_n" "$_sdev" "swap file" "$_s_used" "$_s_total" "$_s_pct" "hardware_filesystems.nix"
+    done <<EOF
+$_swap_devs
+EOF
   fi
   if [ -f "$_prot" ]; then
-    awk -v n="$_swap_n" '
+    _zram_info=$(awk '
       /zramSwap[[:space:]]*=/ { inside=1; alg=""; pct=""; prio=""; next }
       inside && /algorithm/ { alg=$0; gsub(/.*= "/, "", alg); gsub(/".*/, "", alg) }
       inside && /memoryPercent/ { pct=$0; gsub(/.*= /, "", pct); gsub(/;.*/, "", pct) }
       inside && /priority/ { prio=$0; gsub(/.*= /, "", prio); gsub(/;.*/, "", prio) }
       inside && /};/ {
         inside=0
-        desc = sprintf("zram (%s, %s%% RAM, prio %s)", alg, pct, prio)
-        printf "  %-4s %-40s %-28s %-20s\n", n+1, "/dev/zram0", desc, "config_system-protection.nix"
+        printf "%s|%s|%s", alg, pct, prio
       }
-    ' "$_prot"
+    ' "$_prot")
+    if [ -n "$_zram_info" ]; then
+      IFS='|' read -r _zalg _zpct _zprio <<EOF
+$_zram_info
+EOF
+      _desc="zram ($_zalg, ${_zpct}% RAM, prio $_zprio)"
+      _swap_n=$(( _swap_n + 1 ))
+      _s_used="-"; _s_total="-"; _s_pct="-"
+      while IFS= read -r _sline; do
+        case "$_sline" in */dev/zram*)
+          set -- $_sline
+          if [ $# -ge 4 ]; then
+            _s_total=$(awk "BEGIN{printf \"%.1fG\", $3/1073741824}")
+            _s_used=$(awk "BEGIN{printf \"%.1fG\", $4/1073741824}")
+            _s_pct=$(( $3 > 0 ? $4 * 100 / $3 : 0 ))"%"
+            _swap_total_kb=$(( _swap_total_kb + $3 / 1024 ))
+            _swap_used_kb=$(( _swap_used_kb + $4 / 1024 ))
+          fi; break ;;
+        esac
+      done <<EOF2
+$_swap_rt
+EOF2
+      printf "  %-4s %-40s %-28s %-8s %-8s %-6s %-20s\n" "$_swap_n" "/dev/zram0" "$_desc" "$_s_used" "$_s_total" "$_s_pct" "config_system-protection.nix"
+    fi
+  fi
+  if [ "$_swap_n" -gt 0 ]; then
+    _sub_t=$(awk "BEGIN{printf \"%.1fG\", $_swap_total_kb/1048576}")
+    _sub_u=$(awk "BEGIN{printf \"%.1fG\", $_swap_used_kb/1048576}")
+    _sub_p=$(( _swap_total_kb > 0 ? _swap_used_kb * 100 / _swap_total_kb : 0 ))
+    printf "  ${D}%-4s %-40s %-28s %-8s %-8s %-6s${R}\n" "" "" "Subtotal ($_swap_n)" "$_sub_u" "$_sub_t" "${_sub_p}%"
   fi
 
+  # Grand totals
+  _grand_total_kb=$(( _grand_total_kb + _swap_total_kb ))
+  _grand_used_kb=$(( _grand_used_kb + _swap_used_kb ))
+
   # Summary
-  _luks=0; _btrfs=0; _part=0; _tmpfs=0
+  _luks=0
   [ -f "$_boot" ] && _luks=$(grep -c 'luks\.devices\.' "$_boot" 2>/dev/null)
-  if [ -f "$_fs" ]; then
-    _btrfs=$(awk '/fileSystems\."/{m=$0} /fsType = "btrfs"/{if(m)c++; m=""} END{print c+0}' "$_fs")
-    _part=$(awk '/fileSystems\."/{m=$0} /fsType = "(ext4|vfat)"/{if(m)c++; m=""} END{print c+0}' "$_fs")
-    _tmpfs=$(awk '/fileSystems\."/{m=$0} /fsType = "tmpfs"/{if(m)c++; m=""} END{print c+0}' "$_fs")
-  fi
-  _swap_total=$(( _swap_n + 1 ))
-  _total=$(( _luks + _btrfs + _part + _tmpfs + _swap_total ))
-  printf "\n${C}Summary${R}  LUKS: ${W}%s${R}  Btrfs: ${W}%s${R}  Partitions: ${W}%s${R}  tmpfs: ${W}%s${R}  Swap: ${W}%s${R}  Total: ${G}%s${R}\n\n" \
-    "$_luks" "$_btrfs" "$_part" "$_tmpfs" "$_swap_total" "$_total"
+  _swap_total_n=$(( _swap_n ))
+  _total=$(( _luks + _btrfs_n + _part_n + _tmpfs_n + _swap_total_n ))
+  _gt=$(awk "BEGIN{printf \"%.1fG\", $_grand_total_kb/1048576}")
+  _gu=$(awk "BEGIN{printf \"%.1fG\", $_grand_used_kb/1048576}")
+  _gp=$(( _grand_total_kb > 0 ? _grand_used_kb * 100 / _grand_total_kb : 0 ))
+  printf "\n${C}Summary${R}  LUKS: ${W}%s${R}  Btrfs: ${W}%s${R}  Partitions: ${W}%s${R}  tmpfs: ${W}%s${R}  Swap: ${W}%s${R}  Total: ${G}%s${R}  │  ${W}%s${R} / ${W}%s${R} (${G}%s%%${R})\n\n" \
+    "$_luks" "$_btrfs_n" "$_part_n" "$_tmpfs_n" "$_swap_total_n" "$_total" "$_gu" "$_gt" "$_gp"
 }
 
 do_engines()   { sh "$_INFOS_DIR/engines/engines.sh" "$@"; }
