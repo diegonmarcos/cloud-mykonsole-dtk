@@ -220,10 +220,10 @@ show_menu_header() { set +x 2>/dev/null
     "${_T}  20e gcp-t4${_T}31 sysstat${_T}42 shell${_T}  51d sys-envs" \
     "${_T}  20f orchestrate${_T}  31a iostat${_T}  42a fish+tools${_T}  51e tools-table" \
     "${_T}  20g local${_T}  31b mpstat${_T}  42b fish${_T}  51f tools-help" \
-    "${_T}  20h desktop${_T}  31c pidstat${_T}  42c konsole-cfg${_T}52 deps" \
-    "${_T}  20i vps-cloud${_T}  31d sar${_T}43 git${_T}  52a deps-drift" \
-    "${_T}  20j gh-actions${_T}  31e vmstat${_T}  43a gcl-https${_T}  52b deps-solver" \
-    "${_T}  20k gh-repos${_T}32 journal-dash${_T}  43b gcl-ssh${_T}" \
+    "${_T}  20h desktop${_T}  31c pidstat${_T}  42c konsole-cfg${_T}  51g sys-mounts" \
+    "${_T}  20i vps-cloud${_T}  31d sar${_T}43 git${_T}52 deps" \
+    "${_T}  20j gh-actions${_T}  31e vmstat${_T}  43a gcl-https${_T}  52a deps-drift" \
+    "${_T}  20k gh-repos${_T}32 journal-dash${_T}  43b gcl-ssh${_T}  52b deps-solver" \
     "${_T}  20l gh-registry${_T}  32a transport${_T}44 sys${_T}" \
     "${_T}21 ssh${_T}  32b priority${_T}  44a sudoers${_T}" \
     "${_T}  21a gcp-proxy${_T}  32c unit${_T}45 llms${_T}" \
@@ -1231,6 +1231,7 @@ do_all_commands() { set +x 2>/dev/null
 51d|sys-envs
 51e|tools-table
 51f|tools-help
+51g|sys-mounts
 52|deps
 52a|deps-drift
 52b|deps-solver
@@ -1500,6 +1501,7 @@ do_sys_info_menu() {
   printf "  51d sys-envs         Environment variables\n"
   printf "  51e tools-table      Installed tools (5-col)\n"
   printf "  51f tools-help       Installed tools (with descriptions)\n"
+  printf "  51g sys-mounts       Declared storage (LUKS, btrfs, partitions, swap)\n"
   printf "\n  ${C}52) deps${R}\n"
   printf "  52a deps-drift       Declared vs installed (summary)\n"
   printf "  52b deps-solver      Full toolchain check (detailed)\n\n"
@@ -1598,6 +1600,141 @@ do_sys_envs() { set +x 2>/dev/null
   done
   printf "\n"
 }
+do_sys_mounts() { set +x 2>/dev/null
+  R='\033[0m'; Y='\033[1;33m'; W='\033[1;37m'; G='\033[1;32m'; D='\033[0;90m'; C='\033[1;36m'
+  _nixos_src="$HOME/git/unix/aa_nixos-surface_host/src"
+  _fs="$_nixos_src/modules/hardware_filesystems.nix"
+  _boot="$_nixos_src/modules/hardware_boot.nix"
+  _prot="$_nixos_src/modules/configuration_system-protection.nix"
+
+  printf "\n${G}sys-mounts${R} ${D}(declared storage — from nix source)${R}\n"
+  printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
+
+  # 1. LUKS
+  printf "\n${C}LUKS Volumes${R}\n"
+  printf "  ${Y}%-4s %-20s %-52s %-20s${R}\n" "#" "Name" "Device" "Source"
+  printf "  ${D}%-4s %-20s %-52s %-20s${R}\n" "─" "────" "──────" "──────"
+  if [ -f "$_boot" ]; then
+    awk '
+      /luks\.devices\."/ {
+        gsub(/.*luks\.devices\."/, ""); gsub(/".*/, "")
+        name = $0; getline
+        while ($0 !~ /};/) {
+          if ($0 ~ /device =/) { dev = $0; gsub(/.*= "/, "", dev); gsub(/".*/, "", dev) }
+          getline
+        }
+        printf "  %-4s %-20s %-52s %-20s\n", "1", name, dev, "hardware_boot.nix"
+      }
+    ' "$_boot"
+  fi
+
+  # 2. Btrfs
+  printf "\n${C}Btrfs Subvolumes${R}\n"
+  printf "  ${Y}%-4s %-42s %-26s %-20s${R}\n" "#" "Mount" "Subvolume" "Source"
+  printf "  ${D}%-4s %-42s %-26s %-20s${R}\n" "─" "─────" "─────────" "──────"
+  if [ -f "$_fs" ]; then
+    awk '
+      /fileSystems\."/ {
+        gsub(/.*fileSystems\."/, ""); gsub(/".*/, "")
+        mount = $0; dev = ""; fs = ""; subvol = ""
+        while (1) {
+          getline
+          if ($0 ~ /device =/) { dev = $0; gsub(/.*= "/, "", dev); gsub(/".*/, "", dev) }
+          if ($0 ~ /fsType =/) { fs = $0; gsub(/.*= "/, "", fs); gsub(/".*/, "", fs) }
+          if ($0 ~ /subvol=/) { subvol = $0; gsub(/.*subvol=/, "", subvol); gsub(/".*/, "", subvol) }
+          if ($0 ~ /subvolid=/) { subvol = $0; gsub(/.*subvolid=/, "", subvol); gsub(/".*/, "", subvol); subvol = "subvolid=" subvol }
+          if ($0 ~ /};/) break
+        }
+        if (fs == "btrfs") { count++; printf "  %-4s %-42s %-26s %-20s\n", count, mount, subvol, "hardware_filesystems.nix" }
+      }
+    ' "$_fs"
+  fi
+
+  # 3. Partitions
+  printf "\n${C}Partition Mounts${R}\n"
+  printf "  ${Y}%-4s %-24s %-52s %-8s %-20s${R}\n" "#" "Mount" "Device" "Type" "Source"
+  printf "  ${D}%-4s %-24s %-52s %-8s %-20s${R}\n" "─" "─────" "──────" "────" "──────"
+  if [ -f "$_fs" ]; then
+    awk '
+      /fileSystems\."/ {
+        gsub(/.*fileSystems\."/, ""); gsub(/".*/, "")
+        mount = $0; dev = ""; fs = ""
+        while (1) {
+          getline
+          if ($0 ~ /device =/) { dev = $0; gsub(/.*= "/, "", dev); gsub(/".*/, "", dev) }
+          if ($0 ~ /fsType =/) { fs = $0; gsub(/.*= "/, "", fs); gsub(/".*/, "", fs) }
+          if ($0 ~ /};/) break
+        }
+        if (fs == "ext4" || fs == "vfat") { count++; printf "  %-4s %-24s %-52s %-8s %-20s\n", count, mount, dev, fs, "hardware_filesystems.nix" }
+      }
+    ' "$_fs"
+  fi
+
+  # 4. tmpfs
+  printf "\n${C}tmpfs${R}\n"
+  printf "  ${Y}%-4s %-24s %-16s %-20s${R}\n" "#" "Mount" "Size" "Source"
+  printf "  ${D}%-4s %-24s %-16s %-20s${R}\n" "─" "─────" "────" "──────"
+  if [ -f "$_fs" ]; then
+    awk '
+      /fileSystems\."/ {
+        gsub(/.*fileSystems\."/, ""); gsub(/".*/, "")
+        mount = $0; fs = ""; size = ""
+        while (1) {
+          getline
+          if ($0 ~ /fsType =/) { fs = $0; gsub(/.*= "/, "", fs); gsub(/".*/, "", fs) }
+          if ($0 ~ /size=/) { size = $0; gsub(/.*size=/, "", size); gsub(/".*/, "", size) }
+          if ($0 ~ /};/) break
+        }
+        if (fs == "tmpfs") { count++; printf "  %-4s %-24s %-16s %-20s\n", count, mount, size, "hardware_filesystems.nix" }
+      }
+    ' "$_fs"
+  fi
+
+  # 5. Swap
+  printf "\n${C}Swap Devices${R}\n"
+  printf "  ${Y}%-4s %-40s %-28s %-20s${R}\n" "#" "Device" "Type" "Source"
+  printf "  ${D}%-4s %-40s %-28s %-20s${R}\n" "─" "──────" "────" "──────"
+  _swap_n=0
+  if [ -f "$_fs" ]; then
+    awk '
+      /swapDevices/ { inside=1; next }
+      inside && /device =/ {
+        dev = $0; gsub(/.*= "/, "", dev); gsub(/".*/, "", dev)
+        count++
+        printf "  %-4s %-40s %-28s %-20s\n", count, dev, "swap file", "hardware_filesystems.nix"
+      }
+      inside && /\];/ { inside=0 }
+    ' "$_fs"
+    _swap_n=$(awk '/swapDevices/,/\];/ { if (/device =/) count++ } END { print count+0 }' "$_fs")
+  fi
+  if [ -f "$_prot" ]; then
+    awk -v n="$_swap_n" '
+      /zramSwap[[:space:]]*=/ { inside=1; alg=""; pct=""; prio=""; next }
+      inside && /algorithm/ { alg=$0; gsub(/.*= "/, "", alg); gsub(/".*/, "", alg) }
+      inside && /memoryPercent/ { pct=$0; gsub(/.*= /, "", pct); gsub(/;.*/, "", pct) }
+      inside && /priority/ { prio=$0; gsub(/.*= /, "", prio); gsub(/;.*/, "", prio) }
+      inside && /};/ {
+        inside=0
+        desc = sprintf("zram (%s, %s%% RAM, prio %s)", alg, pct, prio)
+        printf "  %-4s %-40s %-28s %-20s\n", n+1, "/dev/zram0", desc, "config_system-protection.nix"
+      }
+    ' "$_prot"
+  fi
+
+  # Summary
+  _luks=0; _btrfs=0; _part=0; _tmpfs=0
+  [ -f "$_boot" ] && _luks=$(grep -c 'luks\.devices\.' "$_boot" 2>/dev/null)
+  if [ -f "$_fs" ]; then
+    _btrfs=$(awk '/fileSystems\."/{m=$0} /fsType = "btrfs"/{if(m)c++; m=""} END{print c+0}' "$_fs")
+    _part=$(awk '/fileSystems\."/{m=$0} /fsType = "(ext4|vfat)"/{if(m)c++; m=""} END{print c+0}' "$_fs")
+    _tmpfs=$(awk '/fileSystems\."/{m=$0} /fsType = "tmpfs"/{if(m)c++; m=""} END{print c+0}' "$_fs")
+  fi
+  _swap_total=$(( _swap_n + 1 ))
+  _total=$(( _luks + _btrfs + _part + _tmpfs + _swap_total ))
+  printf "\n${C}Summary${R}  LUKS: ${W}%s${R}  Btrfs: ${W}%s${R}  Partitions: ${W}%s${R}  tmpfs: ${W}%s${R}  Swap: ${W}%s${R}  Total: ${G}%s${R}\n\n" \
+    "$_luks" "$_btrfs" "$_part" "$_tmpfs" "$_swap_total" "$_total"
+}
+
 do_engines()   { sh "$_INFOS_DIR/engines/engines.sh" "$@"; }
 do_webhooks()  { sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$@"; }
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
@@ -1717,8 +1854,8 @@ _resolve_shortcode_inner() {
     5) # infos
       case "$_minor$_rest" in
         0) do_help ;;
-        1) do_sys_info; do_sys_net_resource; do_sys_paths; do_sys_envs; do_tools; do_tools_help ;;
-        1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;;
+        1) do_sys_info; do_sys_net_resource; do_sys_paths; do_sys_envs; do_tools; do_tools_help; do_sys_mounts ;;
+        1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;; 1g) do_sys_mounts ;;
         2) do_deps_drift; do_tools_deps_solver ;; 2a) do_deps_drift ;; 2b) do_tools_deps_solver ;;
         *) do_help ;;
       esac; return 0 ;;
