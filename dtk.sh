@@ -282,7 +282,7 @@ pick() { set +x 2>/dev/null
     _i=$((_i + 1))
   done
   printf "> "
-  read -r _idx
+  read -r _idx || { echo; PICK="back"; return 0; }
   case "$_idx" in b|B) PICK="back"; _log "pick: back"; set -x 2>/dev/null; return 0 ;; q|Q) _log "pick: quit"; echo "Bye."; exit 0 ;; esac
   # Try as menu item first, then as global shortcode
   _num=$((_idx)) 2>/dev/null || _num=0
@@ -1777,10 +1777,19 @@ if [ $# -ge 1 ]; then
   esac
 else
   set +x 2>/dev/null
+  # Non-interactive (no TTY on stdin) → show banner + help and exit
+  if ! [ -t 0 ]; then
+    detect_system 2>/dev/null || true
+    show_banner
+    do_help
+    printf "\033[1;33mTip:\033[0m no TTY detected — use \033[1;37mdtk.sh <command>\033[0m for direct execution.\n"
+    printf "     For interactive menu, run inside a terminal: \033[0;90mdocker exec -it <ctr> sh dtk.sh\033[0m\n\n"
+    exit 0
+  fi
   while true; do
     show_menu_header
     printf "> "
-    read -r _input
+    read -r _input || { echo; echo "Bye."; exit 0; }
     case "$_input" in
       1)  do_aliases; do_tools ;;
       2)  printf "\n  20 quick-cmds  21 ssh\n\n" ;;
