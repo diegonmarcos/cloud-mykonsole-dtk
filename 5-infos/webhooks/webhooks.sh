@@ -149,7 +149,7 @@ case "$MODE" in
           fi
         fi
       fi
-      sleep 5
+      sleep 3
     done
     ;;
 
