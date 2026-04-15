@@ -31,6 +31,7 @@ OUT_TOPIC="dtk-out-${VM_NAME}"
 
 SUDO="sudo"
 [ "$(id -u)" = "0" ] && SUDO=""
+command -v sudo >/dev/null 2>&1 || SUDO=""
 
 # ── Helpers ──────────────────────────────────────────────────────
 
