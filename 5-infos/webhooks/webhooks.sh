@@ -98,15 +98,17 @@ case "$MODE" in
       MSG=$(curl -sf "${NTFY_BASE}/${CMD_TOPIC}/json?poll=1&since=5m" 2>/dev/null | tail -1)
       [ -z "$MSG" ] && echo "  Timeout — no command received" && exit 0
     fi
-    # Extract message body from JSON
-    CMD=$(echo "$MSG" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p' 2>/dev/null || echo "")
+    # Extract message body from JSON — jq/python3 properly decode unicode escapes (\u0026 → &)
+    CMD=""
+    if command -v jq >/dev/null 2>&1; then
+      CMD=$(echo "$MSG" | jq -r '.message // empty' 2>/dev/null || echo "")
+    elif command -v python3 >/dev/null 2>&1; then
+      CMD=$(echo "$MSG" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message',''))" 2>/dev/null || echo "")
+    fi
+    # sed fallback — extract then decode JSON unicode escapes
     if [ -z "$CMD" ]; then
-      # Try python/jq for proper JSON parsing
-      if command -v jq >/dev/null 2>&1; then
-        CMD=$(echo "$MSG" | jq -r '.message // empty' 2>/dev/null || echo "")
-      elif command -v python3 >/dev/null 2>&1; then
-        CMD=$(echo "$MSG" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message',''))" 2>/dev/null || echo "")
-      fi
+      CMD=$(echo "$MSG" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p' 2>/dev/null || echo "")
+      [ -n "$CMD" ] && CMD=$(printf '%s' "$CMD" | sed -e 's/\\u0026/\&/g' -e 's/\\u003c/</g' -e 's/\\u003e/>/g' -e 's/\\\\n/\n/g')
     fi
     if [ -z "$CMD" ]; then
       echo "  Could not parse command from message"
@@ -134,8 +136,11 @@ case "$MODE" in
           CMD=""
           if command -v jq >/dev/null 2>&1; then
             CMD=$(echo "$MSG" | jq -r '.message // empty' 2>/dev/null || echo "")
+          elif command -v python3 >/dev/null 2>&1; then
+            CMD=$(echo "$MSG" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message',''))" 2>/dev/null || echo "")
           else
             CMD=$(echo "$MSG" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p' 2>/dev/null || echo "")
+            [ -n "$CMD" ] && CMD=$(printf '%s' "$CMD" | sed -e 's/\\u0026/\&/g' -e 's/\\u003c/</g' -e 's/\\u003e/>/g' -e 's/\\\\n/\n/g')
           fi
           if [ -n "$CMD" ]; then
             echo ""
