@@ -30,8 +30,7 @@
         "wg_ip": "10.0.0.4",
         "public_ip": "129.151.228.66",
         "services": [
-          "matomo",
-          "windmill"
+          "matomo"
         ],
         "vm_subdirs": [
           {"name": "sys",    "remote_path": "/"},
@@ -122,7 +121,6 @@
       "syncthing":        { "domain": "sync.diegonmarcos.com",        "port": "8384",    "availability": "24/7" },
       "radicale":         { "domain": "cal.diegonmarcos.com",         "port": "5232",    "availability": "24/7" },
       "matomo":           { "domain": "analytics.diegonmarcos.com",   "port": "8080",    "availability": "hybrid" },
-      "windmill":         { "domain": "—",                            "port": "—",       "availability": "24/7" },
       "crawlee":          { "domain": "api.diegonmarcos.com/crawlee", "port": "3000",    "availability": "on-demand" },
       "photoprism":       { "domain": "photos.diegonmarcos.com",      "port": "3013",    "availability": "on-demand" },
       "nocodb":           { "domain": "db.diegonmarcos.com",          "port": "8085",    "availability": "on-demand" },
