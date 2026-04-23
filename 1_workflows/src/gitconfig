@@ -1,0 +1,16 @@
+# Repo-level git config — deployed by 1_workflows/build.sh
+# Managed declaratively: edit src/gitconfig, run build.sh, commit.
+[push]
+	recurseSubmodules = on-demand
+[submodule]
+	recurse = true
+[fetch]
+	recurseSubmodules = on-demand
+[core]
+	hooksPath = 1_workflows/dist/hooks
+[pull]
+	rebase = true
+[rebase]
+	autoStash = true
+[alias]
+	sync = !./1_workflows/dist/scripts/cloud-git-sync.sh
