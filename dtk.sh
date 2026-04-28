@@ -1866,25 +1866,10 @@ EOF2
 
 do_engines()   { sh "$_INFOS_DIR/engines/engines.sh" "$@"; }
 do_webhooks()  { sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$@"; }
-# rescue-sshd: one-shot dropbear sshd recovery on Termux. Pulls dropbear via
-# nix-shell, generates a host key, daemonizes on :8022. Bypasses the flake.
-# Source-of-truth lives in the unix flake; falls back to GitHub raw if missing.
-do_rescue_sshd() {
-  _local="$HOME/git/unix/bb_flakes_termux/rescue-sshd.sh"
-  if [ -x "$_local" ]; then
-    sh "$_local" "$@"
-  elif [ -f "$_local" ]; then
-    sh "$_local" "$@"
-  else
-    if command -v curl >/dev/null 2>&1; then
-      echo "[dtk-rescue-sshd] local copy not found, fetching from GitHub..."
-      curl -fsSL https://raw.githubusercontent.com/diegonmarcos/unix/main/bb_flakes_termux/rescue-sshd.sh | sh
-    else
-      echo "[dtk-rescue-sshd] missing $_local AND curl unavailable" >&2
-      return 1
-    fi
-  fi
-}
+# rescue-sshd: one-shot openssh sshd recovery on nix-on-droid (Termux).
+# Recipe per nix-community/nix-on-droid issue #32. Lives entirely inside
+# tools/, no dependency on the unix flake checkout being present.
+do_rescue_sshd() { sh "$_INFOS_DIR/rescue-sshd/rescue-sshd.sh" "$@"; }
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
 
 # ═══════════════════════════════════════════════════════════════════
