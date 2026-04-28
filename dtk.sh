@@ -1165,6 +1165,7 @@ do_all_commands() { set +x 2>/dev/null
 10|aliases (3-col)
 11|webhooks
 12|commands (this list)
+13|rescue-sshd (termux dropbear via nix-shell)
 20|quick-cmds (picker)
 20a|VM gcp-proxy
 20b|VM oci-mail
@@ -1865,6 +1866,25 @@ EOF2
 
 do_engines()   { sh "$_INFOS_DIR/engines/engines.sh" "$@"; }
 do_webhooks()  { sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$@"; }
+# rescue-sshd: one-shot dropbear sshd recovery on Termux. Pulls dropbear via
+# nix-shell, generates a host key, daemonizes on :8022. Bypasses the flake.
+# Source-of-truth lives in the unix flake; falls back to GitHub raw if missing.
+do_rescue_sshd() {
+  _local="$HOME/git/unix/bb_flakes_termux/rescue-sshd.sh"
+  if [ -x "$_local" ]; then
+    sh "$_local" "$@"
+  elif [ -f "$_local" ]; then
+    sh "$_local" "$@"
+  else
+    if command -v curl >/dev/null 2>&1; then
+      echo "[dtk-rescue-sshd] local copy not found, fetching from GitHub..."
+      curl -fsSL https://raw.githubusercontent.com/diegonmarcos/unix/main/bb_flakes_termux/rescue-sshd.sh | sh
+    else
+      echo "[dtk-rescue-sshd] missing $_local AND curl unavailable" >&2
+      return 1
+    fi
+  fi
+}
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1959,6 +1979,7 @@ _resolve_shortcode_inner() {
         0) do_aliases ;; 1) sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;;
         2) # commands: 12 = menu, 120-1225 = direct run
           if [ -n "$_rest" ]; then do_commands "$_rest"; else do_commands; fi ;;
+        3) do_rescue_sshd ;;
         *) do_aliases ;;
       esac; return 0 ;;
     2) # cmds-cloud (quick-cmds + ssh)
