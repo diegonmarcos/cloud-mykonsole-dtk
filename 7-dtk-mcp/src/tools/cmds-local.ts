@@ -15,11 +15,27 @@ export function register(server: McpServer) {
   // ── webhooks ───────────────────────────────────────────────
   server.tool(
     "dtk_webhooks",
-    "ntfy remote execution bridge — fetch commands from ntfy, execute, return output",
+    "ntfy bridge: once/watch fetch from local CMD topic; post to local OUT; cmd sends to remote node's CMD; test runs local round-trip",
     {
-      mode: z.enum(["once", "watch", "post"]).describe("once=single cmd, watch=poll loop, post=send message"),
+      mode: z.enum(["once", "watch", "post", "cmd", "test"])
+        .describe("once=fetch+run from local CMD; watch=loop; post=announce on local OUT; cmd=send command to remote node's CMD topic; test=local round-trip self-test"),
+      target: z.string().optional()
+        .describe("Required for mode=cmd. Target receiver hostname (must match its `hostname -s`); topic = dtk-cmd-<target>"),
+      message: z.string().optional()
+        .describe("Required for mode=cmd (the command to execute). Optional for mode=post (default: '<host> webhook ready')."),
     },
-    async ({ mode }) => reply("webhooks", run("sh", [WEBHOOKS, mode])),
+    async ({ mode, target, message }) => {
+      const args: string[] = [WEBHOOKS, mode];
+      if (mode === "cmd") {
+        if (!target || !message) {
+          return reply("webhooks", { text: "mode=cmd requires both 'target' and 'message'", ok: false });
+        }
+        args.push(target, message);
+      } else if (mode === "post" && message) {
+        args.push(message);
+      }
+      return reply("webhooks", run("sh", args));
+    },
   );
 
   // ── commands ───────────────────────────────────────────────
