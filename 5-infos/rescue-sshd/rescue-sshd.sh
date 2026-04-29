@@ -86,8 +86,14 @@ fi
 
 # ── 4. sshd_config (a REAL file, not -o flags — see issue #32) ────────
 step "4/5  Write sshd_config"
+# ListenAddress: bind ONLY to WG IP if known — no public exposure. If we
+# couldn't determine the WG IP (script #1 scan failed), fall back to
+# 127.0.0.1 only (still no public exposure) — the user can ssh via WG once
+# the wg interface comes up + they restart sshd.
+_listen="${LISTEN_IP:-127.0.0.1}"
 cat > "$SSHD_CONFIG" <<EOF
 HostKey $HOST_KEY
+ListenAddress $_listen
 Port $PORT
 PidFile $PID_FILE
 AuthorizedKeysFile $AUTH_KEYS
@@ -97,7 +103,7 @@ PubkeyAuthentication yes
 UsePAM no
 EOF
 chmod 600 "$SSHD_CONFIG"
-ok "wrote $SSHD_CONFIG"
+ok "wrote $SSHD_CONFIG (listen=$_listen)"
 
 # ── 5. Start sshd ─────────────────────────────────────────────────────
 step "5/5  Start sshd"
