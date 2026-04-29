@@ -1163,7 +1163,9 @@ do_all_commands() { set +x 2>/dev/null
   # Two-column: shortcode + description
   _cmds="
 10|aliases (3-col)
-11|webhooks
+11|webhooks (once, default)
+11a|webhooks once (explicit)
+11b|webhooks watch (poll loop)
 12|commands (this list)
 13|rescue-sshd (termux openssh recovery)
 14|rebuild-flake (termux git pull + build.sh switch)
@@ -1966,7 +1968,14 @@ _resolve_shortcode_inner() {
   case "$_major" in
     1) # cmds-local
       case "$_minor" in
-        0) do_aliases ;; 1) sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;;
+        0) do_aliases ;;
+        1) # 11=default(once), 11a=once explicit, 11b=watch loop
+           case "$_rest" in
+             a)   sh "$_OTHERS_DIR/webhooks/webhooks.sh" once ;;
+             b)   sh "$_OTHERS_DIR/webhooks/webhooks.sh" watch ;;
+             "")  sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;;
+             *)   sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$_rest" ;;
+           esac ;;
         2) # commands: 12 = menu, 120-1225 = direct run
           if [ -n "$_rest" ]; then do_commands "$_rest"; else do_commands; fi ;;
         3) do_rescue_sshd ;;
