@@ -1167,8 +1167,9 @@ do_all_commands() { set +x 2>/dev/null
 11a|webhooks once (explicit)
 11b|webhooks watch (poll loop)
 12|commands (this list)
-13|rescue-sshd (termux openssh recovery)
+13|rescue-sshd (termux openssh recovery, self-heal on :8022 conflict)
 14|rebuild-flake (termux git pull + build.sh switch)
+15|claude-rescue (12-fallback chain for the claude binary)
 20|quick-cmds (picker)
 20a|VM gcp-proxy
 20b|VM oci-mail
@@ -1877,6 +1878,11 @@ do_rescue_sshd() { sh "$_INFOS_DIR/rescue-sshd/rescue-sshd.sh" "$@"; }
 # rebuild-flake: pull ~/git/unix + run bb_flakes_termux/build.sh switch.
 # One-command path to apply latest committed flake state on termux.
 do_rebuild_flake() { sh "$_INFOS_DIR/rebuild-flake/rebuild-flake.sh" "$@"; }
+
+# claude-rescue: 12-fallback chain to get the claude binary running. Each
+# fallback is timeout-bounded; first success caches the binary at
+# ~/.local/share/claude-rescue/claude for instant subsequent runs.
+do_claude_rescue() { sh "$_INFOS_DIR/claude-rescue/claude-rescue.sh" "$@"; }
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1980,6 +1986,7 @@ _resolve_shortcode_inner() {
           if [ -n "$_rest" ]; then do_commands "$_rest"; else do_commands; fi ;;
         3) do_rescue_sshd ;;
         4) do_rebuild_flake ;;
+        5) do_claude_rescue "$@" ;;
         *) do_aliases ;;
       esac; return 0 ;;
     2) # cmds-cloud (quick-cmds + ssh)
