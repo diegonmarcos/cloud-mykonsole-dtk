@@ -37,6 +37,50 @@ fi
 
 mkdir -p "$CACHE_DIR" 2>/dev/null
 
+# ── Self-test mode ────────────────────────────────────────────────────────
+# `claude-rescue --self-test` runs a dry-run of every fallback (no exec, just
+# detection) and prints a green/red report. Useful for verifying the rescue
+# chain stays healthy after a flake rebuild.
+if [ "${1:-}" = "--self-test" ]; then
+  printf "claude-rescue self-test (no claude execution)\n\n"
+  _green=0; _red=0
+  check() {
+    _n="$1"; _desc="$2"; _path="$3"
+    if [ -e "$_path" ] || command -v "$(basename "$_path")" >/dev/null 2>&1; then
+      printf "  \033[0;32m✓\033[0m [%2d] %s — %s\n" "$_n" "$_desc" "$_path"
+      _green=$((_green + 1))
+    else
+      printf "  \033[0;31m✗\033[0m [%2d] %s — %s (not present)\n" "$_n" "$_desc" "$_path"
+      _red=$((_red + 1))
+    fi
+  }
+  check 1 "cache"          "$CACHE_BIN"
+  check 2 "nix-profile"    "$HOME/.nix-profile/bin/claude"
+  check 3 "npm-cache"      "$HOME/.node_modules/node_modules/.bin/claude"
+  check 4 "local-bin"      "$HOME/.local/bin/claude"
+  check 5 "termux-app"     "/data/data/com.termux/files/usr/bin/claude"
+  for _t in 6:musl-dl 7:glibc-dl 8:podman 9:docker 10:nix-run 11:npx 12:npm-bootstrap; do
+    _n="${_t%%:*}"; _d="${_t#*:}"
+    case "$_d" in
+      *-dl)         _bin=$(command -v curl); _label="curl present" ;;
+      podman)       _bin=$(command -v podman); _label="podman present" ;;
+      docker)       _bin=$(command -v docker); _label="docker present" ;;
+      nix-run)      _bin=$(command -v nix); _label="nix present" ;;
+      npx)          _bin=$(command -v npx); _label="npx present" ;;
+      npm-bootstrap) _bin=$(command -v npm); _label="npm present" ;;
+    esac
+    if [ -n "${_bin:-}" ]; then
+      printf "  \033[0;32m✓\033[0m [%2d] %s — %s (%s)\n" "$_n" "$_d" "$_label" "$_bin"
+      _green=$((_green + 1))
+    else
+      printf "  \033[0;33m·\033[0m [%2d] %s — %s missing (skipped on real run)\n" "$_n" "$_d" "$_label"
+      _red=$((_red + 1))
+    fi
+  done
+  printf "\n%d/%d fallbacks viable\n" "$_green" "$((_green + _red))"
+  [ "$_green" -gt 0 ] && exit 0 || exit 1
+fi
+
 C_GREEN='\033[0;32m'; C_RED='\033[0;31m'; C_YEL='\033[0;33m'; C_DIM='\033[2m'; C_RST='\033[0m'
 TOTAL=12
 
