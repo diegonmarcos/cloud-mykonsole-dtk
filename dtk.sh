@@ -1165,7 +1165,8 @@ do_all_commands() { set +x 2>/dev/null
 10|aliases (3-col)
 11|webhooks
 12|commands (this list)
-13|rescue-sshd (termux dropbear via nix-shell)
+13|rescue-sshd (termux openssh recovery)
+14|rebuild-flake (termux git pull + build.sh switch)
 20|quick-cmds (picker)
 20a|VM gcp-proxy
 20b|VM oci-mail
@@ -1870,6 +1871,10 @@ do_webhooks()  { sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$@"; }
 # Recipe per nix-community/nix-on-droid issue #32. Lives entirely inside
 # tools/, no dependency on the unix flake checkout being present.
 do_rescue_sshd() { sh "$_INFOS_DIR/rescue-sshd/rescue-sshd.sh" "$@"; }
+
+# rebuild-flake: pull ~/git/unix + run bb_flakes_termux/build.sh switch.
+# One-command path to apply latest committed flake state on termux.
+do_rebuild_flake() { sh "$_INFOS_DIR/rebuild-flake/rebuild-flake.sh" "$@"; }
 do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1965,6 +1970,7 @@ _resolve_shortcode_inner() {
         2) # commands: 12 = menu, 120-1225 = direct run
           if [ -n "$_rest" ]; then do_commands "$_rest"; else do_commands; fi ;;
         3) do_rescue_sshd ;;
+        4) do_rebuild_flake ;;
         *) do_aliases ;;
       esac; return 0 ;;
     2) # cmds-cloud (quick-cmds + ssh)
