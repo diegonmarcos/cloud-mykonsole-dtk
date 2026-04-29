@@ -11,7 +11,14 @@
 #   curl -fsSL https://raw.githubusercontent.com/diegonmarcos/unix/main/bb_flakes_termux/rescue-sshd.sh | sh
 set -eu
 
-PORT=8022
+# Port — sourced from build.json defaults.ssh_port, fallback 8023.
+# Note: 8022 is reserved/broken on some Android+nix-on-droid combos
+# (kernel TIME_WAIT or app sandbox lock that doesn't show in /proc/net/tcp).
+# 8023 is verified working; change build.json to override.
+PORT=""
+_PORT_BJ="$HOME/git/unix/bb_flakes_termux/build.json"
+[ -f "$_PORT_BJ" ] && PORT=$(awk -F'[":, ]+' '/"ssh_port"/{print $3; exit}' "$_PORT_BJ" 2>/dev/null)
+[ -z "$PORT" ] && PORT=8023
 KEY_DIR="$HOME/.ssh"
 HOST_KEY="$KEY_DIR/ssh_host_rsa_key"
 SSHD_CONFIG="$KEY_DIR/sshd_config"
