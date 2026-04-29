@@ -22,6 +22,16 @@ AUTH_KEYS="$KEY_DIR/authorized_keys"
 SSHD_BIN="$HOME/.nix-profile/bin/sshd"
 SSH_KEYGEN_BIN="$HOME/.nix-profile/bin/ssh-keygen"
 
+# Bind ONLY to the WG IP — no public exposure. Source order:
+#   1. build.json defaults.wg_ip (data-driven, declarative)
+#   2. live wg0 interface (in case build.json missing or outdated)
+LISTEN_IP=""
+_BUILD_JSON="$HOME/git/unix/bb_flakes_termux/build.json"
+if [ -f "$_BUILD_JSON" ]; then
+  LISTEN_IP=$(awk -F'"' '/"wg_ip"/{print $4; exit}' "$_BUILD_JSON" 2>/dev/null)
+fi
+[ -z "$LISTEN_IP" ] && LISTEN_IP=$(ip -4 addr show wg0 2>/dev/null | awk '/inet / {sub(/\/.*/,"",$2); print $2; exit}')
+
 C_GREEN='\033[0;32m'; C_RED='\033[0;31m'; C_YEL='\033[0;33m'; C_BLU='\033[0;36m'; C_RST='\033[0m'
 ok()   { printf "${C_GREEN}[OK]${C_RST} %s\n" "$*"; }
 warn() { printf "${C_YEL}[WARN]${C_RST} %s\n" "$*"; }
