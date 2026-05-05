@@ -14,8 +14,8 @@ sudo ./chroot-into.sh <target> [action]
 |---|---|---|
 | `nixos` | NixOS root on LUKS pool, btrfs subvol `@nixos` | Auto-unlocks pool (UUID `3c75c6db-…`), mounts `/dev/mapper/pool` with `subvol=@nixos`. Also bind-mounts `@home-diego` at `/home/diego` inside the chroot. |
 | `kali` | Kali root on p7 | `/dev/disk/by-uuid/509491e4-…` |
-| `debian` | Debian rescue OS on p6 | `/dev/disk/by-label/debian` |
-| `kubuntu` | Kubuntu root on p5 | `/dev/disk/by-uuid/7e3626ac-…` |
+| `debian` | Debian rescue OS on p6 | `/dev/disk/by-label/rescue-os-debian` |
+| ~~`kubuntu`~~ | Retired 2026-05-04 — p5 is now Shared-Lib (Docker data, not an OS) | n/a |
 
 ### Actions
 

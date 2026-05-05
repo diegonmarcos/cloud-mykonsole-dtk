@@ -3,7 +3,12 @@
 # Auto-mounts kernel filesystems + target root + necessary binds, then drops
 # into a shell (or just sets up mounts).
 #
-# Targets: nixos | kali | debian | kubuntu
+# Targets: nixos | kali | debian
+#
+# (kubuntu target retired 2026-05-04: p5 was repurposed from Kubuntu OS to
+#  Shared-Lib data partition for Docker storage. To inspect /mnt/shared-lib,
+#  just `mount /dev/disk/by-label/Shared-Lib /mnt/shared-lib` directly — no
+#  chroot needed for a non-OS data partition.)
 #
 # Usage:
 #   sudo ./chroot-into.sh <target> [--mount-only|--shell|--unmount]
@@ -29,8 +34,7 @@ NIXOS_SUBVOL_ROOT="${NIXOS_SUBVOL_ROOT:-@nixos}"
 NIXOS_SUBVOL_HOME="${NIXOS_SUBVOL_HOME:-@home-diego}"
 
 KALI_UUID="${KALI_UUID:-509491e4-d3a7-426d-9b78-4b024b24cc32}"
-KUBUNTU_UUID="${KUBUNTU_UUID:-7e3626ac-ce13-4adc-84e2-1a843d7e2793}"
-DEBIAN_LABEL="${DEBIAN_LABEL:-debian}"
+DEBIAN_LABEL="${DEBIAN_LABEL:-rescue-os-debian}"
 
 CHROOT_BASE="${CHROOT_BASE:-/tmp/chroot-into}"
 
@@ -58,8 +62,7 @@ Usage:
 Targets:
   nixos      LUKS pool, subvol=@nixos (auto-unlocks pool if needed)
   kali       /dev/disk/by-uuid/$KALI_UUID
-  debian     label=$DEBIAN_LABEL
-  kubuntu    /dev/disk/by-uuid/$KUBUNTU_UUID
+  debian     label=$DEBIAN_LABEL  (rescue-os-debian on p6)
 
 Actions:
   --shell        chroot in (default)
@@ -91,8 +94,7 @@ resolve_target() {
         nixos)   echo "luks" ;;
         kali)    echo "/dev/disk/by-uuid/$KALI_UUID" ;;
         debian)  echo "/dev/disk/by-label/$DEBIAN_LABEL" ;;
-        kubuntu) echo "/dev/disk/by-uuid/$KUBUNTU_UUID" ;;
-        *)       err "Unknown target: $1 (use: nixos|kali|debian|kubuntu)" ;;
+        *)       err "Unknown target: $1 (use: nixos|kali|debian)" ;;
     esac
 }
 
@@ -236,8 +238,8 @@ esac
 
 # Validate target
 case "$TARGET" in
-    nixos|kali|debian|kubuntu) ;;
-    *) err "Unknown target: $TARGET (use: nixos|kali|debian|kubuntu)" ;;
+    nixos|kali|debian) ;;
+    *) err "Unknown target: $TARGET (use: nixos|kali|debian)" ;;
 esac
 
 case "$ACTION" in
