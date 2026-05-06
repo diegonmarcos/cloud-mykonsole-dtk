@@ -33,7 +33,7 @@ esac
 HM_USER=$(whoami)
 HM_CONFIG="${HM_USER}@${VM_NAME}"
 HM_DIR="$HOME/.config/home-manager"
-SRC_DIR="$CLOUD_REPO/b_infra/home-manager/${VM_NAME}/src"
+SRC_DIR="$CLOUD_REPO/b_infra/nixhm-sudo-${VM_NAME}/src"
 
 _log "VM: $VM_NAME  User: $HM_USER  Config: $HM_CONFIG"
 _log "Cloud repo: $CLOUD_REPO"
