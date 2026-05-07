@@ -126,14 +126,14 @@ case "$cmd" in
     ACTION="${cmd#vm-oci-}"
     ACTION_UPPER="$(echo "$ACTION" | tr '[:lower:]' '[:upper:]')"
     printf '\033[0;90m$ oci compute instance action --action %s (%s)\033[0m\n' "$ACTION_UPPER" "$vm"
-    CLOUD_DATA="${CLOUD_DATA:-$HOME/git/cloud/cloud-data/_cloud-data-consolidated.json}"
+    CLOUD_DATA="${CLOUD_DATA:-$HOME/git/cloud/2_configs/dist/_cloud-data-consolidated.json}"
     OCID="$(jq -r ".vms | to_entries[] | select(.value.ssh_alias==\"$vm\") | .value.instance_id" "$CLOUD_DATA" 2>/dev/null)"
     [ -z "$OCID" ] && { echo "Instance not found in cloud-data for: $vm"; exit 1; }
     oci compute instance action --action "$ACTION_UPPER" --instance-id "$OCID" --output table
     ;;
   vm-oci-serial)
     printf '\033[0;90m$ oci serial console → %s\033[0m\n' "$vm"
-    CLOUD_DATA="${CLOUD_DATA:-$HOME/git/cloud/cloud-data/_cloud-data-consolidated.json}"
+    CLOUD_DATA="${CLOUD_DATA:-$HOME/git/cloud/2_configs/dist/_cloud-data-consolidated.json}"
     OCID="$(jq -r ".vms | to_entries[] | select(.value.ssh_alias==\"$vm\") | .value.instance_id" "$CLOUD_DATA" 2>/dev/null)"
     [ -z "$OCID" ] && { echo "Instance not found in cloud-data for: $vm"; exit 1; }
     CID="$(grep tenancy ~/.oci/config | head -1 | cut -d= -f2)"
@@ -271,13 +271,13 @@ case "$cmd" in
     ;;
 
   # ── Desktop commands ────────────────────────────────────────────────
-  dtk)              show bash ~/git/cloud-data/dtk.sh ;;
-  dtk-install)      show bash ~/git/cloud-data/dtk.sh install ;;
-  dtk-docker)       show bash ~/git/cloud-data/dtk.sh docker-start ;;
-  dtk-git-clone)    show bash ~/git/cloud-data/dtk.sh git-clone ~/git ;;
-  dtk-info)         show bash ~/git/cloud-data/dtk.sh info ;;
-  dtk-commands)     show bash ~/git/cloud-data/dtk.sh commands ;;
-  dtk-ssh)          show bash ~/git/cloud-data/dtk.sh ssh ;;
+  dtk)              show bash ~/git/tools/dtk.sh ;;
+  dtk-install)      show bash ~/git/tools/dtk.sh install ;;
+  dtk-docker)       show bash ~/git/tools/dtk.sh docker-start ;;
+  dtk-git-clone)    show bash ~/git/tools/dtk.sh git-clone ~/git ;;
+  dtk-info)         show bash ~/git/tools/dtk.sh info ;;
+  dtk-commands)     show bash ~/git/tools/dtk.sh commands ;;
+  dtk-ssh)          show bash ~/git/tools/dtk.sh ssh ;;
   desktop-htop)     show htop ;;
   hm-switch)        show ~/git/unix/ba_flakes_desktop/build.sh switch ;;
   nixos-switch)     show ~/git/unix/aa_nixos-surface_host/build.sh switch ;;
