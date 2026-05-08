@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { cco, dtk, reply } from "../exec.js";
 
-const VMS = ["gcp-proxy", "oci-mail", "oci-analytics", "oci-apps", "gcp-t4"] as const;
+const VMS = ["gcp-proxy", "oci-mail", "oci-analytics", "oci-apps"] as const;
 
 const VM_ACTIONS_COMMON = [
   "ssh", "ssh-dropbear",
@@ -142,7 +142,7 @@ export function register(server: McpServer) {
       if (vm === "github") return reply("ssh:github", dtk("21f"));
       const map: Record<string, string> = {
         "gcp-proxy": "21a", "oci-mail": "21b", "oci-analytics": "21c",
-        "oci-apps": "21d", "gcp-t4": "21e",
+        "oci-apps": "21d",
       };
       return reply(`ssh:${vm}`, dtk(map[vm]!));
     },

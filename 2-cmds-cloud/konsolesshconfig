@@ -73,15 +73,6 @@ sshkey=/home/diego/.ssh/id_rsa
 useSshConfig=false
 username=ubuntu
 
-[gcp-t4][SSH (port 22)]
-hostname=gcp-t4
-identifier=SSH (port 22)
-port=22
-profileName=Profile 1
-sshkey=/home/diego/.ssh/id_rsa
-useSshConfig=true
-username=diego
-
 [Git][github.com]
 hostname=github.com
 identifier=github.com
