@@ -205,54 +205,10 @@ show_menu_header() { set +x 2>/dev/null
     printf "\n"
   fi
 
-  # Menu tree — auto-aligned via column -t
-  _T=$(printf '\t')
-  printf "  ${G}toolkit${R}\n"
-  printf "  ${D}══════════════════════════════════════════════════════════════════════════════════${R}\n"
-  printf "  ${Y}%-14s%-17s%-20s%-22s%s${R}\n" "1) cmds-local" "2) cmds-cloud" "3) dashboards" "4) setups" "5) infos"
-  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf '%s\n' \
-    "10 aliases${_T}20 quick-cmds${_T}local${_T}40 containers${_T}50 help" \
-    "11 webhooks${_T}  20a gcp-proxy${_T}30 monitors${_T}  40a nix {c|g|t}${_T}51 infos" \
-    "12 commands${_T}  20b oci-mail${_T}  30a btop${_T}  40b apt {c|g|t}${_T}  51a sys-info" \
-    "  (120-1226)${_T}  20c oci-analy${_T}  30b iotop${_T}41 nixos${_T}  51b sys-net-res" \
-    "${_T}  20d oci-apps${_T}  30c top-batch${_T}  41a hm {c|g|t}${_T}  51c sys-paths" \
-    "${_T}  20e gcp-t4${_T}31 sysstat${_T}42 shell${_T}  51d sys-envs" \
-    "${_T}  20f orchestrate${_T}  31a iostat${_T}  42a fish+tools${_T}  51e tools-table" \
-    "${_T}  20g local${_T}  31b mpstat${_T}  42b fish${_T}  51f tools-help" \
-    "${_T}  20h desktop${_T}  31c pidstat${_T}  42c konsole-cfg${_T}  51g sys-mounts" \
-    "${_T}  20i vps-cloud${_T}  31d sar${_T}43 git${_T}52 deps" \
-    "${_T}  20j gh-actions${_T}  31e vmstat${_T}  43a gcl-https${_T}  52a deps-drift" \
-    "${_T}  20k gh-repos${_T}32 journal-dash${_T}  43b gcl-ssh${_T}  52b deps-solver" \
-    "${_T}  20l gh-registry${_T}  32a transport${_T}44 sys${_T}" \
-    "${_T}21 ssh${_T}  32b priority${_T}  44a sudoers${_T}" \
-    "${_T}  21a gcp-proxy${_T}  32c unit${_T}45 llms${_T}" \
-    "${_T}  21b oci-mail${_T}  32d watch-n35${_T}  45a goose${_T}" \
-    "${_T}  21c oci-analy${_T}33 connect${_T}  45b claude/gemini${_T}" \
-    "${_T}  21d oci-apps${_T}remote${_T}  45c malloc-termux${_T}" \
-    "${_T}  21e gcp-t4${_T}34 monitors${_T}46 vault${_T}" \
-    "${_T}  21f github${_T}  34a btop-dash${_T}  46a vault-build${_T}" \
-    "${_T}22 mode${_T}  34b journal-dash${_T}  46b env-vars-export${_T}" \
-    "${_T}  22a ssh${_T}  34c docker-stats${_T}${_T}" \
-    "${_T}  22b dropbear${_T}${_T}${_T}" \
-    "${_T}  22c serial${_T}${_T}${_T}" \
-    "${_T}  22d status${_T}${_T}${_T}" \
-  | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
-  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  # Commands sub-table
-  printf "  ${D}12) commands:${R}\n"
-  printf '%s\n' \
-    "120 fish-install${_T}125 stop-docker${_T}1210 free-mem${_T}1215 full-rescue${_T}1220 ssh-restart" \
-    "121 flush-ipt${_T}126 start-docker${_T}1211 disk-usage${_T}1216 tmux-web${_T}1221 wg-debug" \
-    "122 rst-sshd${_T}127 docker-ps${_T}1212 kill-wdog${_T}1217 fix-wg-ip${_T}1222 sshd-debug" \
-    "123 rst-wg${_T}128 wg-status${_T}1213 journal-sil${_T}1218 guardrail${_T}1223 vm-health" \
-    "124 rst-docker${_T}129 iptables${_T}1214 fix-journal${_T}1219 fix-nix-path${_T}1224 fix-all" \
-    "${_T}${_T}${_T}${_T}1225 mem-emerg" \
-    "${_T}${_T}${_T}${_T}1226 hm-rescue" \
-  | column -t -s"${_T}" | while IFS= read -r _line; do printf "  ${D}%s${R}\n" "$_line"; done
-  printf "  ${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
-  printf "  ${D}(b)ack  (q)uit  (r)efresh  1-5 menu  10-52 shortcode  40a nix {cli|gui|tty} = {40a0|40a1|40a2}${R}\n"
-  printf "\n"
+  # Menu — rendered from registry.json (single source of truth), grouped by domain.
+  dtk_menu
+  printf "  ${D}(b)ack  (q)uit  (r)efresh   |   type a shortcode (30a), id (observe.btop), or 'domain command'${R}\n"
+  printf "  ${D}12) commands sub-index: 120-1226 (e.g. 1215 full-rescue) — see 'dtk ref commands'${R}\n\n"
 }
 
 detect_system
@@ -2073,7 +2029,8 @@ else
       q)  echo "Bye."; exit 0 ;;
       # Shortcodes: 2+ digits — route through resolver
       [1-5][0-9a-f]*) _resolve_shortcode "$_input" ;;
-      *)  echo "Invalid — enter 1-5, shortcode (e.g. 16, 448), b/q/r" ;;
+      # id (observe.btop), 'domain command', or bare name → registry dispatch
+      *)  dtk_dispatch $_input || echo "Invalid — shortcode (30a), id (observe.btop), 'domain command', or 1-5/b/q/r" ;;
     esac
   done
 fi
