@@ -19,7 +19,8 @@ dtk_dispatch() {
     _try="$(reg_resolve_domain_name "$_tok" "$1")"
     if [ -n "$_try" ]; then _obj="$_try"; shift; fi
   fi
-  [ -z "$_obj" ] && { echo "dtk: unknown command '$_tok'"; return 1; }
+  # 127 = unresolved (caller shows help); other codes = the command's own status.
+  [ -z "$_obj" ] && { echo "dtk: unknown command '$_tok'" >&2; return 127; }
 
   _kind="$(reg_field "$_obj" '.exec.kind')"
   # exec.args (declared) joined; runtime "$@" appended after

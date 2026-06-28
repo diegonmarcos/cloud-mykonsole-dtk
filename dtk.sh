@@ -263,11 +263,20 @@ detect_system
 
 PROJECT="diegonmarcos-infra-prod"
 
-# Module paths — all logic lives in subfolders, dtk.sh is the orchestrator
+# Module paths — tools grouped by domain under commands/<domain>/<name>/
 _DTK_DIR="$(cd "$(dirname "$0")" && pwd)"
-_OTHERS_DIR="$_DTK_DIR/5-infos"
-_ALIASES_DIR="$_DTK_DIR/1-cmds-local"
-_INFOS_DIR="$_DTK_DIR/5-infos"
+DTK_ROOT="$_DTK_DIR"; export DTK_ROOT
+_REF_DIR="$_DTK_DIR/commands/ref"
+_OBS_DIR="$_DTK_DIR/commands/observe"
+_CON_DIR="$_DTK_DIR/commands/connect"
+_PROV_DIR="$_DTK_DIR/commands/provision"
+_REC_DIR="$_DTK_DIR/commands/recover"
+_BUILD_DIR="$_DTK_DIR/build"
+_ALIASES_DIR="$_DTK_DIR/commands/ref/aliases"
+# Catalog kernel — registry.json is the single source of truth
+. "$_DTK_DIR/core/registry.sh"
+. "$_DTK_DIR/core/dispatch.sh"
+. "$_DTK_DIR/core/menu.sh"
 
 # ═══════════════════════════════════════════════════════════════════
 # POSIX menu picker
@@ -306,7 +315,7 @@ pick() { set +x 2>/dev/null
 
 do_aliases() { set +x 2>/dev/null
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  _ALIASES_JSON="$_SCRIPT_DIR/1-cmds-local/aliases.json"
+  _ALIASES_JSON="$_SCRIPT_DIR/commands/ref/aliases/aliases.json"
 
   # 3-column layout: key+val | key+val | key+val
   jq -r '
@@ -346,7 +355,7 @@ do_aliases() { set +x 2>/dev/null
 
 do_tools() { set +x 2>/dev/null
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  _TOOLS_JSON="$_SCRIPT_DIR/1-cmds-local/tools.json"
+  _TOOLS_JSON="$_SCRIPT_DIR/commands/ref/aliases/tools.json"
 
   # 5-column layout: tool names (keys only) by category
   jq -r '
@@ -383,7 +392,7 @@ do_tools() { set +x 2>/dev/null
 
 do_tools_help() { set +x 2>/dev/null
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  _TOOLS_JSON="$_SCRIPT_DIR/1-cmds-local/tools.json"
+  _TOOLS_JSON="$_SCRIPT_DIR/commands/ref/aliases/tools.json"
 
   # 1-column: tool name + description, grouped by category
   jq -r '
@@ -738,15 +747,15 @@ do_gcl_ssh()   { _gcl_repos ssh; }
 
 do_konsole_cfg() {
   _DTK="$(cd "$(dirname "$0")" && pwd)"
-  _src_qc="$_DTK/2-cmds-cloud/konsolequickcommandsconfig"
-  _src_ssh="$_DTK/2-cmds-cloud/konsolesshconfig"
+  _src_qc="$_DTK/assets/konsole/konsolequickcommandsconfig"
+  _src_ssh="$_DTK/assets/konsole/konsolesshconfig"
   _dst_qc="${HOME:-/root}/.config/konsolequickcommandsconfig"
   _dst_ssh="${HOME:-/root}/.config/konsolesshconfig"
 
   printf "\n\033[1;36m── Konsole Quick Commands + SSH Config ──\033[0m\n"
 
   if [ ! -f "$_src_qc" ] || [ ! -f "$_src_ssh" ]; then
-    echo "  ERROR: asset files not found in $_DTK/2-cmds-cloud/"
+    echo "  ERROR: asset files not found in $_DTK/assets/konsole/"
     echo "  Run: git clone https://github.com/diegonmarcos/tools.git ~/git/tools"
     return 1
   fi
@@ -784,7 +793,7 @@ do_sudoers_nopasswd() { set +x 2>/dev/null
 # ═══════════════════════════════════════════════════════════════════
 
 do_connect() {
-  _connect_sh="$(cd "$(dirname "$0")" && pwd)/3-dashboards/connect.sh"
+  _connect_sh="$(cd "$(dirname "$0")" && pwd)/commands/connect/dashboard/connect.sh"
   if [ -f "$_connect_sh" ]; then
     sh "$_connect_sh" "$@"
   else
@@ -804,6 +813,8 @@ do_local_iotop() {
   sudo iotop 2>/dev/null || sudo iotop-c 2>/dev/null || { echo "iotop not found"; return 1; }
 }
 
+# do_sysstat_all — registry 'observe.sysstat' (31): run the full quartet.
+do_sysstat_all() { do_sysstat iostat; do_sysstat mpstat; do_sysstat pidstat; do_sysstat vmstat; }
 do_sysstat() {
   _cmd="${1:-}"
   if [ -z "$_cmd" ]; then
@@ -1011,7 +1022,7 @@ do_remote_journal() {
 # QUICK COMMANDS — delegates to cloud-container-orchestrator.sh
 # ═══════════════════════════════════════════════════════════════════
 
-_QC="bash ${HOME:-/root}/git/tools/5-infos/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
+_QC="bash $_DTK_DIR/build/flake-engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
 
 # Map command number to orchestrator command name (matches pick order in do_qc_vm)
 _qc_cmd_by_num() {
@@ -1154,7 +1165,7 @@ do_qc_vps() {
 # ═══════════════════════════════════════════════════════════════════
 # D) OTHERS — ssh, git-clone, install, commands, info
 # ═══════════════════════════════════════════════════════════════════
-# D) OTHERS — all logic in 5-infos/ modules, these are thin delegators
+# D) OTHERS — logic in commands/<domain>/ modules, these are thin delegators
 # ═══════════════════════════════════════════════════════════════════
 
 do_all_commands() { set +x 2>/dev/null
@@ -1303,7 +1314,7 @@ do_deps_drift() { set +x 2>/dev/null
   done
 
   # ── Full toolchain (tools.json) ────────────────────────────
-  _TOOLS_JSON="$_SCRIPT_DIR/1-cmds-local/tools.json"
+  _TOOLS_JSON="$_SCRIPT_DIR/commands/ref/aliases/tools.json"
   if [ -f "$_TOOLS_JSON" ]; then
     printf "  ${C}FULL TOOLCHAIN${R} ${D}(tools.json)${R}\n"
     _tools_total=$(jq '[.[] | keys[]] | length' "$_TOOLS_JSON" 2>/dev/null)
@@ -1369,7 +1380,7 @@ do_deps_drift() { set +x 2>/dev/null
 do_tools_deps_solver() { set +x 2>/dev/null
   R='\033[0m'; G='\033[1;32m'; Y='\033[1;33m'; RED='\033[0;31m'; D='\033[0;90m'; W='\033[1;37m'; C='\033[1;36m'
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  _TOOLS_JSON="$_SCRIPT_DIR/1-cmds-local/tools.json"
+  _TOOLS_JSON="$_SCRIPT_DIR/commands/ref/aliases/tools.json"
   _DEPS_JSON="$_SCRIPT_DIR/deps.json"
 
   # ── Part 1: DTK runtime deps (deps.json) ──────────────────────────
@@ -1490,13 +1501,13 @@ do_tools_deps_solver() { set +x 2>/dev/null
   printf "\n"
 }
 
-do_ssh()       { sh "$_OTHERS_DIR/ssh/ssh.sh" "$@"; }
+do_ssh()       { sh "$_CON_DIR/ssh/ssh.sh" "$@"; }
 
-do_git_clone() { sh "$_OTHERS_DIR/git-clone/git-clone.sh" "$@"; }
+do_git_clone() { sh "$_PROV_DIR/git-clone/git-clone.sh" "$@"; }
 
-do_install()   { sh "$_OTHERS_DIR/install/install.sh" "$@"; }
-do_commands()  { sh "$_OTHERS_DIR/commands/commands.sh" "$@"; }
-do_info()      { sh "$_INFOS_DIR/info/info.sh" "$@"; }
+do_install()   { sh "$_PROV_DIR/install/install.sh" "$@"; }
+do_commands()  { sh "$_REF_DIR/commands/commands.sh" "$@"; }
+do_info()      { sh "$_OBS_DIR/info/info.sh" "$@"; }
 
 do_sys_info_menu() {
   printf "\n\033[1;36m── 51) infos ──\033[0m\n"
@@ -1570,14 +1581,14 @@ do_sys_paths() { set +x 2>/dev/null
   printf "$_F" "tools-repo" "~/git/tools/"
   printf "$_F" "vault-repo" "~/git/vault/"
   printf "${D}  engines:${R}\n"
-  printf "$_F" "cloud-engine" "~/git/tools/5-infos/engines/cloud-engine/"
-  printf "$_F" "cloud-orchestrator" "~/git/tools/5-infos/engines/cloud-orchestrator/"
-  printf "$_F" "front-engine" "~/git/tools/5-infos/engines/front-engine/"
-  printf "$_F" "front-orchestrator" "~/git/tools/5-infos/engines/front-orchestrator/"
-  printf "$_F" "container-orch." "~/git/tools/5-infos/engines/cloud-container-orchestrator/"
-  printf "$_F" "nix-os-desktop" "~/git/tools/5-infos/engines/nix-os-desktop/"
-  printf "$_F" "nix-hm-desktop" "~/git/tools/5-infos/engines/nix-hm-desktop/"
-  printf "$_F" "nix-hm-termux" "~/git/tools/5-infos/engines/nix-hm-termux/"
+  printf "$_F" "cloud-engine" "~/git/tools/build/flake-engines/cloud-engine/"
+  printf "$_F" "cloud-orchestrator" "~/git/tools/build/flake-engines/cloud-orchestrator/"
+  printf "$_F" "front-engine" "~/git/tools/build/flake-engines/front-engine/"
+  printf "$_F" "front-orchestrator" "~/git/tools/build/flake-engines/front-orchestrator/"
+  printf "$_F" "container-orch." "~/git/tools/build/flake-engines/cloud-container-orchestrator/"
+  printf "$_F" "nix-os-desktop" "~/git/tools/build/flake-engines/nix-os-desktop/"
+  printf "$_F" "nix-hm-desktop" "~/git/tools/build/flake-engines/nix-hm-desktop/"
+  printf "$_F" "nix-hm-termux" "~/git/tools/build/flake-engines/nix-hm-termux/"
   printf "\n"
 }
 
@@ -1868,22 +1879,22 @@ EOF2
     "$_luks" "$_btrfs_n" "$_part_n" "$_tmpfs_n" "$_swap_total_n" "$_total" "$_gu" "$_gt" "$_gp"
 }
 
-do_engines()   { sh "$_INFOS_DIR/engines/engines.sh" "$@"; }
-do_webhooks()  { sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$@"; }
+do_engines()   { sh "$_BUILD_DIR/flake-engines/engines.sh" "$@"; }
+do_webhooks()  { sh "$_REC_DIR/webhooks/webhooks.sh" "$@"; }
 # rescue-sshd: one-shot openssh sshd recovery on nix-on-droid (Termux).
 # Recipe per nix-community/nix-on-droid issue #32. Lives entirely inside
 # tools/, no dependency on the unix flake checkout being present.
-do_rescue_sshd() { sh "$_INFOS_DIR/rescue-sshd/rescue-sshd.sh" "$@"; }
+do_rescue_sshd() { sh "$_REC_DIR/rescue-sshd/rescue-sshd.sh" "$@"; }
 
 # rebuild-flake: pull ~/git/unix + run bb_flakes_termux/build.sh switch.
 # One-command path to apply latest committed flake state on termux.
-do_rebuild_flake() { sh "$_INFOS_DIR/rebuild-flake/rebuild-flake.sh" "$@"; }
+do_rebuild_flake() { sh "$_REC_DIR/rebuild-flake/rebuild-flake.sh" "$@"; }
 
 # claude-rescue: 12-fallback chain to get the claude binary running. Each
 # fallback is timeout-bounded; first success caches the binary at
 # ~/.local/share/claude-rescue/claude for instant subsequent runs.
-do_claude_rescue() { sh "$_INFOS_DIR/claude-rescue/claude-rescue.sh" "$@"; }
-do_others()    { sh "$_OTHERS_DIR/others.sh" "$@"; }
+do_claude_rescue() { sh "$_REC_DIR/claude-rescue/claude-rescue.sh" "$@"; }
+do_others()    { sh "$_DTK_DIR/.archive/others.sh" "$@"; }
 
 # ═══════════════════════════════════════════════════════════════════
 # E) HELP
@@ -1968,91 +1979,20 @@ _md_log_end() { printf '```\n' >> "$MDFILE"; }
 
 _resolve_shortcode_inner() {
   _code="$1"
-  _major=$(echo "$_code" | cut -c1)
-  _minor=$(echo "$_code" | cut -c2)
-  _rest=$(echo "$_code" | cut -c3-)
-  case "$_major" in
-    1) # cmds-local
-      case "$_minor" in
-        0) do_aliases ;;
-        1) # 11=default(once), 11a=once explicit, 11b=watch loop
-           case "$_rest" in
-             a)   sh "$_OTHERS_DIR/webhooks/webhooks.sh" once ;;
-             b)   sh "$_OTHERS_DIR/webhooks/webhooks.sh" watch ;;
-             "")  sh "$_OTHERS_DIR/webhooks/webhooks.sh" ;;
-             *)   sh "$_OTHERS_DIR/webhooks/webhooks.sh" "$_rest" ;;
-           esac ;;
-        2) # commands: 12 = menu, 120-1225 = direct run
-          if [ -n "$_rest" ]; then do_commands "$_rest"; else do_commands; fi ;;
-        3) do_rescue_sshd ;;
-        4) do_rebuild_flake ;;
-        5) do_claude_rescue "$@" ;;
-        *) do_aliases ;;
-      esac; return 0 ;;
-    2) # cmds-cloud (quick-cmds + ssh)
-      case "$_minor$_rest" in
-        0) do_qc_vm ;;
-        0a) do_qc_vm gcp-proxy ;; 0b) do_qc_vm oci-mail ;; 0c) do_qc_vm oci-analytics ;; 0d) do_qc_vm oci-apps ;; 0e) do_qc_vm gcp-t4 ;;
-        0a[0-9]*) do_qc_vm_direct gcp-proxy "${_rest#a}" ;; 0b[0-9]*) do_qc_vm_direct oci-mail "${_rest#b}" ;; 0c[0-9]*) do_qc_vm_direct oci-analytics "${_rest#c}" ;; 0d[0-9]*) do_qc_vm_direct oci-apps "${_rest#d}" ;; 0e[0-9]*) do_qc_vm_direct gcp-t4 "${_rest#e}" ;;
-        0f) do_qc_orchestrate ;; 0g) do_qc_local ;; 0h) do_qc_desktop ;;
-        0i) do_qc_vps cloud ;; 0j) do_qc_vps gh-actions ;; 0k) do_qc_vps gh-repos ;; 0l) do_qc_vps gh-registry ;;
-        1) do_qc_ssh ;;
-        1a) do_qc_ssh gcp-proxy ;; 1b) do_qc_ssh oci-mail ;; 1c) do_qc_ssh oci-analytics ;; 1d) do_qc_ssh oci-apps ;; 1e) do_qc_ssh gcp-t4 ;;
-        1f) ssh github.com ;;
-        2) echo "22a ssh  22b dropbear  22c serial  22d status" ;;
-        2a) $_QC mode-ssh ;; 2b) $_QC mode-dropbear ;; 2c) $_QC mode-serial ;; 2d) $_QC mode-status ;;
-        *) echo "Invalid shortcode: $_code" ;;
-      esac; return 0 ;;
-    3) # dashboards
-      case "$_minor$_rest" in
-        # local monitors
-        0) do_local_btop ;; 0a) do_local_btop ;; 0b) do_local_iotop ;; 0c) do_top_batch ;;
-        # sysstat
-        1) do_sysstat iostat; do_sysstat mpstat; do_sysstat pidstat; do_sysstat vmstat ;; 1a) do_sysstat iostat ;; 1b) do_sysstat mpstat ;; 1c) do_sysstat pidstat ;; 1d) do_sysstat sar ;; 1e) do_sysstat vmstat ;;
-        # journal
-        2) do_journal_dash ;; 2a) do_journal_dash transport ;; 2b) do_journal_dash priority ;; 2c) do_journal_dash unit ;; 2d) do_journal_watch_n35 ;;
-        # connect + remote monitors
-        3) do_connect ;;
-        4) echo "34a btop-dash  34b journal-dash  34c docker-stats" ;;
-        4a) do_batch_htop ;; 4b) do_remote_journal ;; 4c) do_docker_stats_dash ;;
-        *) do_connect "$_minor$_rest" ;;
-      esac; return 0 ;;
-    4) # setups (containers + shell + git)
-      _dtk_dir="$(cd "$(dirname "$0")" && pwd)"
-      _containers_sh="$_dtk_dir/4-setups/containers.sh"
-      case "$_minor$_rest" in
-        0) sh "$_containers_sh" ;;
-        0a) sh "$_containers_sh" 1 ;; 0a0) sh "$_containers_sh" 1 ;; 0a1) sh "$_containers_sh" 2 ;; 0a2) sh "$_containers_sh" 3 ;;
-        0b) sh "$_containers_sh" 4 ;; 0b0) sh "$_containers_sh" 4 ;; 0b1) sh "$_containers_sh" 5 ;; 0b2) sh "$_containers_sh" 6 ;;
-        1) echo "41a hm {cli|gui|tty} = {41a0|41a1|41a2}" ;;
-        1a) sh "$_containers_sh" 7 ;; 1a0) sh "$_containers_sh" 7 ;; 1a1) sh "$_containers_sh" 8 ;; 1a2) sh "$_containers_sh" 9 ;;
-        2) echo "42a fish+tools  42b fish  42c konsole-cfg" ;;
-        2a) sh "$_dtk_dir/4-setups/fish-tools.sh" ;;
-        2b) sh "$_dtk_dir/4-setups/fish-shell.sh" ;;
-        2c) do_konsole_cfg ;;
-        3) echo "43a gcl-https  43b gcl-ssh" ;;
-        3a) do_gcl_https ;; 3b) do_gcl_ssh ;;
-        4) echo "44a sudoers-nopasswd" ;;
-        4a) do_sudoers_nopasswd ;;
-        5) echo "45a goose  45b claude/gemini  45c malloc-termux" ;;
-        5a) sh "$_dtk_dir/4-setups/llms.sh" goose ;;
-        5b) sh "$_dtk_dir/4-setups/llms.sh" claude ;;
-        5c) sh "$_dtk_dir/4-setups/llms.sh" malloc-termux ;;
-        6) echo "46a vault-build  46b env-vars-export" ;;
-        6a) sh "$_dtk_dir/4-setups/vault.sh" build ;;
-        6b) sh "$_dtk_dir/4-setups/vault.sh" env-export ;;
-        *) echo "Invalid shortcode: $_code" ;;
-      esac; return 0 ;;
-    5) # infos
-      case "$_minor$_rest" in
-        0) do_help ;;
-        1) do_sys_info; do_sys_net_resource; do_sys_paths; do_sys_envs; do_tools; do_tools_help; do_sys_mounts ;;
-        1a) do_sys_info ;; 1b) do_sys_net_resource ;; 1c) do_sys_paths ;; 1d) do_sys_envs ;; 1e) do_tools ;; 1f) do_tools_help ;; 1g) do_sys_mounts ;;
-        2) do_deps_drift; do_tools_deps_solver ;; 2a) do_deps_drift ;; 2b) do_tools_deps_solver ;;
-        *) do_help ;;
-      esac; return 0 ;;
+  # Parametric/concatenated shortcodes the registry can't express as one entry
+  # (a number tail selects a sub-item): handle here, everything else → registry.
+  case "$_code" in
+    11a)        do_webhooks once ; return 0 ;;
+    12[0-9]*)   do_commands "${_code#12}" ; return 0 ;;
+    20a[0-9]*)  do_qc_vm_direct gcp-proxy     "${_code#20a}" ; return 0 ;;
+    20b[0-9]*)  do_qc_vm_direct oci-mail      "${_code#20b}" ; return 0 ;;
+    20c[0-9]*)  do_qc_vm_direct oci-analytics "${_code#20c}" ; return 0 ;;
+    20d[0-9]*)  do_qc_vm_direct oci-apps      "${_code#20d}" ; return 0 ;;
+    20e[0-9]*)  do_qc_vm_direct gcp-t4        "${_code#20e}" ; return 0 ;;
   esac
-  return 1
+  # Data-driven dispatch from registry.json (resolves shortcode | id | name).
+  dtk_dispatch "$_code"
+  return $?
 }
 
 _resolve_shortcode() {
@@ -2087,9 +2027,9 @@ if [ $# -ge 1 ]; then
     journal-priority)  do_journal_dash priority ;;
     journal-unit)      do_journal_dash unit ;;
     remote-journal) do_remote_journal ;;
-    containers)     shift; sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" "$@" ;;
-    docker-run)     shift; sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" "$@" ;;
-    docker-start)   sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" deb-nix cli ;;
+    containers)     shift; sh "$(cd "$(dirname "$0")" && pwd)/commands/provision/containers/containers.sh" "$@" ;;
+    docker-run)     shift; sh "$(cd "$(dirname "$0")" && pwd)/commands/provision/containers/containers.sh" "$@" ;;
+    docker-start)   sh "$(cd "$(dirname "$0")" && pwd)/commands/provision/containers/containers.sh" deb-nix cli ;;
     connect)        shift; do_connect "$@" ;;
     others)         shift; do_others "$@" ;;
     ssh)            do_ssh ;;
@@ -2102,7 +2042,10 @@ if [ $# -ge 1 ]; then
     full-rescue)    do_commands 15 ;;
     refresh|r|pull) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all && git -C "$_repo_dir" reset --hard "origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD)" && echo "Updated to $(git -C "$_repo_dir" log --oneline -1)" && exec "$0" ;;
     help|--help|-h) do_help ;;
-    *)              do_help; exit 1 ;;
+    # id (observe.paths), domain+name (observe paths), or bare name (btop) → registry.
+    # Only an UNRESOLVED token (rc 127) prints help; a resolved command's own
+    # non-zero exit is passed through untouched.
+    *)              dtk_dispatch "$@"; _rc=$?; [ "$_rc" = 127 ] && { do_help; exit 1; }; exit "$_rc" ;;
   esac
 else
   set +x 2>/dev/null
@@ -2123,7 +2066,7 @@ else
       1)  do_aliases; do_tools ;;
       2)  printf "\n  20 quick-cmds  21 ssh\n\n" ;;
       3)  do_connect ;;
-      4)  sh "$(cd "$(dirname "$0")" && pwd)/4-setups/containers.sh" ;;
+      4)  sh "$(cd "$(dirname "$0")" && pwd)/commands/provision/containers/containers.sh" ;;
       5)  do_help ;;
       b|back) continue ;;
       r|refresh) _repo_dir="$(cd "$(dirname "$0")" && pwd)"; echo "Pulling latest from remote..."; git -C "$_repo_dir" fetch --all -q && git -C "$_repo_dir" reset --hard origin/$(git -C "$_repo_dir" rev-parse --abbrev-ref HEAD) -q && echo "Updated to $(git -C "$_repo_dir" log --oneline -1)" && exec "$0" ;;
