@@ -4,19 +4,21 @@ import { join } from "path";
 const HOME = process.env.HOME ?? "/home/diego";
 const TOOLS = join(HOME, "git/tools");
 
+// Paths follow the domain layout (see registry.json). dtk.sh dispatches by
+// shortcode/id; these direct paths are only for tools that bypass dtk.
 export const DTK = join(TOOLS, "dtk.sh");
-export const CCO = join(TOOLS, "5-infos/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh");
-export const COMMANDS = join(TOOLS, "5-infos/commands/commands.sh");
-export const CONNECT = join(TOOLS, "3-dashboards/connect.sh");
-export const CONTAINERS = join(TOOLS, "4-setups/containers.sh");
-export const FISH_TOOLS = join(TOOLS, "4-setups/fish-tools.sh");
-export const FISH_SHELL = join(TOOLS, "4-setups/fish-shell.sh");
-export const LLMS = join(TOOLS, "4-setups/llms.sh");
-export const VAULT = join(TOOLS, "4-setups/vault.sh");
-export const SSH_SH = join(TOOLS, "5-infos/ssh/ssh.sh");
-export const INSTALL = join(TOOLS, "5-infos/install/install.sh");
-export const ENGINES = join(TOOLS, "5-infos/engines/engines.sh");
-export const WEBHOOKS = join(TOOLS, "5-infos/webhooks/webhooks.sh");
+export const CCO = join(TOOLS, "build/flake-engines/cloud-container-orchestrator/cloud-container-orchestrator.sh");
+export const COMMANDS = join(TOOLS, "commands/ref/commands/commands.sh");
+export const CONNECT = join(TOOLS, "commands/connect/dashboard/connect.sh");
+export const CONTAINERS = join(TOOLS, "commands/provision/containers/containers.sh");
+export const FISH_TOOLS = join(TOOLS, "commands/provision/fish/fish-tools.sh");
+export const FISH_SHELL = join(TOOLS, "commands/provision/fish/fish-shell.sh");
+export const LLMS = join(TOOLS, "commands/provision/llms/llms.sh");
+export const VAULT = join(TOOLS, "commands/provision/vault/vault.sh");
+export const SSH_SH = join(TOOLS, "commands/connect/ssh/ssh.sh");
+export const INSTALL = join(TOOLS, "commands/provision/install/install.sh");
+export const ENGINES = join(TOOLS, "build/flake-engines/engines.sh");
+export const WEBHOOKS = join(TOOLS, "commands/recover/webhooks/webhooks.sh");
 
 function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");

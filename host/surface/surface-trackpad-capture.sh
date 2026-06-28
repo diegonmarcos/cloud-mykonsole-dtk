@@ -91,7 +91,7 @@ while true; do
             echo "Recording contains the failure. Saving snapshot..."
             cp "$RECORD_FILE" "/tmp/trackpad-failure-$(date +%Y%m%d-%H%M%S).yml"
             echo "Snapshot: /tmp/trackpad-failure-$(date +%Y%m%d-%H%M%S).yml"
-            echo "Run: bash ~/git/tools/5-infos/surface-trackpad-reset.sh"
+            echo "Run: bash ~/git/tools/host/surface/surface-trackpad-reset.sh"
             echo "0" > "$STATE_FILE"
         fi
     fi

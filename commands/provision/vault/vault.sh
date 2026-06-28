@@ -132,7 +132,7 @@ do_env_export() {
 
   printf "\n  ${W}%d${R} env vars exported\n" "$_count"
   printf "  ${D}Note: vars are set in this shell only. Source with:${R}\n"
-  printf "  ${D}  eval \$(~/git/tools/4-setups/vault.sh env-export-eval)${R}\n\n"
+  printf "  ${D}  eval \$(~/git/tools/commands/provision/vault/vault.sh env-export-eval)${R}\n\n"
 }
 
 do_env_export_eval() {
