@@ -1,177 +1,75 @@
 ```
 ╔═══════════════════════════════════════════════════════════════╗
-║  ██████╗ ████████╗██╗  ██╗                                    ║
-║  ██╔══██╗╚══██╔══╝██║ ██╔╝                                    ║
-║  ██║  ██║   ██║   █████╔╝   Diego's Toolkit                   ║
-║  ██║  ██║   ██║   ██╔═██╗   OS-agnostic CLI                   ║
-║  ██████╔╝   ██║   ██║  ██╗                                    ║
-║  ╚═════╝    ╚═╝   ╚═╝  ╚═╝                                    ║
-║                                                               ║
-║  Aliases · Containers · Connect · Others · Help               ║
+║  ██████╗ ████████╗██╗  ██╗                                     ║
+║  ██╔══██╗╚══██╔══╝██║ ██╔╝   Diego's Toolkit                   ║
+║  ██║  ██║   ██║   █████╔╝    OS-agnostic CLI                   ║
+║  ██████╔╝   ██║   ██║  ██╗   registry-driven                   ║
+║  ╚═════╝    ╚═╝   ╚═╝  ╚═╝                                     ║
 ╚═══════════════════════════════════════════════════════════════╝
 ```
 
 # DTK — Diego's Toolkit
 
-Unified CLI for managing aliases, containers, infrastructure, and dev toolchains across NixOS, Arch, Debian, Fedora, macOS, and Termux.
+A single CLI over a personal ops toolkit. **The command catalog is data**
+(`registry.json`) — every surface (the shell dispatcher, the menu, the MCP
+server) is driven from it, so a command is defined once.
 
-```bash
-./dtk.sh           # interactive menu
-./dtk.sh 16        # shortcode: aliases → git
-./dtk.sh aliases   # direct command
+## Invoke
+
+```sh
+dtk                      # interactive menu (rendered from the registry)
+dtk <domain> <command>   # e.g.  dtk observe btop
+dtk <id>                 # e.g.  dtk observe.btop
+dtk <shortcode>          # legacy accelerator, e.g.  dtk 30a
 ```
 
----
+Canonical identity is `domain.command`. Shortcodes (`30a`, `121`, …) are
+optional aliases kept for muscle memory and remain fully resolvable.
 
-## Menu Structure
+## Domains
 
-```
-1) aliases        2) containers    3) connect       4) others        5) help
-11 modern-cli    21 deb-nix       31 git            41 ssh            usage
-12 navigation    22 deb-apt       32 mounts         42 git-clone      commands
-13 safety        23 cli           33 sync           43 install
-14 python        24 gui           34 servers        44 commands
-15 system        25 tty                             45 info
-16 git                                              46 engines
-17 docker
-18 session
-19 web-terminal
-1a misc
-1b functions
-```
+| Domain | Purpose |
+|--------|---------|
+| `ref` | aliases, command index, help, dependency manifests |
+| `observe` | read-only insight: monitors, journals, sysinfo, deps drift |
+| `connect` | reach resources: connect dashboard, mounts, servers, git, ssh |
+| `fleet` | operate the cloud VMs: quick-cmds, ssh, remote monitors, modes |
+| `provision` | bootstrap/configure: containers, nix-hm, shell, git, sudoers, vault, llms |
+| `recover` | break-glass: rescue sshd, rebuild flake, claude rescue, webhooks |
 
----
-
-## Repository Structure
+## Layout
 
 ```
-tools/
-├── dtk.sh                    Main entry point — interactive + CLI
-│
-├── 1-aliases/                Alias reference (data-driven)
-│   ├── aliases.json          Source of truth — all aliases by category
-│   ├── aliases.sh            Generator: JSON → Markdown
-│   ├── aliases.md.tpl        Markdown template
-│   └── aliases.md            Generated reference (auto)
-│
-├── 2-containers/             Container profiles
-│   └── containers.sh         Launcher (delegates to dtk.sh)
-│
-├── 3-connect/                Cloud Connect Dashboard TUI
-│   ├── connect.sh            Main entry point
-│   ├── connect-settings.json Profiles, paths, deps
-│   ├── connect-mesh.json     VM definitions (WireGuard mesh)
-│   ├── connect-git.json      Git repo configs
-│   ├── connect-hm-flakes.json Home Manager VM targets
-│   ├── connect-sync.json     Rclone sync rules
-│   ├── connect-fuse-drives.json FUSE mount configs
-│   ├── connect-data-servers.json Data server configs
-│   ├── connect-web-servers.json Web server configs
-│   └── libs/                 Helper libraries (MD renderer, web utils)
-│
-├── 4-others/                 Ops utilities
-│   ├── 1-ssh/                GCP serial/SSH/rescue
-│   ├── 2-git-clone/          Clone all repos
-│   ├── 3-install/            Dev toolchain installer
-│   ├── 4-commands/           Quick VM commands (iptables, docker, wg)
-│   ├── 5-info/               Installed tools check
-│   ├── 6-engines/            Build engine templates
-│   │   ├── cloud-engine/
-│   │   ├── cloud-orchestrator/
-│   │   ├── front-engine/
-│   │   ├── front-orchestrator/
-│   │   ├── nix-hm-desktop/
-│   │   ├── nix-hm-desktop-cloud/
-│   │   ├── nix-hm-termux/
-│   │   └── nix-os-desktop/
-│   ├── surface-trackpad-reset.sh
-│   └── z-others/             Local-only scripts (not in DTK menu)
-│       ├── hooks/            Git hooks (core.hooksPath)
-│       ├── a-sync/           Legacy sync engine
-│       └── b-scripts/        Legacy utility scripts
-│
-├── 5-help/                   Help resources
-│
-├── cloud-data/               Cloud data submodule
-└── front-data/               Front data submodule
+dtk.sh                  entry point: parse → core dispatch (handlers live here)
+registry.json           THE command catalog (single source of truth)
+core/                   kernel: registry.sh (load/query), dispatch.sh (route), menu.sh (render)
+commands/<domain>/<name>/   per-command module scripts + data, grouped by domain
+build/                  flake-engines/, git-workflows/  (build tooling)
+assets/                 konsole/  (KDE config exports), fish (under provision/fish)
+host/surface/           Surface hardware utilities
+products/               standalone deployables: mcp-dtk, mcp-unix-api, chroot-into
+scripts/audit-registry.sh   golden test: validates registry + shortcode coverage
+docs/  .archive/        documentation / retired tools
 ```
 
----
+## Adding a command
 
-## 1) Aliases
+1. Add an entry to `registry.json` (`id`, `domain`, `name`, `summary`, optional
+   `shortcode`, and `exec` — `core` fn, `module` script, `raw` shell, or
+   `orchestrator`).
+2. If `exec.kind` is `module`, drop the script under
+   `commands/<domain>/<name>/`. If `core`, add the `do_*` handler in `dtk.sh`.
+3. Run `bash scripts/audit-registry.sh` — it must stay green.
 
-All aliases are defined in `1-aliases/aliases.json` and rendered by `dtk.sh` at runtime. Categories:
+The menu, dispatcher, and (once regenerated) the MCP server pick it up from the
+registry automatically — no per-surface edits.
 
-| # | Category | Description |
-|---|----------|-------------|
-| 11 | modern-cli | ls→eza, cat→bat, grep→rg, find→fd, df→duf, du→ncdu |
-| 12 | navigation | .., ..., ...., mkcd, mkd |
-| 13 | safety | rm -i, cp -i, mv -i |
-| 14 | python | py, python, pip, ppy |
-| 15 | system | free, ports, myip, cpucap, duh, localip |
-| 16 | git | gs, ga, gaa, gc, gcm, gp, gl, gd, gco, gacp |
-| 17 | docker | dps, dpsa, dcu, dcd |
-| 18 | session | KDE Plasma 6 logout/reboot/poweroff |
-| 19 | web-terminal | fish-e (ttyd+tmux on WireGuard), fish-e-stop |
-| 1a | misc | c, cls, h, hg, path, reload, welcome |
-| 1b | functions | ai-cli, hhelp, extract, backup, serve, fzf bindings |
+## Consumers
 
-Generate markdown reference: `./1-aliases/aliases.sh`
+- **`products/mcp-dtk`** — MCP server exposing DTK to LLMs (shells out to `dtk.sh`).
+- **`da_cloud-terminal`** (in the `unix` repo) — its *Tools* profile sidebar
+  invokes DTK shortcodes.
 
-## 2) Containers
-
-Pull and run Diego's dev environment containers:
-
-| Image | Description |
-|-------|-------------|
-| `deb-nix` | Debian 12 + Nix + Home-Manager (full match of desktop flake) |
-| `deb-apt` | Debian 12 + apt packages (lightweight) |
-
-Profiles: `cli` (headless), `gui` (desktop integration), `tty` (non-interactive/CI)
-
-```bash
-./dtk.sh containers deb-nix cli
-```
-
-## 3) Connect
-
-Cloud Connect Dashboard — unified TUI for:
-- **Git**: status, pull, push across all repos
-- **FUSE Mounts**: rclone cloud storage
-- **Mesh**: WireGuard VPN status
-- **Data/Web Servers**: local service management
-- **Sync**: cross-machine file synchronization
-
-```bash
-./dtk.sh connect
-```
-
-## 4) Others
-
-| # | Command | Description |
-|---|---------|-------------|
-| 41 | ssh | GCP serial/SSH/rescue/reset |
-| 42 | git-clone | Clone all 5 repos to ~/git |
-| 43 | install | Full dev toolchain (Fedora/Arch/Debian/Nix) |
-| 44 | commands | Quick VM commands (flush iptables, restart docker/wg) |
-| 45 | info | Show all installed tools with versions |
-| 46 | engines | Launch build.sh engines (NixOS, home-manager, cloud, front) |
-
-## 5) Help
-
-```bash
-./dtk.sh help
-```
-
----
-
-## Navigation
-
-- `b` — back to parent menu
-- `q` — quit
-- `1-5` — main menu selection
-- `11-46` — direct shortcode (e.g. `16` = git aliases)
-
----
-
-**Last Updated**: 2026-03-30
+> Roadmap: auto-generate the mcp-dtk tool registrations and the cloud-terminal
+> Tools profile directly from `registry.json` to retire their remaining
+> hand-maintained command lists.
