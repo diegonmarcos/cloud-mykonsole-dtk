@@ -764,6 +764,18 @@ do_top_batch() {
   top -b -n 1 | head -40
 }
 
+# do_sysmon — registry 'observe.sysmon' (30d): our own system monitor
+# (btop-style graphs + glances panels), rendered natively in the cloud-terminal
+# webview. Opens the Tauri app on the Home profile where it's the default tab.
+do_sysmon() {
+  if command -v cloud-terminal >/dev/null 2>&1; then
+    setsid cloud-terminal home >/dev/null 2>&1 &
+    echo "→ opened Cloud Terminal system monitor (Home profile)"
+  else
+    echo "cloud-terminal not installed — run: ~/git/unix/da_cloud-terminal/build.sh install"
+  fi
+}
+
 do_local_iotop() {
   printf "\n\033[1;36m── iotop ──\033[0m\n\n"
   sudo iotop 2>/dev/null || sudo iotop-c 2>/dev/null || { echo "iotop not found"; return 1; }
