@@ -41,6 +41,12 @@ do_deploy() {
         log "Deployed .gitignore → repo root"
     fi
 
+    # gitattributes → repo root .gitattributes (physical file required by git)
+    if [ -f "$DIST_DIR/gitattributes" ]; then
+        cp "$DIST_DIR/gitattributes" "$REPO_ROOT/.gitattributes"
+        log "Deployed .gitattributes → repo root"
+    fi
+
     # gitmodules → repo root .gitmodules (physical file required by git)
     if [ -f "$DIST_DIR/modules/gitmodules" ]; then
         cp "$DIST_DIR/modules/gitmodules" "$REPO_ROOT/.gitmodules"
