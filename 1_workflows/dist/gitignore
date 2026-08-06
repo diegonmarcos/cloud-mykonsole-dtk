@@ -1,0 +1,50 @@
+# ══════════════════════════════════════════════════════════
+# REPO: vault (PRIVATE)
+# https://github.com/diegonmarcos/vault
+# ══════════════════════════════════════════════════════════
+
+# ── Vault repo: ALLOW secrets (override global gitignore) ──
+# The global gitignore blocks secret file types as a safety net.
+# This IS the secrets repo — negate every blocked pattern.
+# KEEP IN SYNC with global gitignore: ~/git/unix/ba_flakes_desktop/src/modules/programs/git.nix
+#                                      ~/git/unix/bb_flakes_termux/src/modules/programs/git.nix
+
+# Decrypted secrets output
+!.secrets
+!*.secrets
+!.secrets.d/
+
+# Environment files
+!.env
+!.env.*
+
+# Private keys & certificates
+!*.pem
+!*.key
+!*.p12
+!*.pfx
+!*.jks
+!*.keystore
+
+# Auth tokens & credentials
+!*.token
+!*credentials*.json
+!*_token.json
+!*_tokens.json
+
+# Cloud provider configs
+!.oci/
+!.gcloud/
+
+# GPG & age
+!*.asc
+!*.age
+
+# Terraform
+!terraform.tfvars
+!*.tfvars
+
+# Python (used by get_token.py etc.)
+!__pycache__/
+!*.pyc
+
