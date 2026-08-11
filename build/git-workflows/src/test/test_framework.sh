@@ -11,18 +11,18 @@ pass() { echo "  ✓ $1"; }
 
 echo "=== $REPO_NAME framework conformance ==="
 
-git config --local --get include.path 2>/dev/null | grep -q '1_workflows/dist/gitconfig' \
+git config --local --get include.path 2>/dev/null | grep -q '1_configs/dist/gitconfig' \
     || fail ".git/config missing [include]"
 pass ".git/config [include] wired"
 
-[ "$(git config core.hooksPath)" = "1_workflows/dist/hooks" ] \
-    || fail "core.hooksPath != 1_workflows/dist/hooks (got: $(git config core.hooksPath))"
-pass "hooksPath = 1_workflows/dist/hooks"
+[ "$(git config core.hooksPath)" = "1_configs/dist/hooks" ] \
+    || fail "core.hooksPath != 1_configs/dist/hooks (got: $(git config core.hooksPath))"
+pass "hooksPath = 1_configs/dist/hooks"
 
 git config alias.sync | grep -q 'cloud-git-sync.sh' || fail "alias.sync missing"
 pass "alias.sync defined"
 
-[ -x "1_workflows/dist/hooks/pre-commit" ] || fail "pre-commit missing or not executable"
+[ -x "1_configs/dist/hooks/pre-commit" ] || fail "pre-commit missing or not executable"
 pass "pre-commit hook deployed + executable"
 
 [ ! -d "$REPO_ROOT/.githooks" ] || fail ".githooks/ still exists at root"
@@ -32,7 +32,7 @@ git ls-files .gitconfig 2>/dev/null | grep -q '^.gitconfig$' \
     && fail ".gitconfig still tracked at root"
 pass "no stale .gitconfig tracked at root"
 
-grep -q "git config --file .gitmodules" "1_workflows/dist/hooks/pre-commit" \
+grep -q "git config --file .gitmodules" "1_configs/dist/hooks/pre-commit" \
     || fail "pre-commit not data-driven for submodules"
 pass "pre-commit data-driven for submodules"
 

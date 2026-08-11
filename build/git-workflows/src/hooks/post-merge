@@ -2,8 +2,8 @@
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║ post-merge — rebase submodules after pull/merge                  ║
 # ║                                                                  ║
-# ║ Source: cloud/1_workflows/src/hooks/post-merge                   ║
-# ║ Active via [core] hooksPath = 1_workflows/dist/hooks             ║
+# ║ Source: cloud/1_configs/src/git/hooks/post-merge                   ║
+# ║ Active via [core] hooksPath = 1_configs/dist/hooks             ║
 # ║                                                                  ║
 # ║ Fires after `git pull` and `git merge`. Pulls each submodule     ║
 # ║ worktree onto its upstream HEAD (rebased) so local submodule     ║
@@ -18,7 +18,7 @@ if [ -t 2 ]; then
   printf   '│ Prefer `git sync` — safer: auto-stash + rebase + submodules.  │\n' >&2
   printf   '│   git sync remote   (origin wins on conflict, default)        │\n' >&2
   printf   '│   git sync local    (local commits win on conflict)           │\n' >&2
-  printf   '│   script: 1_workflows/dist/scripts/cloud-git-sync.sh          │\n' >&2
+  printf   '│   script: 1_configs/dist/scripts/cloud-git-sync.sh          │\n' >&2
   printf   '└───────────────────────────────────────────────────────────────┘\033[0m\n' >&2
 fi
 

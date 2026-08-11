@@ -7,9 +7,9 @@ Documentation for the tools repo.
 This repo follows the universal declarative workflow framework pattern:
 
 - `0_docs/` — this directory (documentation)
-- `1_workflows/` — GHA + git config management (lightweight engine)
+- `1_configs/` — GHA + git config management (lightweight engine)
   - `build.sh` — engine entry: build (src/→dist/), deploy (dist/→runtime), test
   - `src/` — source of truth (hooks, scripts, gitconfig, gitignore)
   - `dist/` — generated output, committed, read by git at runtime
 
-To rebuild: `./1_workflows/build.sh`
+To rebuild: `./1_configs/build.sh`

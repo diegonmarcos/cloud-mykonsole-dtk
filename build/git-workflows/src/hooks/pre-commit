@@ -2,9 +2,9 @@
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║ pre-commit — block secrets from ever reaching a commit           ║
 # ║                                                                  ║
-# ║ Source: cloud/1_workflows/src/hooks/pre-commit                     ║
-# ║ Deploy: build.sh workflow → 1_workflows/dist/hooks/                ║
-# ║ Active: via .gitconfig [core] hooksPath = 1_workflows/dist/hooks   ║
+# ║ Source: cloud/1_configs/src/git/hooks/pre-commit                     ║
+# ║ Deploy: build.sh workflow → 1_configs/dist/hooks/                ║
+# ║ Active: via .gitconfig [core] hooksPath = 1_configs/dist/hooks   ║
 # ║                                                                  ║
 # ║ KEEP IN SYNC with .gitignore patterns.                           ║
 # ║ Catches secrets even after git add -f (gitignore bypass).        ║
@@ -150,7 +150,7 @@ while IFS= read -r f; do
         # GitHub Actions workflow YAMLs (engine paths): named-about-secrets
         # files here (e.g. lint-secrets-coverage.yml) define CI lint/audit
         # jobs — never secret containers. Required GHA shape: on: + jobs:.
-        .github/workflows/*.yml|1_workflows/src/cicd/*.yml|1_workflows/dist/*.yml)
+        .github/workflows/*.yml|1_configs/src/gha/cicd/*.yml|1_configs/dist/*.yml)
             if grep -qE '^on:' "$f" 2>/dev/null && grep -qE '^jobs:' "$f" 2>/dev/null; then
                 continue
             fi

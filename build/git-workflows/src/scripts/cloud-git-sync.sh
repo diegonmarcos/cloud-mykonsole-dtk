@@ -2,8 +2,8 @@
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║ cloud-git-sync.sh — smart, verbose, non-destructive `git sync`   ║
 # ║                                                                  ║
-# ║ Source: cloud/1_workflows/src/scripts/cloud-git-sync.sh          ║
-# ║ Wired : 1_workflows/src/gitconfig  →  [alias] sync               ║
+# ║ Source: cloud/1_configs/src/gha/scripts/cloud-git-sync.sh          ║
+# ║ Wired : 1_configs/src/git/gitconfig  →  [alias] sync               ║
 # ║                                                                  ║
 # ║ Usage:                                                           ║
 # ║   git sync              # default: remote wins on conflict       ║

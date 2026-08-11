@@ -2,8 +2,8 @@
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║ post-checkout — sync submodules after branch switch              ║
 # ║                                                                  ║
-# ║ Source: cloud/1_workflows/src/hooks/post-checkout                ║
-# ║ Active via [core] hooksPath = 1_workflows/dist/hooks             ║
+# ║ Source: cloud/1_configs/src/git/hooks/post-checkout                ║
+# ║ Active via [core] hooksPath = 1_configs/dist/hooks             ║
 # ║                                                                  ║
 # ║ Fires after `git checkout <branch>`. Args: old_ref new_ref       ║
 # ║ flag (1 = branch switch, 0 = file checkout). Only syncs on       ║
