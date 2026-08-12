@@ -46,6 +46,18 @@ if [ -n "$FORCED" ]; then
   exit 1
 fi
 
+# ── VAULT REPO WHITELIST ─────────────────────────────────
+# This repo IS the user's PRIVATE source-of-truth for credentials.
+# Plaintext secrets here are intentional (the repo is the safe).
+# All secret-blocking logic below is skipped for vault; the gitignore-
+# bypass detector above still runs (it's about `git add -f`, not content).
+REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || true)
+case "$REMOTE_URL" in
+  *[:/]vault|*[:/]vault.git)
+    exit 0
+    ;;
+esac
+
 add_blocked() {
   local matches
   matches=$(echo "$STAGED" | eval "$1" || true)
@@ -209,7 +221,7 @@ fi
 # Skip when already inside a regen commit (guard against hook re-entry).
 # ══════════════════════════════════════════════════════════
 if [ -z "${SKIP_CONFIGS_REGEN:-}" ] \
-   && echo "$STAGED" | grep -qE '^(2_configs/src/engines/|a_solutions/[^/]+/build\.json$|b_infra/nixhm-sudo-[^/]+/build\.json$|config\.json$)'; then
+   && echo "$STAGED" | grep -qE '^(2_configs/src/engines/|a_solutions/[^/]+/build\.json$|b_infra/home-manager/[^/]+/build\.json$|config\.json$)'; then
   REPO_ROOT="$(git rev-parse --show-toplevel)"
   BUILD_SH="$REPO_ROOT/2_configs/build.sh"
   if [ -x "$BUILD_SH" ]; then

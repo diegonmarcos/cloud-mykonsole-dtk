@@ -61,7 +61,7 @@ do_deploy() {
             esac
         done < "$DIST_DIR/gitconfig"
         unset _gc_section _gc_key
-        git -C "$REPO_ROOT" config --local include.path ../1_configs/dist/gitconfig 2>/dev/null || true
+        git -C "$REPO_ROOT" config --local include.path ../0_git/dist/gitconfig 2>/dev/null || true
         log "Deployed gitconfig (included in .git/config)"
     fi
 
