@@ -263,7 +263,7 @@ cc_build_mesh() {
         }' > "$CC_CACHE_DIR/mesh.json"
 }
 
-# Build hm-flakes.json by scanning ~/git/unix/ flake directories
+# Build hm-flakes.json by scanning ~/git/cloud-unix/ flake directories
 cc_build_hm() {
     local git_root
     git_root=$(jq -r --arg p "$CC_ENV_PROFILE" '
@@ -4883,7 +4883,7 @@ render_security() {
     w=0; while [ "$w" -lt 99 ]; do printf "─"; w=$((w+1)); done
     printf "${RST}\n"
 
-    local cloud_dir="$HOME/git/cloud"
+    local cloud_dir="$HOME/git/cloud-infra"
     local sol_dir="$cloud_dir/a_solutions"
     if [ -d "$sol_dir" ]; then
         local sec_found=false

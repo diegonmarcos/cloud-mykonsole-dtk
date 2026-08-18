@@ -1,6 +1,6 @@
 #!/bin/sh
 # ai-cli — Unified AI Agent launcher (Goose + MCP)
-# Source: ~/git/tools/b-scripts/ai-cli/
+# Source: ~/git/cloud-mykonsole-dtk/b-scripts/ai-cli/
 # POSIX-compliant, no bashisms
 set -eu
 

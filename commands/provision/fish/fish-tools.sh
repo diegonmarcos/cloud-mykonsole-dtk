@@ -335,7 +335,7 @@ if status is-interactive
     alias reload="source ~/.config/fish/config.fish"
 
     # Custom tools
-    alias dtk="bash ~/git/tools/dtk.sh"
+    alias dtk="bash ~/git/cloud-mykonsole-dtk/dtk.sh"
 
     # Git abbreviations
     abbr -a gs "git status -sb"; abbr -a ga "git add"; abbr -a gaa "git add --all"

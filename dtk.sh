@@ -540,7 +540,7 @@ printf "\n"
   _IMG_COMPOSE=$(_lbl "diego.image.compose.path" "ba_flakes_desktop/src/container/compose.yaml")
   _IMG_FLAKE=$(_lbl "diego.image.flake.path" "ba_flakes_desktop/src/")
   _IMG_GHCR=$(_lbl "diego.image.ghcr" "$IMG")
-  _IMG_RUNNER=$(_lbl "diego.image.runner" "~/git/tools/dtk.sh containers {cli|gui|tty}")
+  _IMG_RUNNER=$(_lbl "diego.image.runner" "~/git/cloud-mykonsole-dtk/dtk.sh containers {cli|gui|tty}")
   _IMG_SHELL=$(_lbl "diego.image.packages.shell" "fish starship eza bat fd rg fzf jq")
   _IMG_LANG=$(_lbl "diego.image.packages.lang" "rust go node python ruby gcc llvm")
   _IMG_CLOUD=$(_lbl "diego.image.packages.cloud" "docker kubectl helm terraform sops age")
@@ -712,7 +712,7 @@ do_konsole_cfg() {
 
   if [ ! -f "$_src_qc" ] || [ ! -f "$_src_ssh" ]; then
     echo "  ERROR: asset files not found in $_DTK/assets/konsole/"
-    echo "  Run: git clone https://github.com/diegonmarcos/tools.git ~/git/tools"
+    echo "  Run: git clone https://github.com/diegonmarcos/tools.git ~/git/cloud-mykonsole-dtk"
     return 1
   fi
 
@@ -754,7 +754,7 @@ do_connect() {
     sh "$_connect_sh" "$@"
   else
     echo "connect.sh not found at: $_connect_sh"
-    echo "Clone tools repo: git clone https://github.com/diegonmarcos/tools.git ~/git/tools"
+    echo "Clone tools repo: git clone https://github.com/diegonmarcos/tools.git ~/git/cloud-mykonsole-dtk"
     exit 1
   fi
 }
@@ -772,7 +772,7 @@ do_sysmon() {
     setsid cloud-terminal home >/dev/null 2>&1 &
     echo "→ opened Cloud Terminal system monitor (Home profile)"
   else
-    echo "cloud-terminal not installed — run: ~/git/unix/da_cloud-terminal/build.sh install"
+    echo "cloud-terminal not installed — run: ~/git/cloud-unix/da_cloud-terminal/build.sh install"
   fi
 }
 
@@ -1541,22 +1541,22 @@ do_sys_paths() { set +x 2>/dev/null
   printf "\n${G}sys-paths${R} ${D}(flakes & engines)${R}\n"
   printf "${D}──────────────────────────────────────────────────────────────────────────────────${R}\n"
   _F="  ${Y}%-20s${R} ${W}%s${R}\n"
-  printf "$_F" "nixos-host" "~/git/unix/aa_nixos-surface_host/"
-  printf "$_F" "hm-desktop" "~/git/unix/ba_flakes_desktop/"
-  printf "$_F" "hm-termux" "~/git/unix/bb_flakes_termux/"
-  printf "$_F" "cloud-repo" "~/git/cloud/"
+  printf "$_F" "nixos-host" "~/git/cloud-unix/aa_nixos-surface_host/"
+  printf "$_F" "hm-desktop" "~/git/cloud-unix/ba_flakes_desktop/"
+  printf "$_F" "hm-termux" "~/git/cloud-unix/bb_flakes_termux/"
+  printf "$_F" "cloud-repo" "~/git/cloud-infra/"
   printf "$_F" "front-repo" "~/git/front/"
-  printf "$_F" "tools-repo" "~/git/tools/"
-  printf "$_F" "vault-repo" "~/git/vault/"
+  printf "$_F" "tools-repo" "~/git/cloud-mykonsole-dtk/"
+  printf "$_F" "vault-repo" "~/git/cloud-vault/"
   printf "${D}  engines:${R}\n"
-  printf "$_F" "cloud-engine" "~/git/tools/build/flake-engines/cloud-engine/"
-  printf "$_F" "cloud-orchestrator" "~/git/tools/build/flake-engines/cloud-orchestrator/"
-  printf "$_F" "front-engine" "~/git/tools/build/flake-engines/front-engine/"
-  printf "$_F" "front-orchestrator" "~/git/tools/build/flake-engines/front-orchestrator/"
-  printf "$_F" "container-orch." "~/git/tools/build/flake-engines/cloud-container-orchestrator/"
-  printf "$_F" "nix-os-desktop" "~/git/tools/build/flake-engines/nix-os-desktop/"
-  printf "$_F" "nix-hm-desktop" "~/git/tools/build/flake-engines/nix-hm-desktop/"
-  printf "$_F" "nix-hm-termux" "~/git/tools/build/flake-engines/nix-hm-termux/"
+  printf "$_F" "cloud-engine" "~/git/cloud-mykonsole-dtk/build/flake-engines/cloud-engine/"
+  printf "$_F" "cloud-orchestrator" "~/git/cloud-mykonsole-dtk/build/flake-engines/cloud-orchestrator/"
+  printf "$_F" "front-engine" "~/git/cloud-mykonsole-dtk/build/flake-engines/front-engine/"
+  printf "$_F" "front-orchestrator" "~/git/cloud-mykonsole-dtk/build/flake-engines/front-orchestrator/"
+  printf "$_F" "container-orch." "~/git/cloud-mykonsole-dtk/build/flake-engines/cloud-container-orchestrator/"
+  printf "$_F" "nix-os-desktop" "~/git/cloud-mykonsole-dtk/build/flake-engines/nix-os-desktop/"
+  printf "$_F" "nix-hm-desktop" "~/git/cloud-mykonsole-dtk/build/flake-engines/nix-hm-desktop/"
+  printf "$_F" "nix-hm-termux" "~/git/cloud-mykonsole-dtk/build/flake-engines/nix-hm-termux/"
   printf "\n"
 }
 
@@ -1586,7 +1586,7 @@ do_sys_envs() { set +x 2>/dev/null
 }
 do_sys_mounts() { set +x 2>/dev/null
   R='\033[0m'; Y='\033[1;33m'; W='\033[1;37m'; G='\033[1;32m'; D='\033[0;90m'; C='\033[1;36m'
-  _nixos_src="$HOME/git/unix/aa_nixos-surface_host/src"
+  _nixos_src="$HOME/git/cloud-unix/aa_nixos-surface_host/src"
   _fs="$_nixos_src/modules/hardware_filesystems.nix"
   _boot="$_nixos_src/modules/hardware_boot.nix"
   _prot="$_nixos_src/modules/configuration_system-protection.nix"
@@ -1854,7 +1854,7 @@ do_webhooks()  { sh "$_REC_DIR/webhooks/webhooks.sh" "$@"; }
 # tools/, no dependency on the unix flake checkout being present.
 do_rescue_sshd() { sh "$_REC_DIR/rescue-sshd/rescue-sshd.sh" "$@"; }
 
-# rebuild-flake: pull ~/git/unix + run bb_flakes_termux/build.sh switch.
+# rebuild-flake: pull ~/git/cloud-unix + run bb_flakes_termux/build.sh switch.
 # One-command path to apply latest committed flake state on termux.
 do_rebuild_flake() { sh "$_REC_DIR/rebuild-flake/rebuild-flake.sh" "$@"; }
 

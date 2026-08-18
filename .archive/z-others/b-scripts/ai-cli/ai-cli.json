@@ -36,8 +36,8 @@
   "mcp_extensions": {
     "cloud-services": { "type": "streamable_http", "uri": "https://mcp.diegonmarcos.com/c3-services-mcp/mcp" },
     "cloud-infra": { "type": "streamable_http", "uri": "https://mcp.diegonmarcos.com/c3-infra-mcp/mcp" },
-    "cloud-cgc-mcp": { "type": "stdio", "cmd": "tsx", "args": ["~/git/cloud/a_solutions/bc-obs_cloud-cgc-mcp/src/index.ts"] },
+    "cloud-cgc-mcp": { "type": "stdio", "cmd": "tsx", "args": ["~/git/cloud-infra/a_solutions/bc-obs_cloud-cgc-mcp/src/index.ts"] },
     "google-workspace": { "type": "streamable_http", "uri": "https://mcp.diegonmarcos.com/g-workspace/mcp" },
-    "diego-personal-data": { "type": "stdio", "cmd": "tsx", "args": ["~/git/cloud/a_solutions/ca-dat_c3-diego-personal-data-mcp/src/index.ts"] }
+    "diego-personal-data": { "type": "stdio", "cmd": "tsx", "args": ["~/git/cloud-infra/a_solutions/ca-dat_c3-diego-personal-data-mcp/src/index.ts"] }
   }
 }

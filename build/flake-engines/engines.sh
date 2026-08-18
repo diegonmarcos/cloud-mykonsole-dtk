@@ -7,19 +7,19 @@ _idx="${1:-}"
 
 if [ -z "$_idx" ]; then
   echo "Build Engines:"
-  echo "  1) nixos-host       ~/git/unix/aa_nixos-surface_host/build.sh"
-  echo "  2) home-desktop     ~/git/unix/ba_flakes_desktop/build.sh"
-  echo "  3) home-termux      ~/git/unix/bb_flakes_termux/build.sh"
-  echo "  4) cloud-service    ~/git/cloud/a_solutions/<service>/build.sh"
+  echo "  1) nixos-host       ~/git/cloud-unix/aa_nixos-surface_host/build.sh"
+  echo "  2) home-desktop     ~/git/cloud-unix/ba_flakes_desktop/build.sh"
+  echo "  3) home-termux      ~/git/cloud-unix/bb_flakes_termux/build.sh"
+  echo "  4) cloud-service    ~/git/cloud-infra/a_solutions/<service>/build.sh"
   echo "  5) front-end        ~/git/front/1.ops/build_main.sh"
   printf "> "
   read -r _idx
 fi
 
 case "$_idx" in
-  1) sh "$_git/unix/aa_nixos-surface_host/build.sh" ;;
-  2) sh "$_git/unix/ba_flakes_desktop/build.sh" ;;
-  3) sh "$_git/unix/bb_flakes_termux/build.sh" ;;
+  1) sh "$_git/cloud-unix/aa_nixos-surface_host/build.sh" ;;
+  2) sh "$_git/cloud-unix/ba_flakes_desktop/build.sh" ;;
+  3) sh "$_git/cloud-unix/bb_flakes_termux/build.sh" ;;
   4)
     echo "Cloud services:"
     _i=1; _services=""
@@ -38,7 +38,7 @@ case "$_idx" in
       [ -z "$_s" ] && continue
       _c=$((_c + 1))
       if [ "$_c" -eq "$_sidx" ]; then
-        sh "$_git/cloud/a_solutions/$_s/build.sh"
+        sh "$_git/cloud-infra/a_solutions/$_s/build.sh"
         break
       fi
     done

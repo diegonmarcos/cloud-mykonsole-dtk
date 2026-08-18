@@ -3,11 +3,11 @@
 # Run on the device when source has new commits and you need to apply.
 #
 # Usage:
-#   sh ~/git/tools/5-infos/rebuild-flake/rebuild-flake.sh
+#   sh ~/git/cloud-mykonsole-dtk/5-infos/rebuild-flake/rebuild-flake.sh
 #   curl -fsSL https://raw.githubusercontent.com/diegonmarcos/tools/main/5-infos/rebuild-flake/rebuild-flake.sh | sh
 set -eu
 
-UNIX_REPO="$HOME/git/unix"
+UNIX_REPO="$HOME/git/cloud-unix"
 FLAKE_DIR="$UNIX_REPO/bb_flakes_termux"
 BUILD_SH="$FLAKE_DIR/build.sh"
 
@@ -18,7 +18,7 @@ fail() { printf "${C_RED}[FAIL]${C_RST} %s\n" "$*"; exit 1; }
 step() { printf "\n${C_BLU}>>>${C_RST} %s\n" "$*"; }
 
 # ── 1. Sync source ────────────────────────────────────────────────────
-step "1/3  git pull ~/git/unix"
+step "1/3  git pull ~/git/cloud-unix"
 [ -d "$UNIX_REPO/.git" ] || fail "$UNIX_REPO is not a git repo"
 cd "$UNIX_REPO"
 git pull --ff-only 2>&1 | tail -5 || warn "git pull non-zero (network? local changes?)"

@@ -22,8 +22,8 @@ C_BLUE="\033[0;34m"
 
 # ─── Secrets (SOPS/age) ─────────────────────────────────
 SECRETS_FILE="$SCRIPT_DIR/secrets.yaml"
-if [ -f "$HOME/git/vault/A0_keys/providers/system/oauth/age_keys.txt" ]; then
-  export SOPS_AGE_KEY_FILE="$HOME/git/vault/A0_keys/providers/system/oauth/age_keys.txt"
+if [ -f "$HOME/git/cloud-vault/A0_keys/providers/system/oauth/age_keys.txt" ]; then
+  export SOPS_AGE_KEY_FILE="$HOME/git/cloud-vault/A0_keys/providers/system/oauth/age_keys.txt"
 elif [ -f "/home/diego/Mounts/Git/vault/A0_keys/providers/system/oauth/age_keys.txt" ]; then
   export SOPS_AGE_KEY_FILE="/home/diego/Mounts/Git/vault/A0_keys/providers/system/oauth/age_keys.txt"
 fi

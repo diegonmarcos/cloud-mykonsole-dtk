@@ -45,7 +45,7 @@ status is-interactive; and begin
     alias cls clear
     alias cp 'cp -i'
     alias df duf
-    alias dtk 'bash ~/git/tools/dtk.sh'
+    alias dtk 'bash ~/git/cloud-mykonsole-dtk/dtk.sh'
     alias du ncdu
     alias find fd
     alias free 'free -h'
@@ -100,8 +100,8 @@ status is-interactive; and begin
     end
 
     # API keys from vault (read at shell init, not baked into Nix store)
-    if test -f ~/git/vault/A0_keys/providers/anthropic/api-key_opaque
-        set -gx ANTHROPIC_API_KEY (cat ~/git/vault/A0_keys/providers/anthropic/api-key_opaque)
+    if test -f ~/git/cloud-vault/A0_keys/providers/anthropic/api-key_opaque
+        set -gx ANTHROPIC_API_KEY (cat ~/git/cloud-vault/A0_keys/providers/anthropic/api-key_opaque)
     end
 
     # Vi mode
@@ -144,8 +144,8 @@ status is-interactive; and begin
     end
 
     # Authelia OIDC credentials (vault paths)
-    set -gx AUTHELIA_OIDC_CREDENTIALS_DIR "$HOME/git/vault/A0_keys/providers/authelia/signed-bearer_jwt/credentials"
-    set -gx AUTHELIA_OIDC_TOKENS_DIR "$HOME/git/vault/A0_keys/providers/authelia/signed-bearer_jwt/tokens"
+    set -gx AUTHELIA_OIDC_CREDENTIALS_DIR "$HOME/git/cloud-vault/A0_keys/providers/authelia/signed-bearer_jwt/credentials"
+    set -gx AUTHELIA_OIDC_TOKENS_DIR "$HOME/git/cloud-vault/A0_keys/providers/authelia/signed-bearer_jwt/tokens"
     set -gx AUTHELIA_OIDC_CLIENT_ID claude-admin
     set -gx AUTHELIA_TOKEN_URL "https://auth.diegonmarcos.com/api/oidc/token"
 

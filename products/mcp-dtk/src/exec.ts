@@ -2,7 +2,7 @@ import { spawnSync } from "child_process";
 import { join } from "path";
 
 const HOME = process.env.HOME ?? "/home/diego";
-const TOOLS = join(HOME, "git/tools");
+const TOOLS = join(HOME, "git/cloud-mykonsole-dtk");
 
 // Paths follow the domain layout (see registry.json). dtk.sh dispatches by
 // shortcode/id; these direct paths are only for tools that bypass dtk.

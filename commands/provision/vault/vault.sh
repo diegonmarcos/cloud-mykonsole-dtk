@@ -6,14 +6,14 @@ set -eu
 R='\033[0m'; C='\033[1;36m'; Y='\033[1;33m'; G='\033[1;32m'
 W='\033[1;37m'; D='\033[0;90m'; RED='\033[1;31m'
 
-VAULT_DIR="${HOME}/git/vault"
+VAULT_DIR="${HOME}/git/cloud-vault"
 VAULT_BUILD="$VAULT_DIR/build.sh"
 PROVIDERS_DIR="$VAULT_DIR/A0_keys/providers"
 
 _check_vault() {
   if [ ! -d "$VAULT_DIR" ]; then
     printf "  ${RED}Vault repo not found${R}  %s\n" "$VAULT_DIR"
-    printf "  ${D}git clone git@github.com:diegonmarcos/vault.git ~/git/vault${R}\n"
+    printf "  ${D}git clone git@github.com:diegonmarcos/vault.git ~/git/cloud-vault${R}\n"
     return 1
   fi
   return 0
@@ -132,7 +132,7 @@ do_env_export() {
 
   printf "\n  ${W}%d${R} env vars exported\n" "$_count"
   printf "  ${D}Note: vars are set in this shell only. Source with:${R}\n"
-  printf "  ${D}  eval \$(~/git/tools/commands/provision/vault/vault.sh env-export-eval)${R}\n\n"
+  printf "  ${D}  eval \$(~/git/cloud-mykonsole-dtk/commands/provision/vault/vault.sh env-export-eval)${R}\n\n"
 }
 
 do_env_export_eval() {

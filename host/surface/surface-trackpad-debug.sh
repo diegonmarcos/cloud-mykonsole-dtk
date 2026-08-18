@@ -99,5 +99,5 @@ while true; do
 
     echo "" | tee -a "$LOG"
     echo "Snapshot captured. Check $LOG" | tee -a "$LOG"
-    echo "Run reset script if needed: bash ~/git/tools/host/surface/surface-trackpad-reset.sh" | tee -a "$LOG"
+    echo "Run reset script if needed: bash ~/git/cloud-mykonsole-dtk/host/surface/surface-trackpad-reset.sh" | tee -a "$LOG"
 done

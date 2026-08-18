@@ -330,8 +330,8 @@ detect_env() {
 install_hint() {
     dep="$1"; env="$2"
     case "$env" in
-        termux)       printf "${C_DIM}→ rebuild termux flake: ~/git/unix/bb_flakes_termux/build.sh${C_RESET}" ;;
-        nixos)        printf "${C_DIM}→ add to desktop flake + rebuild: ~/git/unix/ba_flakes_desktop/build.sh${C_RESET}" ;;
+        termux)       printf "${C_DIM}→ rebuild termux flake: ~/git/cloud-unix/bb_flakes_termux/build.sh${C_RESET}" ;;
+        nixos)        printf "${C_DIM}→ add to desktop flake + rebuild: ~/git/cloud-unix/ba_flakes_desktop/build.sh${C_RESET}" ;;
         home-manager) printf "${C_DIM}→ home-manager switch${C_RESET}" ;;
         debian)
             case "$dep" in

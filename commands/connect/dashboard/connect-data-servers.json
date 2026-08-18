@@ -65,11 +65,11 @@
       "~/Mounts/Git/front/secrets.yaml"
     ],
     "age_key_paths": [
-      "~/git/vault/A0_keys/providers/system/oauth/age_keys.txt",
+      "~/git/cloud-vault/A0_keys/providers/system/oauth/age_keys.txt",
       "~/Mounts/Git/vault/A0_keys/providers/system/oauth/age_keys.txt"
     ],
     "http_server_paths": [
-      "~/git/tools/a-cloud-connect/libs/web-server-md-eruda.mjs",
+      "~/git/cloud-mykonsole-dtk/a-cloud-connect/libs/web-server-md-eruda.mjs",
       "~/Mounts/Git/tools/a-cloud-connect/libs/web-server-md-eruda.mjs"
     ],
     "log_dir": "~/.config/cloud-connect/server-logs"
