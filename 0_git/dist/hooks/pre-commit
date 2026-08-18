@@ -53,7 +53,7 @@ fi
 # bypass detector above still runs (it's about `git add -f`, not content).
 REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || true)
 case "$REMOTE_URL" in
-  *[:/]vault|*[:/]vault.git)
+  *[:/]cloud-vault|*[:/]cloud-vault.git|*[:/]vault|*[:/]vault.git)
     exit 0
     ;;
 esac
