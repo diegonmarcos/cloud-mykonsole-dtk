@@ -1,6 +1,6 @@
 #!/bin/sh
 # ai-cli — Unified AI Agent launcher (Claude Code + Goose)
-# https://github.com/diegonmarcos/unix
+# https://github.com/diegonmarcos/cloud-unix
 # POSIX-compliant, no bashisms
 set -eu
 

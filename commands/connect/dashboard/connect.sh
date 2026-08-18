@@ -173,7 +173,7 @@ cc_probe_env() {
 }
 
 # Fetch cloud-topology.json + cloud-configs.json from GitHub (cached)
-CLOUD_RAW_BASE="https://raw.githubusercontent.com/diegonmarcos/cloud/main"
+CLOUD_RAW_BASE="https://raw.githubusercontent.com/diegonmarcos/cloud-infra/main"
 CLOUD_TOPOLOGY=""
 CLOUD_CONFIGS=""
 

@@ -11,8 +11,8 @@
   },
   "public_repos": {
     "Tools": "git@github.com:diegonmarcos/ops-Tooling.git",
-    "unix": "git@github.com:diegonmarcos/unix.git",
-    "cloud": "git@github.com:diegonmarcos/cloud.git",
+    "unix": "git@github.com:diegonmarcos/cloud-unix.git",
+    "cloud": "git@github.com:diegonmarcos/cloud-infra.git",
     "front": "git@github.com:diegonmarcos/diegonmarcos.github.io.git",
     "front_gh-profile": "git@github.com:diegonmarcos/diegonmarcos.git",
     "back-System": "git@github.com:diegonmarcos/back-System.git",
@@ -21,7 +21,7 @@
     "ops-Mylibs": "git@github.com:diegonmarcos/ops-Mylibs.git"
   },
   "private_repos": {
-    "Vault": "git@github.com:diegonmarcos/vault.git",
+    "Vault": "git@github.com:diegonmarcos/cloud-vault.git",
     "notes": "git@github.com:diegonmarcos/front-Notes_md.git",
     "z-lecole42": "git@github.com:diegonmarcos/lecole42.git",
     "z-dev": "git@github.com:diegonmarcos/dev.git"

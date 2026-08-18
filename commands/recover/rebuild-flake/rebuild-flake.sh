@@ -4,7 +4,7 @@
 #
 # Usage:
 #   sh ~/git/cloud-mykonsole-dtk/5-infos/rebuild-flake/rebuild-flake.sh
-#   curl -fsSL https://raw.githubusercontent.com/diegonmarcos/tools/main/5-infos/rebuild-flake/rebuild-flake.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/diegonmarcos/cloud-mykonsole-dtk/main/5-infos/rebuild-flake/rebuild-flake.sh | sh
 set -eu
 
 UNIX_REPO="$HOME/git/cloud-unix"

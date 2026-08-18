@@ -13,7 +13,7 @@ PROVIDERS_DIR="$VAULT_DIR/A0_keys/providers"
 _check_vault() {
   if [ ! -d "$VAULT_DIR" ]; then
     printf "  ${RED}Vault repo not found${R}  %s\n" "$VAULT_DIR"
-    printf "  ${D}git clone git@github.com:diegonmarcos/vault.git ~/git/cloud-vault${R}\n"
+    printf "  ${D}git clone git@github.com:diegonmarcos/cloud-vault.git ~/git/cloud-vault${R}\n"
     return 1
   fi
   return 0

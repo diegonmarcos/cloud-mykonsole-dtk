@@ -2,11 +2,11 @@
 # Info module — show installed tools and repos
 set -eu
 
-REPOS="cloud:https://github.com/diegonmarcos/cloud.git
+REPOS="cloud:https://github.com/diegonmarcos/cloud-infra.git
 cloud-data:https://github.com/diegonmarcos/cloud-data.git
-unix:https://github.com/diegonmarcos/unix.git
+unix:https://github.com/diegonmarcos/cloud-unix.git
 front:https://github.com/diegonmarcos/front.git
-vault:https://github.com/diegonmarcos/vault.git"
+vault:https://github.com/diegonmarcos/cloud-vault.git"
 
 echo "=== Installed Tools ==="
 for t in fish git node npm python3 rust cargo go docker podman gcloud oci aws \

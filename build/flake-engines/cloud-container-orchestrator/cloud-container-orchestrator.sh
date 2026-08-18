@@ -223,7 +223,7 @@ case "$cmd" in
     ;;
   all-script-push)
     ALL_VMS="gcp-proxy oci-mail oci-analytics oci-apps gcp-t4"
-    RAW_URL="https://raw.githubusercontent.com/diegonmarcos/tools/main/1-aliases/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
+    RAW_URL="https://raw.githubusercontent.com/diegonmarcos/cloud-mykonsole-dtk/main/1-aliases/engines/cloud-container-orchestrator/cloud-container-orchestrator.sh"
     for v in $ALL_VMS; do
       printf '\033[1;36m══ %s ══\033[0m\n' "$v"
       ssh "$v" "mkdir -p ~/.local/share/konsole && curl -fsSL '$RAW_URL' -o ~/.local/share/konsole/cloud-container-orchestrator.sh && chmod +x ~/.local/share/konsole/cloud-container-orchestrator.sh && echo 'Done'" 2>&1 || printf '\033[0;31m  [FAILED]\033[0m\n'
@@ -345,15 +345,15 @@ case "$cmd" in
     ;;
 
   # ── VPS - GH Actions ───────────────────────────────────────────────
-  gha-runs-cloud)     show gh run list --repo diegonmarcos/cloud --limit 15 ;;
-  gha-failed-cloud)   show gh run list --repo diegonmarcos/cloud --status failure --limit 10 ;;
+  gha-runs-cloud)     show gh run list --repo diegonmarcos/cloud-infra --limit 15 ;;
+  gha-failed-cloud)   show gh run list --repo diegonmarcos/cloud-infra --status failure --limit 10 ;;
   gha-log-cloud)
-    printf '\033[0;90m$ gh run view --repo diegonmarcos/cloud --log <latest> | tail -50\033[0m\n'
-    RUN_ID="$(gh run list --repo diegonmarcos/cloud --limit 1 --json databaseId --jq '.[0].databaseId')"
-    gh run view --repo diegonmarcos/cloud --log "$RUN_ID" 2>/dev/null | tail -50
+    printf '\033[0;90m$ gh run view --repo diegonmarcos/cloud-infra --log <latest> | tail -50\033[0m\n'
+    RUN_ID="$(gh run list --repo diegonmarcos/cloud-infra --limit 1 --json databaseId --jq '.[0].databaseId')"
+    gh run view --repo diegonmarcos/cloud-infra --log "$RUN_ID" 2>/dev/null | tail -50
     ;;
-  gha-workflows)      show gh workflow list --repo diegonmarcos/cloud ;;
-  gha-runs-unix)      show gh run list --repo diegonmarcos/unix --limit 10 ;;
+  gha-workflows)      show gh workflow list --repo diegonmarcos/cloud-infra ;;
+  gha-runs-unix)      show gh run list --repo diegonmarcos/cloud-unix --limit 10 ;;
   gha-runs-front)     show gh run list --repo diegonmarcos/front --limit 10 ;;
 
   # ── VPS - GH Repos ─────────────────────────────────────────────────
@@ -363,8 +363,8 @@ case "$cmd" in
       | jq -r '.[] | [.name, .visibility, .pushedAt[:10]] | @tsv' | sort | column -t
     ;;
   gh-repos-list)      show gh repo list diegonmarcos --limit 50 ;;
-  gh-prs)             show gh pr list --repo diegonmarcos/cloud ;;
-  gh-issues)          show gh issue list --repo diegonmarcos/cloud ;;
+  gh-prs)             show gh pr list --repo diegonmarcos/cloud-infra ;;
+  gh-issues)          show gh issue list --repo diegonmarcos/cloud-infra ;;
   gh-commits)
     printf '\033[0;90m$ gh api repos/diegonmarcos/{cloud,unix,...}/commits?per_page=3\033[0m\n'
     for r in cloud cloud-data unix vault front-data octocode; do

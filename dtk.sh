@@ -534,7 +534,7 @@ printf "\n"
   _lbl() { _v=$("$DOCKER" image inspect "$IMG" --format "{{index .Config.Labels \"$1\"}}" 2>/dev/null); [ "$_v" != "<no value>" ] && [ -n "$_v" ] && echo "$_v" || echo "$2"; }
   _IMG_DIGEST=$("$DOCKER" image inspect "$IMG" --format '{{index .RepoDigests 0}}' 2>/dev/null | sed 's/.*@//' | cut -c1-19 || echo "?")
   _IMG_LAYERS=$("$DOCKER" image inspect "$IMG" --format '{{len .RootFS.Layers}}' 2>/dev/null || echo "?")
-  _IMG_SRC=$(_lbl "org.opencontainers.image.source" "github.com/diegonmarcos/unix")
+  _IMG_SRC=$(_lbl "org.opencontainers.image.source" "github.com/diegonmarcos/cloud-unix")
   _IMG_DESC=$(_lbl "org.opencontainers.image.description" "Nix dev env (nix profile install)")
   _IMG_DFILE=$(_lbl "diego.image.dockerfile.path" "ba_flakes_desktop/src/container/Containerfile")
   _IMG_COMPOSE=$(_lbl "diego.image.compose.path" "ba_flakes_desktop/src/container/compose.yaml")
@@ -712,7 +712,7 @@ do_konsole_cfg() {
 
   if [ ! -f "$_src_qc" ] || [ ! -f "$_src_ssh" ]; then
     echo "  ERROR: asset files not found in $_DTK/assets/konsole/"
-    echo "  Run: git clone https://github.com/diegonmarcos/tools.git ~/git/cloud-mykonsole-dtk"
+    echo "  Run: git clone https://github.com/diegonmarcos/cloud-mykonsole-dtk.git ~/git/cloud-mykonsole-dtk"
     return 1
   fi
 
@@ -754,7 +754,7 @@ do_connect() {
     sh "$_connect_sh" "$@"
   else
     echo "connect.sh not found at: $_connect_sh"
-    echo "Clone tools repo: git clone https://github.com/diegonmarcos/tools.git ~/git/cloud-mykonsole-dtk"
+    echo "Clone tools repo: git clone https://github.com/diegonmarcos/cloud-mykonsole-dtk.git ~/git/cloud-mykonsole-dtk"
     exit 1
   fi
 }

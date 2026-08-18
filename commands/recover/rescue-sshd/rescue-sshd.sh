@@ -8,7 +8,7 @@
 #
 # Usage on termux:
 #   sh ~/git/cloud-unix/bb_flakes_termux/rescue-sshd.sh
-#   curl -fsSL https://raw.githubusercontent.com/diegonmarcos/unix/main/bb_flakes_termux/rescue-sshd.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/diegonmarcos/cloud-unix/main/bb_flakes_termux/rescue-sshd.sh | sh
 set -eu
 
 # Port — sourced from build.json defaults.ssh_port, fallback 8023.

@@ -2,11 +2,11 @@
 # Git clone module — clone/pull all repos
 set -eu
 
-REPOS="cloud:https://github.com/diegonmarcos/cloud.git
+REPOS="cloud:https://github.com/diegonmarcos/cloud-infra.git
 cloud-data:https://github.com/diegonmarcos/cloud-data.git
-unix:https://github.com/diegonmarcos/unix.git
+unix:https://github.com/diegonmarcos/cloud-unix.git
 front:https://github.com/diegonmarcos/front.git
-vault:https://github.com/diegonmarcos/vault.git"
+vault:https://github.com/diegonmarcos/cloud-vault.git"
 
 _target="${1:-$HOME/git}"
 mkdir -p "$_target"

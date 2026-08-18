@@ -760,7 +760,7 @@ name=disk usage
 tooltip=Show disk usage for key partitions
 
 [Desktop][konsole script push]
-command=if [ -d ~/git/cloud-mykonsole-dtk/.git ]; then git -C ~/git/cloud-mykonsole-dtk pull; else git clone https://github.com/diegonmarcos/tools.git ~/git/cloud-mykonsole-dtk; fi && echo 'Done: ~/git/cloud-mykonsole-dtk'
+command=if [ -d ~/git/cloud-mykonsole-dtk/.git ]; then git -C ~/git/cloud-mykonsole-dtk pull; else git clone https://github.com/diegonmarcos/cloud-mykonsole-dtk.git ~/git/cloud-mykonsole-dtk; fi && echo 'Done: ~/git/cloud-mykonsole-dtk'
 name=konsole script push
 tooltip=Clone/pull tools repo from GitHub
 
